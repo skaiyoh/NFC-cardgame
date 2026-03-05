@@ -1,6 +1,6 @@
 # NFC Tabletop Card Game
 
-A two-player split-screen strategy game where physical NFC cards control the action. Players place real cards on Arduino-connected NFC readers to spawn troops, cast spells, and battle for control of the board — rendered in real-time with pixel art and a tile-based biome system.
+A two-player split-screen strategy game where physical NFC cards control the virtual board. Players place real cards on NFC readers connected via Arduino's to spawn troops, cast spells, and try to destroy their opponents base.
 
 Built in C with Raylib, PostgreSQL, and Arduino hardware.
 
