@@ -1,14 +1,8 @@
--- Card seed data
--- Insert all base cards. Run after schema is in place.
--- Safe to re-run: uses ON CONFLICT DO UPDATE.
+-- Card seed data for SQLite
+-- Run after schema: sqlite3 cardgame.db < sqlite/seed.sql
 
 INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 
--- ─────────────────────────────────────────────
--- KNIGHT
--- Heavy armored melee troop. Slow but durable.
--- Targets nearest enemy.
--- ─────────────────────────────────────────────
 (
   'knight_01',
   'Knight',
@@ -52,11 +46,6 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
   }'
 ),
 
--- ─────────────────────────────────────────────
--- ASSASSIN
--- Fast, fragile, high single-hit damage.
--- Bypasses tanks to reach the backline.
--- ─────────────────────────────────────────────
 (
   'assassin_01',
   'Assassin',
@@ -100,11 +89,6 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
   }'
 ),
 
--- ─────────────────────────────────────────────
--- BRUTE
--- Massive, slow, devastating against structures.
--- Ignores troops — walks straight for buildings.
--- ─────────────────────────────────────────────
 (
   'brute_01',
   'Brute',
@@ -148,12 +132,6 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
   }'
 ),
 
--- ─────────────────────────────────────────────
--- FARMER
--- Cheap, expendable melee troop.
--- Weak in a fight but useful for soaking damage
--- or distracting enemies.
--- ─────────────────────────────────────────────
 (
   'farmer_01',
   'Farmer',
@@ -197,11 +175,6 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
   }'
 ),
 
--- ─────────────────────────────────────────────
--- HEALER
--- Slow support troop with long attack range.
--- Low damage — value comes from sustaining allies.
--- ─────────────────────────────────────────────
 (
   'healer_01',
   'Healer',
@@ -245,11 +218,6 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
   }'
 ),
 
--- ─────────────────────────────────────────────
--- FIREBALL
--- Instant spell. Deals heavy fire damage to
--- troops and buildings in the target area.
--- ─────────────────────────────────────────────
 (
   'fireball_01',
   'Fireball',
@@ -289,8 +257,8 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 )
 
 ON CONFLICT (card_id) DO UPDATE SET
-  name       = EXCLUDED.name,
-  cost       = EXCLUDED.cost,
-  type       = EXCLUDED.type,
-  rules_text = EXCLUDED.rules_text,
-  data       = EXCLUDED.data;
+  name       = excluded.name,
+  cost       = excluded.cost,
+  type       = excluded.type,
+  rules_text = excluded.rules_text,
+  data       = excluded.data;

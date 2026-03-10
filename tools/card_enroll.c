@@ -26,10 +26,11 @@ static void print_card_list(const Deck *deck) {
 
 int main(void) {
     const char *nfc_port = getenv("NFC_PORT");
-    const char *db_conn  = getenv("DB_CONNECTION");
+    const char *db_path  = getenv("DB_PATH");
+    if (!db_path) db_path = "cardgame.db";
 
-    if (!nfc_port || !db_conn) {
-        fprintf(stderr, "Usage: NFC_PORT=/dev/ttyACM0 DB_CONNECTION=\"host=...\" ./card_enroll\n");
+    if (!nfc_port) {
+        fprintf(stderr, "Usage: NFC_PORT=/dev/ttyACM0 [DB_PATH=cardgame.db] ./card_enroll\n");
         return 1;
     }
 
@@ -40,7 +41,7 @@ int main(void) {
     }
 
     DB db;
-    if (!db_init(&db, db_conn)) {
+    if (!db_init(&db, db_path)) {
         fprintf(stderr, "[ERROR] Failed to connect to database: %s\n", db_error(&db));
         nfc_shutdown(&r);
         return 1;
@@ -106,15 +107,15 @@ int main(void) {
         }
 
         const char *params[2] = { uid_str, card_id };
-        PGresult *res = db_query_params(&db,
-            "INSERT INTO nfc_tags (uid, card_id) VALUES ($1, $2) "
+        DBResult *res = db_query_params(&db,
+            "INSERT INTO nfc_tags (uid, card_id) VALUES (?1, ?2) "
             "ON CONFLICT (uid) DO UPDATE SET card_id = EXCLUDED.card_id",
             2, params);
 
         if (!res) {
             fprintf(stderr, "[ERROR] DB write failed: %s\n", db_error(&db));
         } else {
-            PQclear(res);
+            db_result_free(res);
             printf("[ENROLLED] %s → %s\n\n", uid_str, card_id);
 
             cards_free_nfc_map(&deck);

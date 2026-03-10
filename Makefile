@@ -1,9 +1,9 @@
-.PHONY: clean run preview-run biome-preview-run
+.PHONY: clean run preview-run biome-preview-run init-db
 
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
-LDFLAGS = -lpq -lraylib -lm
-MACFLAGS = -I/opt/homebrew/opt/libpq/include -L/opt/homebrew/opt/libpq/lib -I/opt/homebrew/include -L/opt/homebrew/lib
+LDFLAGS = -lsqlite3 -lraylib -lm
+MACFLAGS = -I/opt/homebrew/include -L/opt/homebrew/lib
 
 # Source files
 SRC_CORE = src/core/game.c
@@ -23,9 +23,15 @@ cardgame: $(SOURCES)
 preview: tools/card_preview.c src/rendering/card_renderer.c lib/cJSON.c
 	$(CC) $(CFLAGS) tools/card_preview.c src/rendering/card_renderer.c lib/cJSON.c -o card_preview $(MACFLAGS) -lraylib -lm
 
-# Single-Arduino test: NFC_PORT=/dev/ttyACM0 DB_CONNECTION="..." ./cardgame
+# Initialize a fresh SQLite database from schema + seed data
+init-db:
+	sqlite3 cardgame.db < sqlite/schema.sql
+	sqlite3 cardgame.db < sqlite/seed.sql
+	@echo "cardgame.db initialized"
+
+# Single-Arduino test: NFC_PORT=/dev/ttyACM0 ./cardgame
 run: clean cardgame
-	NFC_PORT="/dev/ttyUSB0" DB_CONNECTION="host=localhost port=5432 dbname=appdb user=postgres password=postgres" NFC_PORT_P1="/dev/ttyACM0" NFC_PORT_P2="/dev/ttyACM1" ./cardgame
+	NFC_PORT="/dev/cu.usbserial-A5069RR4" NFC_PORT_P1="/dev/ttyACM0" NFC_PORT_P2="/dev/ttyACM1" ./cardgame
 
 preview-run: preview
 	./card_preview
@@ -37,10 +43,10 @@ biome-preview-run: biome_preview
 	./biome_preview
 
 card_enroll: tools/card_enroll.c src/data/db.c src/data/cards.c src/hardware/nfc_reader.c src/hardware/arduino_protocol.c lib/cJSON.c
-	$(CC) $(CFLAGS) tools/card_enroll.c src/data/db.c src/data/cards.c src/hardware/nfc_reader.c src/hardware/arduino_protocol.c lib/cJSON.c -o card_enroll $(MACFLAGS) -lpq -lm
+	$(CC) $(CFLAGS) tools/card_enroll.c src/data/db.c src/data/cards.c src/hardware/nfc_reader.c src/hardware/arduino_protocol.c lib/cJSON.c -o card_enroll $(MACFLAGS) -lsqlite3 -lm
 
 card-enroll-run: card_enroll
-	NFC_PORT="/dev/ttyUSB0" DB_CONNECTION="host=localhost port=5432 dbname=appdb user=postgres password=postgres" ./card_enroll
+	NFC_PORT="/dev/cu.usbserial-A5069RR4" ./card_enroll
 
 clean:
 	rm -f cardgame card_preview biome_preview card_enroll

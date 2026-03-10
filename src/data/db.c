@@ -4,85 +4,178 @@
 
 #include "db.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-bool db_init(DB *db, const char *conninfo) {
-    if (!db || !conninfo) return false;
-
+bool db_init(DB *db, const char *path) {
+    if (!db || !path) return false;
     memset(db, 0, sizeof(DB));
 
-    db->conn = PQconnectdb(conninfo);
-
-    if (PQstatus(db->conn) != CONNECTION_OK) {
-        fprintf(stderr, "DB connection failed: %s\n",
-                PQerrorMessage(db->conn));
-        PQfinish(db->conn);
-        db->conn = NULL;
-        db->connected = false;
+    int rc = sqlite3_open(path, &db->handle);
+    if (rc != SQLITE_OK) {
+        snprintf(db->last_error, sizeof(db->last_error),
+                 "sqlite3_open failed: %s", sqlite3_errmsg(db->handle));
+        fprintf(stderr, "DB connection failed: %s\n", db->last_error);
+        sqlite3_close(db->handle);
+        db->handle = NULL;
         return false;
     }
 
+    sqlite3_exec(db->handle, "PRAGMA foreign_keys = ON;", NULL, NULL, NULL);
     db->connected = true;
     return true;
 }
 
 void db_close(DB *db) {
-    // TODO: Guard checks db->connected but not db->conn != NULL separately. If connected is somehow
-    // TODO: true while conn is NULL (e.g. after a partial init failure), PQfinish(NULL) is UB.
     if (!db || !db->connected) return;
-
-    PQfinish(db->conn);
-    db->conn = NULL;
+    sqlite3_close(db->handle);
+    db->handle = NULL;
     db->connected = false;
 }
 
-// TODO: No connection retry or reconnect logic — a dropped PostgreSQL connection will cause
-// TODO: all subsequent db_query calls to fail silently and the game will continue with no data.
-// TODO: Consider calling PQstatus(db->conn) before each query and reconnecting if needed.
-PGresult *db_query(DB *db, const char *query) {
-    // TODO: No SQL injection protection — only safe because all current queries are hardcoded literals.
-    // TODO: Never pass user-derived strings through this function. Use db_query_params instead.
-    if (!db || !db->connected || !query) return NULL;
-
-    PGresult *res = PQexec(db->conn, query);
-
-    if (PQresultStatus(res) != PGRES_TUPLES_OK &&
-        PQresultStatus(res) != PGRES_COMMAND_OK) {
-        fprintf(stderr, "Query failed: %s\n",
-                PQerrorMessage(db->conn));
-        PQclear(res);
-        return NULL;
-    }
-
-    return res;
-}
-
-PGresult *db_query_params(DB *db, const char *query, int nparams, const char *const *params) {
-    if (!db || !db->connected || !query) return NULL;
-
-    PGresult *res = PQexecParams(
-        db->conn,
-        query,
-        nparams,
-        NULL,
-        params,
-        NULL,
-        NULL,
-        0
-    );
-
-    if (PQresultStatus(res) != PGRES_TUPLES_OK &&
-        PQresultStatus(res) != PGRES_COMMAND_OK) {
-        fprintf(stderr, "Param query failed: %s\n",
-                PQerrorMessage(db->conn));
-        PQclear(res);
-        return NULL;
-    }
-
-    return res;
-}
-
 const char *db_error(DB *db) {
-    if (!db || !db->conn) return "No database connection";
-    return PQerrorMessage(db->conn);
+    if (!db || !db->handle) return "No database connection";
+    return sqlite3_errmsg(db->handle);
+}
+
+// Collect all rows from a prepared, bound statement into a DBResult.
+static DBResult *collect_results(DB *db, sqlite3_stmt *stmt) {
+    int cols = sqlite3_column_count(stmt);
+    int cap  = 8;
+    int rows = 0;
+
+    char ***data = malloc((size_t)cap * sizeof(char **));
+    if (!data) {
+        sqlite3_finalize(stmt);
+        return NULL;
+    }
+
+    int rc;
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        if (rows == cap) {
+            cap *= 2;
+            char ***tmp = realloc(data, (size_t)cap * sizeof(char **));
+            if (!tmp) {
+                for (int i = 0; i < rows; i++) {
+                    for (int c = 0; c < cols; c++) free(data[i][c]);
+                    free(data[i]);
+                }
+                free(data);
+                sqlite3_finalize(stmt);
+                return NULL;
+            }
+            data = tmp;
+        }
+
+        data[rows] = calloc((size_t)cols, sizeof(char *));
+        if (!data[rows]) {
+            for (int i = 0; i < rows; i++) {
+                for (int c = 0; c < cols; c++) free(data[i][c]);
+                free(data[i]);
+            }
+            free(data);
+            sqlite3_finalize(stmt);
+            return NULL;
+        }
+
+        for (int c = 0; c < cols; c++) {
+            const unsigned char *val = sqlite3_column_text(stmt, c);
+            data[rows][c] = val ? strdup((const char *)val) : NULL;
+        }
+        rows++;
+    }
+
+    if (rc != SQLITE_DONE) {
+        snprintf(db->last_error, sizeof(db->last_error),
+                 "Step failed: %s", sqlite3_errmsg(db->handle));
+        fprintf(stderr, "Query failed: %s\n", db->last_error);
+        for (int i = 0; i < rows; i++) {
+            for (int c = 0; c < cols; c++) free(data[i][c]);
+            free(data[i]);
+        }
+        free(data);
+        sqlite3_finalize(stmt);
+        return NULL;
+    }
+
+    sqlite3_finalize(stmt);
+
+    DBResult *res = malloc(sizeof(DBResult));
+    if (!res) {
+        for (int i = 0; i < rows; i++) {
+            for (int c = 0; c < cols; c++) free(data[i][c]);
+            free(data[i]);
+        }
+        free(data);
+        return NULL;
+    }
+    res->rows = rows;
+    res->cols = cols;
+    res->data = data;
+    return res;
+}
+
+DBResult *db_query(DB *db, const char *sql) {
+    if (!db || !db->connected || !sql) return NULL;
+
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        snprintf(db->last_error, sizeof(db->last_error),
+                 "Prepare failed: %s", sqlite3_errmsg(db->handle));
+        fprintf(stderr, "Query failed: %s\n", db->last_error);
+        return NULL;
+    }
+
+    return collect_results(db, stmt);
+}
+
+DBResult *db_query_params(DB *db, const char *sql, int nparams, const char *const *params) {
+    if (!db || !db->connected || !sql) return NULL;
+
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        snprintf(db->last_error, sizeof(db->last_error),
+                 "Prepare failed: %s", sqlite3_errmsg(db->handle));
+        fprintf(stderr, "Param query failed: %s\n", db->last_error);
+        return NULL;
+    }
+
+    for (int i = 0; i < nparams; i++) {
+        rc = sqlite3_bind_text(stmt, i + 1, params[i], -1, SQLITE_TRANSIENT);
+        if (rc != SQLITE_OK) {
+            snprintf(db->last_error, sizeof(db->last_error),
+                     "Bind failed: %s", sqlite3_errmsg(db->handle));
+            fprintf(stderr, "Param query failed: %s\n", db->last_error);
+            sqlite3_finalize(stmt);
+            return NULL;
+        }
+    }
+
+    return collect_results(db, stmt);
+}
+
+void db_result_free(DBResult *res) {
+    if (!res) return;
+    for (int i = 0; i < res->rows; i++) {
+        for (int c = 0; c < res->cols; c++) free(res->data[i][c]);
+        free(res->data[i]);
+    }
+    free(res->data);
+    free(res);
+}
+
+int db_result_rows(const DBResult *res) {
+    return res ? res->rows : 0;
+}
+
+const char *db_result_value(const DBResult *res, int row, int col) {
+    if (!res || row < 0 || row >= res->rows || col < 0 || col >= res->cols) return "";
+    return res->data[row][col] ? res->data[row][col] : "";
+}
+
+bool db_result_isnull(const DBResult *res, int row, int col) {
+    if (!res || row < 0 || row >= res->rows || col < 0 || col >= res->cols) return true;
+    return res->data[row][col] == NULL;
 }

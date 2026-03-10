@@ -12,24 +12,24 @@ bool cards_load(Deck *deck, DB *db) {
 
     memset(deck, 0, sizeof(Deck));
 
-    PGresult *res = db_query(db,
-        "SELECT card_id, name, cost, type, rules_text, data::text FROM cards");
+    DBResult *res = db_query(db,
+        "SELECT card_id, name, cost, type, rules_text, data FROM cards");
 
     if (!res) {
         fprintf(stderr, "Failed to load cards from database\n");
         return false;
     }
 
-    int rows = PQntuples(res);
+    int rows = db_result_rows(res);
     if (rows == 0) {
-        PQclear(res);
+        db_result_free(res);
         return true;
     }
 
     deck->cards = calloc(rows, sizeof(Card));
     if (!deck->cards) {
         fprintf(stderr, "Failed to allocate card storage\n");
-        PQclear(res);
+        db_result_free(res);
         return false;
     }
 
@@ -37,23 +37,15 @@ bool cards_load(Deck *deck, DB *db) {
 
     for (int i = 0; i < rows; i++) {
         Card *c = &deck->cards[i];
-        // TODO: strdup() can return NULL on OOM. If any strdup fails the Card has a NULL field and
-        // TODO: the loop continues silently with a partially-initialized deck. Check each return value
-        // TODO: and abort / partial-free on failure to avoid reading uninitialized data later.
-        c->card_id    = strdup(PQgetvalue(res, i, 0));
-        c->name       = strdup(PQgetvalue(res, i, 1));
-        // TODO: atoi() returns 0 on any parse failure, indistinguishable from a legitimate 0-cost card.
-        // TODO: Replace with strtol() + errno check to detect malformed cost values in the DB.
-        c->cost       = atoi(PQgetvalue(res, i, 2));
-        c->type       = strdup(PQgetvalue(res, i, 3));
-        c->rules_text = PQgetisnull(res, i, 4) ? NULL : strdup(PQgetvalue(res, i, 4));
-        // TODO: The data column NULL check is missing here — unlike rules_text, PQgetisnull is not
-        // TODO: checked for column 5. If data is NULL in the DB, PQgetvalue returns "" and strdup
-        // TODO: gets an empty string rather than NULL. Handle consistently with rules_text above.
-        c->data       = strdup(PQgetvalue(res, i, 5));
+        c->card_id    = strdup(db_result_value(res, i, 0));
+        c->name       = strdup(db_result_value(res, i, 1));
+        c->cost       = atoi(db_result_value(res, i, 2));
+        c->type       = strdup(db_result_value(res, i, 3));
+        c->rules_text = db_result_isnull(res, i, 4) ? NULL : strdup(db_result_value(res, i, 4));
+        c->data       = db_result_isnull(res, i, 5) ? NULL : strdup(db_result_value(res, i, 5));
     }
 
-    PQclear(res);
+    db_result_free(res);
     printf("Loaded %d cards into memory\n", deck->count);
     return true;
 }
@@ -75,32 +67,32 @@ Card *cards_find(Deck *deck, const char *card_id) {
 bool cards_load_nfc_map(Deck *deck, DB *db) {
     if (!deck || !db) return false;
 
-    PGresult *res = db_query(db, "SELECT uid, card_id FROM nfc_tags");
+    DBResult *res = db_query(db, "SELECT uid, card_id FROM nfc_tags");
     if (!res) {
         fprintf(stderr, "[NFC] Failed to load nfc_tags from database\n");
         return false;
     }
 
-    int rows = PQntuples(res);
+    int rows = db_result_rows(res);
     if (rows == 0) {
-        PQclear(res);
+        db_result_free(res);
         return true;
     }
 
     deck->uid_map = calloc(rows, sizeof(UIDMapping));
     if (!deck->uid_map) {
         fprintf(stderr, "[NFC] Failed to allocate UID map storage\n");
-        PQclear(res);
+        db_result_free(res);
         return false;
     }
 
     deck->uid_map_count = rows;
     for (int i = 0; i < rows; i++) {
-        strncpy(deck->uid_map[i].uid,     PQgetvalue(res, i, 0), sizeof(deck->uid_map[i].uid) - 1);
-        strncpy(deck->uid_map[i].card_id, PQgetvalue(res, i, 1), sizeof(deck->uid_map[i].card_id) - 1);
+        strncpy(deck->uid_map[i].uid,     db_result_value(res, i, 0), sizeof(deck->uid_map[i].uid) - 1);
+        strncpy(deck->uid_map[i].card_id, db_result_value(res, i, 1), sizeof(deck->uid_map[i].card_id) - 1);
     }
 
-    PQclear(res);
+    db_result_free(res);
     printf("[NFC] Loaded %d UID mappings\n", deck->uid_map_count);
     return true;
 }

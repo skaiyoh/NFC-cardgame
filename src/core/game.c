@@ -15,11 +15,10 @@
 
 
 bool game_init(GameState *g) {
-    // TODO: If DB_CONNECTION env var is unset, conninfo is NULL → db_init returns false with no
-    // TODO: user-visible error message. Print a helpful message explaining the required env var.
-    const char *conninfo = getenv("DB_CONNECTION");
-    if (!db_init(&g->db, conninfo)) {
-        printf("db_init failed\n");
+    const char *db_path = getenv("DB_PATH");
+    if (!db_path) db_path = "cardgame.db";
+    if (!db_init(&g->db, db_path)) {
+        printf("db_init failed — ensure %s exists (run: make init-db)\n", db_path);
         return false;
     }
 

@@ -5,18 +5,35 @@
 #ifndef NFC_CARDGAME_DB_H
 #define NFC_CARDGAME_DB_H
 
-#include "../../lib/libpq-fe.h"
+#include <sqlite3.h>
 #include <stdbool.h>
 
 typedef struct {
-    PGconn *conn;
-    bool connected;
+    sqlite3 *handle;
+    bool     connected;
+    char     last_error[256];
 } DB;
 
-bool db_init(DB *db, const char *conninfo);
-void db_close(DB *db);
-PGresult *db_query(DB *db, const char *query);
-PGresult *db_query_params(DB *db, const char *query, int nparams, const char *const *params);
+// Immutable query result: a rows×cols table of nullable strings.
+typedef struct {
+    int    rows;
+    int    cols;
+    char ***data;   // data[row][col] — NULL means SQL NULL
+} DBResult;
+
+bool        db_init(DB *db, const char *path);
+void        db_close(DB *db);
 const char *db_error(DB *db);
 
-#endif //NFC_CARDGAME_DB_H
+// Execute sql (no parameters). Returns NULL on error.
+DBResult   *db_query(DB *db, const char *sql);
+
+// Execute sql with positional text parameters (?1, ?2, ...). Returns NULL on error.
+DBResult   *db_query_params(DB *db, const char *sql, int nparams, const char *const *params);
+
+void        db_result_free(DBResult *res);
+int         db_result_rows(const DBResult *res);
+const char *db_result_value(const DBResult *res, int row, int col);
+bool        db_result_isnull(const DBResult *res, int row, int col);
+
+#endif // NFC_CARDGAME_DB_H
