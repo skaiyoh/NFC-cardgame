@@ -28,4 +28,7 @@ void viewport_draw_tilemap(Player *p);
 // Draw debug info for card slots
 void viewport_draw_card_slots_debug(Player *p);
 
+// Debug: draw colored lane waypoint paths. Call inside viewport_begin/viewport_end.
+void debug_draw_lane_paths(const Player *p);
+
 #endif //NFC_CARDGAME_VIEWPORT_H

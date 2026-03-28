@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+static bool s_showLaneDebug = false;
 
 bool game_init(GameState *g) {
     const char *db_path = getenv("DB_PATH");
@@ -71,9 +72,9 @@ bool game_init(GameState *g) {
 // Simulate a knight card play through the full production code path:
 // cards_find → card_action_play → play_knight → spawn_troop_from_card → troop_spawn
 static void game_test_play_knight(GameState *g, int playerIndex) {
-    Card *card = cards_find(&g->deck, "KNIGHT_001");
+    Card *card = cards_find(&g->deck, "KNIGHT_01");
     if (!card) {
-        printf("[TEST] KNIGHT_001 not found in deck\n");
+        printf("[TEST] KNIGHT_01 not found in deck\n");
         return;
     }
     card_action_play(card, g, playerIndex, 0);
@@ -93,6 +94,9 @@ static void game_handle_nfc_events(GameState *g) {
 }
 
 static void game_handle_test_input(GameState *g) {
+    // Toggle lane debug overlay
+    if (IsKeyPressed(KEY_F1)) s_showLaneDebug = !s_showLaneDebug;
+
     // Player 1: key 1
     if (IsKeyPressed(KEY_ONE)) game_test_play_knight(g, 0);
 
@@ -166,6 +170,7 @@ void game_render(GameState *g) {
     viewport_begin(&g->players[0]);
     viewport_draw_tilemap(&g->players[0]);
     game_draw_entities_for_viewport(g, &g->players[0]);
+    if (s_showLaneDebug) debug_draw_lane_paths(&g->players[0]);
     DrawText("PLAYER 1",
              g->players[0].playArea.x + 40,
              g->players[0].playArea.y + 40,
@@ -178,6 +183,7 @@ void game_render(GameState *g) {
     viewport_begin(&g->players[1]);
     viewport_draw_tilemap(&g->players[1]);
     game_draw_entities_for_viewport(g, &g->players[1]);
+    if (s_showLaneDebug) debug_draw_lane_paths(&g->players[1]);
     DrawText("PLAYER 2",
              g->players[1].playArea.x + 40,
              g->players[1].playArea.y + 40,

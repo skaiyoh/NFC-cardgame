@@ -99,3 +99,23 @@ void viewport_draw_card_slots_debug(Player *p) {
         DrawText(slotNum, slot->worldPos.x - 5, slot->worldPos.y - 8, 16, WHITE);
     }
 }
+
+void debug_draw_lane_paths(const Player *p) {
+    // Colors per lane: left=BLUE, center=GREEN, right=RED
+    const Color laneColors[3] = { BLUE, GREEN, RED };
+
+    for (int lane = 0; lane < 3; lane++) {
+        Color c = laneColors[lane];
+
+        for (int i = 0; i < LANE_WAYPOINT_COUNT; i++) {
+            // Draw waypoint dot
+            DrawCircleV(p->laneWaypoints[lane][i], 4.0f, c);
+
+            // Draw line segment to next waypoint
+            if (i < LANE_WAYPOINT_COUNT - 1) {
+                DrawLineV(p->laneWaypoints[lane][i],
+                          p->laneWaypoints[lane][i + 1], c);
+            }
+        }
+    }
+}
