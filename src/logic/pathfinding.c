@@ -9,14 +9,14 @@
 void pathfind_compute_direction(Entity *e, Vector2 diff);
 
 // Compute lateral bow offset for outer lanes using sinf.
-// depth: 0.0 = spawn end, 1.0 = enemy end.
+// t: normalized 0.0 = spawn end, 1.0 = enemy end (along full path, NOT raw depth).
 // Returns signed offset in world units (negative = left, positive = right).
 // Center lane (lane 1) always returns 0.
-static float bow_offset(int lane, float depth, float laneWidth) {
+static float bow_offset(int lane, float t, float laneWidth) {
     if (lane == 1) return 0.0f;
 
-    // sin(depth * PI) peaks at depth=0.5, zero at both ends
-    float bow = sinf(depth * PI_F) * LANE_BOW_INTENSITY * laneWidth;
+    // sin(t * PI) peaks at t=0.5 (midpoint of full path), zero at both ends
+    float bow = sinf(t * PI_F) * LANE_BOW_INTENSITY * laneWidth;
 
     // Lane 0 (left) bows left (negative X), lane 2 (right) bows right (positive X)
     return (lane == 0) ? -bow : bow;
@@ -31,7 +31,7 @@ void lane_generate_waypoints(Player *p) {
     // For spawnY = playArea.y + playArea.height * 0.8:
     //   depth = (0.9 - 0.8) / 0.8 = 0.125
     float spawnDepth = 0.125f;
-    float endDepth = 0.85f;  // Leave room for future enemy base at depth ~1.0
+    float endDepth = 1.75f;  // Extend into opponent territory (depth > 1.0 crosses border)
 
     for (int lane = 0; lane < 3; lane++) {
         for (int i = 0; i < LANE_WAYPOINT_COUNT; i++) {
@@ -44,16 +44,19 @@ void lane_generate_waypoints(Player *p) {
                 continue;
             }
 
-            // Remaining waypoints evenly spaced from just past spawn to endDepth
-            float depth = spawnDepth + (endDepth - spawnDepth) * (float)i / (float)(LANE_WAYPOINT_COUNT - 1);
+            // Normalized parameter t: 0.0 at spawn, 1.0 at enemy base
+            float t = (float)i / (float)(LANE_WAYPOINT_COUNT - 1);
+
+            // Map t to depth: linearly interpolate from spawnDepth to endDepth
+            float depth = spawnDepth + (endDepth - spawnDepth) * t;
 
             // Base position from existing lane calculation.
             // NOTE: player_lane_pos uses p->playArea, so P2 gets correct coords
             // for P2's coordinate space. Camera rotation handles visual flip.
             Vector2 pos = player_lane_pos(p, lane, depth);
 
-            // Add bow offset for outer lanes (per decisions D-01 through D-05)
-            pos.x += bow_offset(lane, depth, laneWidth);
+            // Add bow offset using normalized t (peaks at t=0.5 = path midpoint)
+            pos.x += bow_offset(lane, t, laneWidth);
 
             p->laneWaypoints[lane][i] = pos;
         }

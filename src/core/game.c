@@ -170,7 +170,6 @@ void game_render(GameState *g) {
     viewport_begin(&g->players[0]);
     viewport_draw_tilemap(&g->players[0]);
     game_draw_entities_for_viewport(g, &g->players[0]);
-    if (s_showLaneDebug) debug_draw_lane_paths(&g->players[0]);
     DrawText("PLAYER 1",
              g->players[0].playArea.x + 40,
              g->players[0].playArea.y + 40,
@@ -183,7 +182,6 @@ void game_render(GameState *g) {
     viewport_begin(&g->players[1]);
     viewport_draw_tilemap(&g->players[1]);
     game_draw_entities_for_viewport(g, &g->players[1]);
-    if (s_showLaneDebug) debug_draw_lane_paths(&g->players[1]);
     DrawText("PLAYER 2",
              g->players[1].playArea.x + 40,
              g->players[1].playArea.y + 40,
@@ -191,6 +189,16 @@ void game_render(GameState *g) {
     // TODO: viewport_draw_card_slots_debug is commented out — re-enable or replace with proper card slot UI.
     // viewport_draw_card_slots_debug(&g->players[1]);
     viewport_end();
+
+    // Debug lane overlay — drawn WITHOUT scissor so paths extend across viewports
+    if (s_showLaneDebug) {
+        BeginMode2D(g->players[0].camera);
+        debug_draw_lane_paths(&g->players[0]);
+        EndMode2D();
+        BeginMode2D(g->players[1].camera);
+        debug_draw_lane_paths(&g->players[1]);
+        EndMode2D();
+    }
 
     // HUD — screen space, drawn after all viewports
     ui_draw_energy_bar(&g->players[0], 0,   SCREEN_WIDTH / 2);

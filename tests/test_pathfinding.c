@@ -295,16 +295,13 @@ void test_waypoint_positions(void) {
             assert(p.laneWaypoints[lane][i].y < p.laneWaypoints[lane][i - 1].y);
         }
 
-        /* All waypoints should be within playArea bounds (with some margin for bow) */
+        /* X waypoints should be reasonable (within playArea + bow margin) */
         for (int i = 0; i < LANE_WAYPOINT_COUNT; i++) {
             float wx = p.laneWaypoints[lane][i].x;
-            float wy = p.laneWaypoints[lane][i].y;
             /* X can extend slightly beyond playArea due to bow, allow 10% margin */
             assert(wx >= p.playArea.x - p.playArea.width * 0.1f);
             assert(wx <= p.playArea.x + p.playArea.width * 1.1f);
-            /* Y must be within playArea */
-            assert(wy >= p.playArea.y);
-            assert(wy <= p.playArea.y + p.playArea.height);
+            /* Y extends into opponent territory (depth > 1.0), no upper/lower bound check */
         }
     }
 }
