@@ -33,8 +33,9 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. A spawned troop walks along the waypoints defined for its lane, visibly following the path curves rather than moving in a straight line
   2. Troops in different lanes follow different paths without crossing into each other's lanes
   3. A troop that reaches the end of its lane waypoints stops or idles at the enemy side of the board
-**Plans:** 2 plans
+**Plans:** 3 plans
 Plans:
+- [ ] 01-00-PLAN.md -- Test infrastructure: test_pathfinding.c and Makefile test target (Wave 0)
 - [ ] 01-01-PLAN.md -- Config defines, struct fields, waypoint generation, player init integration
 - [ ] 01-02-PLAN.md -- Waypoint-following movement, sprite direction, debug overlay, visual verification
 
@@ -140,7 +141,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Lane Pathfinding | 0/2 | Planning complete | - |
+| 1. Lane Pathfinding | 0/3 | Planning complete | - |
 | 2. Base Creation | 0/TBD | Not started | - |
 | 3. Combat Detection | 0/TBD | Not started | - |
 | 4. Combat Resolution | 0/TBD | Not started | - |
