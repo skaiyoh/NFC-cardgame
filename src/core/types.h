@@ -50,6 +50,7 @@ struct Entity {
     // Ownership
     int ownerID;    // Player index (0 or 1)
     int lane;       // Which lane (0-2)
+    int waypointIndex;  // Current target waypoint index along lane path
 
     // Flags
     bool alive;
@@ -98,6 +99,9 @@ struct Player {
 
     // Base building reference (for win condition)
     Entity *base;
+
+    // Pre-computed lane waypoints (generated once at init)
+    Vector2 laneWaypoints[3][LANE_WAYPOINT_COUNT];
 };
 
 // Game state
