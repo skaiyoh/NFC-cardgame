@@ -190,14 +190,10 @@ void game_render(GameState *g) {
     // viewport_draw_card_slots_debug(&g->players[1]);
     viewport_end();
 
-    // Debug lane overlay — drawn WITHOUT scissor so paths extend across viewports
+    // Debug lane overlay — screen space, both players' paths overlap
     if (s_showLaneDebug) {
-        BeginMode2D(g->players[0].camera);
-        debug_draw_lane_paths(&g->players[0]);
-        EndMode2D();
-        BeginMode2D(g->players[1].camera);
-        debug_draw_lane_paths(&g->players[1]);
-        EndMode2D();
+        debug_draw_lane_paths_screen(&g->players[0], g->players[0].camera);
+        debug_draw_lane_paths_screen(&g->players[1], g->players[1].camera);
     }
 
     // HUD — screen space, drawn after all viewports

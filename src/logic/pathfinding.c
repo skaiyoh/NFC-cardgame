@@ -31,7 +31,7 @@ void lane_generate_waypoints(Player *p) {
     // For spawnY = playArea.y + playArea.height * 0.8:
     //   depth = (0.9 - 0.8) / 0.8 = 0.125
     float spawnDepth = 0.125f;
-    float endDepth = 1.75f;  // Extend into opponent territory (depth > 1.0 crosses border)
+    float endDepth = 2.125f;  // Mirrors spawn position — last waypoint lands at opponent's spawn
 
     for (int lane = 0; lane < 3; lane++) {
         for (int i = 0; i < LANE_WAYPOINT_COUNT; i++) {

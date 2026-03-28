@@ -100,7 +100,7 @@ void viewport_draw_card_slots_debug(Player *p) {
     }
 }
 
-void debug_draw_lane_paths(const Player *p) {
+void debug_draw_lane_paths_screen(const Player *p, Camera2D cam) {
     // Colors per lane: left=BLUE, center=GREEN, right=RED
     const Color laneColors[3] = { BLUE, GREEN, RED };
 
@@ -108,13 +108,16 @@ void debug_draw_lane_paths(const Player *p) {
         Color c = laneColors[lane];
 
         for (int i = 0; i < LANE_WAYPOINT_COUNT; i++) {
-            // Draw waypoint dot
-            DrawCircleV(p->laneWaypoints[lane][i], 4.0f, c);
+            // Convert world-space waypoint to screen-space
+            Vector2 sp = GetWorldToScreen2D(p->laneWaypoints[lane][i], cam);
 
-            // Draw line segment to next waypoint
+            // Draw waypoint dot in screen space
+            DrawCircleV(sp, 4.0f, c);
+
+            // Draw line segment to next waypoint in screen space
             if (i < LANE_WAYPOINT_COUNT - 1) {
-                DrawLineV(p->laneWaypoints[lane][i],
-                          p->laneWaypoints[lane][i + 1], c);
+                Vector2 spNext = GetWorldToScreen2D(p->laneWaypoints[lane][i + 1], cam);
+                DrawLineV(sp, spNext, c);
             }
         }
     }
