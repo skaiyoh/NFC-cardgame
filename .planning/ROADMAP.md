@@ -35,9 +35,9 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A troop that reaches the end of its lane waypoints stops or idles at the enemy side of the board
 **Plans:** 3 plans
 Plans:
-- [ ] 01-00-PLAN.md -- Test infrastructure: test_pathfinding.c and Makefile test target (Wave 0)
+- [x] 01-00-PLAN.md -- Test infrastructure: test_pathfinding.c and Makefile test target (Wave 0)
 - [x] 01-01-PLAN.md -- Config defines, struct fields, waypoint generation, player init integration
-- [ ] 01-02-PLAN.md -- Waypoint-following movement, sprite direction, debug overlay, visual verification
+- [x] 01-02-PLAN.md -- Waypoint-following movement, sprite direction, debug overlay, visual verification
 
 ### Phase 2: Base Creation
 **Goal**: Each player has a visible base entity with HP on the board when a match begins
