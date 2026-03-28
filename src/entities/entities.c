@@ -3,6 +3,7 @@
 //
 
 #include "entities.h"
+#include "../logic/pathfinding.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -76,25 +77,8 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
 
         case ESTATE_WALKING: {
             Player *owner = &gs->players[e->ownerID];
-
-            // Move forward (decreasing Y) through own area and into opponent's
-            e->position.y -= e->moveSpeed * deltaTime;
-
-            // Despawn when entity reaches the opponent's base depth
-            // TODO: despawnY = playArea.y - playArea.height * 0.9 can be deeply negative for large
-            // TODO: play areas. Entity can travel far off-screen before despawning. Tune this threshold
-            // TODO: or tie despawn to actually reaching / damaging the opponent's base building.
-            float despawnY = owner->playArea.y - owner->playArea.height * 0.9f;
-            if (e->position.y < despawnY) {
-                e->markedForRemoval = true;
-            }
-
-            // Flip direction when entity center crosses the border
-            // TODO: When position.y < owner->playArea.y (border), direction flips to DIR_DOWN.
-            // TODO: The opponent viewport also mirrors the entity with DIR_DOWN forced in game.c.
-            // TODO: This double-flip may cause incorrect sprite orientation — verify visually.
-            float borderY = owner->playArea.y;
-            e->anim.dir = (e->position.y > borderY) ? DIR_UP : DIR_DOWN;
+            // Delegate to pathfinding helpers (same code tested by Wave 0 unit tests)
+            pathfind_step_entity(e, owner, deltaTime);
             break;
         }
 
