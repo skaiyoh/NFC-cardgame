@@ -7,7 +7,7 @@
 
 ### Core Gameplay Loop
 
-- [ ] **CORE-01**: Troops move along per-lane waypoints toward the enemy base (not raw straight-line Y movement)
+- [x] **CORE-01**: Troops move along per-lane waypoints toward the enemy base (not raw straight-line Y movement)
 - [ ] **CORE-02**: Troops detect the nearest enemy entity or base when entering attack range
 - [ ] **CORE-03**: Troops attack their target at the rate defined by `attackSpeed`, dealing `attack` damage per hit
 - [ ] **CORE-04**: Troops take damage and transition to `ESTATE_DEAD` when HP reaches 0
@@ -60,7 +60,7 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CORE-01 | Phase 1: Lane Pathfinding | Pending |
+| CORE-01 | Phase 1: Lane Pathfinding | Complete |
 | CORE-02 | Phase 3: Combat Detection | Pending |
 | CORE-03 | Phase 4: Combat Resolution | Pending |
 | CORE-04 | Phase 4: Combat Resolution | Pending |

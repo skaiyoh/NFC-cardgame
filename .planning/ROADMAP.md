@@ -36,7 +36,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 3 plans
 Plans:
 - [ ] 01-00-PLAN.md -- Test infrastructure: test_pathfinding.c and Makefile test target (Wave 0)
-- [ ] 01-01-PLAN.md -- Config defines, struct fields, waypoint generation, player init integration
+- [x] 01-01-PLAN.md -- Config defines, struct fields, waypoint generation, player init integration
 - [ ] 01-02-PLAN.md -- Waypoint-following movement, sprite direction, debug overlay, visual verification
 
 ### Phase 2: Base Creation
