@@ -1,4 +1,4 @@
-.PHONY: clean run preview-run biome-preview-run init-db
+.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding
 
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
@@ -19,6 +19,13 @@ SOURCES = $(SRC_CORE) $(SRC_DATA) $(SRC_RENDERING) $(SRC_ENTITIES) $(SRC_SYSTEMS
 
 cardgame: $(SOURCES)
 	$(CC) $(CFLAGS) $(SOURCES) -o cardgame $(MACFLAGS) $(LDFLAGS)
+
+# Test targets
+test_pathfinding: tests/test_pathfinding.c src/logic/pathfinding.c
+	$(CC) $(CFLAGS) tests/test_pathfinding.c -o test_pathfinding -lm
+
+test: test_pathfinding
+	./test_pathfinding
 
 preview: tools/card_preview.c src/rendering/card_renderer.c lib/cJSON.c
 	$(CC) $(CFLAGS) tools/card_preview.c src/rendering/card_renderer.c lib/cJSON.c -o card_preview $(MACFLAGS) -lraylib -lm
@@ -49,4 +56,4 @@ card-enroll-run: card_enroll
 	NFC_PORT="/dev/cu.usbserial-A5069RR4" ./card_enroll
 
 clean:
-	rm -f cardgame card_preview biome_preview card_enroll
+	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding
