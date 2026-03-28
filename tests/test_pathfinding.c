@@ -224,6 +224,10 @@ void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir, 
     if (state) { state->anim = anim; state->dir = dir; state->fps = fps; }
 }
 
+/* ---- Stub for GameState (pathfinding.c references it in old pathfind_next_step) ---- */
+typedef struct GameState GameState;
+struct GameState { int _placeholder; };
+
 /* ---- Include production pathfinding code ---- */
 /* Header guards above prevent transitive includes from loading real types.h */
 
