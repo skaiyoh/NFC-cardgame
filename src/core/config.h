@@ -40,6 +40,5 @@
 #define LANE_BOW_INTENSITY   0.3f
 #define LANE_JITTER_RADIUS   10.0f
 #define PI_F 3.14159265f
-#define DIRECTION_HYSTERESIS 0.15f  // Prevents sprite direction flicker near 45-degree angles
 
 #endif //NFC_CARDGAME_CONFIG_H

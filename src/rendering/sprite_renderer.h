@@ -19,9 +19,9 @@ typedef enum {
 } AnimationType;
 
 typedef enum {
-    DIR_DOWN,
-    DIR_SIDE,
-    DIR_UP,
+    DIR_SIDE,       // Row 0: side-facing (right by default; flipH for left)
+    DIR_DOWN,       // Row 1: front-facing (character faces camera)
+    DIR_UP,         // Row 2: back-facing (character faces away)
     DIR_COUNT
 } SpriteDirection;
 

@@ -42,20 +42,24 @@ void entity_set_state(Entity *e, EntityState newState) {
     if (!e || e->state == newState) return;
 
     EntityState oldState = e->state;
+    SpriteDirection dir = e->anim.dir;
+    bool flipH = e->anim.flipH;
     e->state = newState;
 
     // Reset animation on state change
     switch (newState) {
         case ESTATE_IDLE:
-            anim_state_init(&e->anim, ANIM_IDLE, e->anim.dir, 8.0f);
+            anim_state_init(&e->anim, ANIM_IDLE, dir, 8.0f);
             break;
         case ESTATE_WALKING:
-            anim_state_init(&e->anim, ANIM_WALK, e->anim.dir, 10.0f);
+            anim_state_init(&e->anim, ANIM_WALK, dir, 10.0f);
             break;
         case ESTATE_DEAD:
-            anim_state_init(&e->anim, ANIM_DEATH, e->anim.dir, 8.0f);
+            anim_state_init(&e->anim, ANIM_DEATH, dir, 8.0f);
             break;
     }
+
+    e->anim.flipH = flipH;
 
     // TODO: oldState is discarded — there is no transition-from validation. Any state → any state
     // TODO: is permitted (e.g. DEAD → WALKING). Add guard logic if illegal transitions must be blocked.

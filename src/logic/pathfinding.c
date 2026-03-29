@@ -5,8 +5,6 @@
 #include <math.h>
 #include <stdlib.h>
 
-// Forward declaration
-void pathfind_compute_direction(Entity *e, Vector2 diff);
 
 // Compute lateral bow offset for outer lanes using sinf.
 // t: normalized 0.0 = spawn end, 1.0 = enemy end (along full path, NOT raw depth).
@@ -81,11 +79,13 @@ bool pathfind_step_entity(Entity *e, const Player *owner, float deltaTime) {
     float dy = target.y - e->position.y;
     float dist = sqrtf(dx * dx + dy * dy);
     float step = e->moveSpeed * deltaTime;
+    bool advancedWaypoint = false;
 
     if (dist <= step || dist < 1.0f) {
         // Reached waypoint -- snap and advance
         e->position = target;
         e->waypointIndex++;
+        advancedWaypoint = true;
 
         if (e->waypointIndex >= LANE_WAYPOINT_COUNT) {
             // End of path: apply random jitter (per D-11)
@@ -93,6 +93,9 @@ bool pathfind_step_entity(Entity *e, const Player *owner, float deltaTime) {
             float jy = ((float)(rand() % ((int)(LANE_JITTER_RADIUS * 2) + 1)) - LANE_JITTER_RADIUS);
             e->position.x += jx;
             e->position.y += jy;
+            // Face toward the enemy (down) when idling at the end of the path
+            e->anim.dir = DIR_DOWN;
+            e->anim.flipH = false;
             entity_set_state(e, ESTATE_IDLE);
             return false;
         }
@@ -103,36 +106,34 @@ bool pathfind_step_entity(Entity *e, const Player *owner, float deltaTime) {
         e->position.y += dy * inv * step;
     }
 
-    // Compute direction from movement vector
-    Vector2 diff = { target.x - e->position.x, target.y - e->position.y };
-    float ddist = sqrtf(diff.x * diff.x + diff.y * diff.y);
-    if (ddist > 1.0f) {
-        pathfind_compute_direction(e, diff);
+    // Only update facing during actual movement — not on the snap frame
+    // where the entity just arrived at a waypoint. This preserves the
+    // walking direction so entities don't snap to a new facing on arrival.
+    if (!advancedWaypoint) {
+        Vector2 diff = { target.x - e->position.x, target.y - e->position.y };
+        float ddist = sqrtf(diff.x * diff.x + diff.y * diff.y);
+        if (ddist > 1.0f) {
+            pathfind_apply_direction(&e->anim, diff);
+        }
     }
 
     return true;
 }
 
-void pathfind_compute_direction(Entity *e, Vector2 diff) {
-    float ax = fabsf(diff.x);
-    float ay = fabsf(diff.y);
+void pathfind_apply_direction(AnimState *anim, Vector2 diff) {
+    const float eps = 0.001f;
 
-    // Hysteresis: only change direction if the dominant axis is clearly dominant.
-    // When near 45 degrees (ax ~= ay), keep the current direction to prevent flicker.
-    // The threshold is relative: |ax - ay| / max(ax, ay) must exceed DIRECTION_HYSTERESIS.
-    float maxComp = (ax > ay) ? ax : ay;
-    if (maxComp < 0.001f) return;  // Zero-length vector, keep current direction
+    if (fabsf(diff.x) < eps && fabsf(diff.y) < eps) return;
 
-    float ratio = fabsf(ax - ay) / maxComp;
-    if (ratio < DIRECTION_HYSTERESIS) return;  // Near 45 degrees, keep current direction
-
-    if (ax > ay) {
-        // Dominant horizontal movement
-        e->anim.dir = DIR_SIDE;
-        e->anim.flipH = (diff.x < 0);  // true = facing left
+    if (fabsf(diff.x) >= eps) {
+        anim->dir = DIR_SIDE;
+        anim->flipH = (diff.x < 0);
+    } else if (diff.y < 0) {
+        anim->dir = DIR_UP;
+        anim->flipH = false;
     } else {
-        // Dominant vertical movement
-        e->anim.dir = (diff.y < 0) ? DIR_UP : DIR_DOWN;
-        e->anim.flipH = false;
+        anim->dir = DIR_DOWN;
+        anim->flipH = false;
     }
 }
+

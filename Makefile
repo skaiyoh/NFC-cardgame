@@ -20,13 +20,6 @@ SOURCES = $(SRC_CORE) $(SRC_DATA) $(SRC_RENDERING) $(SRC_ENTITIES) $(SRC_SYSTEMS
 cardgame: $(SOURCES)
 	$(CC) $(CFLAGS) $(SOURCES) -o cardgame $(MACFLAGS) $(LDFLAGS)
 
-# Test targets
-test_pathfinding: tests/test_pathfinding.c src/logic/pathfinding.c
-	$(CC) $(CFLAGS) tests/test_pathfinding.c -o test_pathfinding -lm
-
-test: test_pathfinding
-	./test_pathfinding
-
 preview: tools/card_preview.c src/rendering/card_renderer.c lib/cJSON.c
 	$(CC) $(CFLAGS) tools/card_preview.c src/rendering/card_renderer.c lib/cJSON.c -o card_preview $(MACFLAGS) -lraylib -lm
 
@@ -54,6 +47,13 @@ card_enroll: tools/card_enroll.c src/data/db.c src/data/cards.c src/hardware/nfc
 
 card-enroll-run: card_enroll
 	NFC_PORT="/dev/cu.usbserial-A5069RR4" ./card_enroll
+
+# Test targets
+test_pathfinding: tests/test_pathfinding.c src/logic/pathfinding.c
+	$(CC) $(CFLAGS) tests/test_pathfinding.c -o test_pathfinding -lm
+
+test: test_pathfinding
+	./test_pathfinding
 
 clean:
 	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding

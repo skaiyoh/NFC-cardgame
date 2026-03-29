@@ -1,151 +1,108 @@
 ---
 phase: 1
 reviewers: [gemini, codex]
-reviewed_at: 2026-03-28
+reviewed_at: 2026-03-28T23:45:00Z
 plans_reviewed: [01-00-PLAN.md, 01-01-PLAN.md, 01-02-PLAN.md]
+review_type: post-execution (plans + actual implementation)
 ---
 
-# Cross-AI Plan Review — Phase 1
+# Cross-AI Plan Review — Phase 1 (Post-Execution)
 
 ## Gemini Review
 
-This review evaluates the three-wave implementation plan for **Phase 1: Lane Pathfinding** in the NFC Card Game project.
+Phase 1 successfully achieves its core functional requirement: troops now navigate along curved, lane-specific paths using a waypoint system rather than moving in a straight line. The use of a sine-based "bow" function provides a clean, symmetric aesthetic for the outer lanes. However, the implementation phase suffered from significant "drift" from the original engineering plan. While the visual result is correct, the process introduced technical debt -- specifically misleading naming conventions, unused configuration constants, and the total abandonment of the automated testing infrastructure established in Plan 00.
 
-### 1. Summary
-The implementation plan is exceptionally well-structured, prioritizing testability and visual verification. By decoupling the pathfinding logic from the Raylib engine in Wave 0, the plan ensures that the core mathematical "bow" logic is sound before any sprites are rendered. The use of a sine-based curve for lane geometry is an elegant, low-overhead solution that fits the "parenthesis" shape requirement. The progression from data structures to movement logic, concluding with a debug overlay, follows a logical "bottom-up" development pattern that minimizes integration risk.
+### Strengths
+- **Mathematical Simplicity:** Using a sine function for the lateral "bow" is computationally cheap and ensures perfect symmetry across lanes without needing complex spline libraries.
+- **Flexible Waypoint System:** The implementation allows for easy adjustment of path resolution via `LANE_WAYPOINT_COUNT`.
+- **Strategic Refactoring:** Adding `pathfind_apply_direction` to operate on `AnimState` (rather than just `Entity`) was a proactive move that anticipates the needs of the split-screen viewport mirroring logic.
+- **Visual Polish:** The inclusion of endpoint jitter and a debug overlay shows attention to the "feel" of the game and the developer experience.
 
-### 2. Strengths
-* **Test-Driven Foundation:** Creating a standalone test suite (`test_pathfinding.c`) that ignores heavy dependencies (Raylib/Postgres) allows for rapid iteration on the movement algorithms.
-* **Visual Debugging:** Including a dedicated debug overlay (F1 toggle) for lane paths is critical for a project where "feel" and "shape" are key requirements.
-* **Symmetry by Design:** The use of `bow_offset()` and shared waypoint generation ensures that the three lanes remain perfectly symmetric, which is vital for competitive balance.
-* **State Management:** Transitioning to `ESTATE_IDLE` with a random jitter at the destination provides a polished "end-of-path" behavior that prevents troops from simply vanishing or stacking perfectly on a single pixel.
+### Concerns
+- **HIGH: Regression Risk (Deleted Tests):** The deletion of `test_pathfinding.c` is a major setback. Without these unit tests, future changes to movement speed, lane logic, or collision (Phase 3) could break pathfinding silently.
+- **HIGH: Semantic Mismatch (Enum Names):** Mapping `DIR_DOWN` to a side-facing sprite and `DIR_SIDE` to a front-facing sprite is a "landmine" for future development. It violates the principle of least astonishment and will likely lead to bugs when new artists or developers join the project.
+- **MEDIUM: Dead Code/Configuration:** `DIRECTION_HYSTERESIS` is defined in `config.h` but unused in the logic. This clutters the configuration space and suggests a half-implemented feature.
+- **MEDIUM: Lack of State Guards:** The code does not check if an entity is `ESTATE_DEAD` before moving it. This could lead to "zombie" movement where corpses slide toward the enemy base during their death animation.
+- **LOW: Magic Numbers in Pathfinding:** The `endDepth` of `2.125f` is a highly specific tuned value. While it works, it should ideally be derived from the coordinate system or defined as a constant to avoid confusion.
 
-### 3. Concerns
-* **Opponent Directionality (MEDIUM):** The plan mentions symmetry but does not explicitly detail how waypoints are generated for Player 2 (who sits across the board). If waypoints are generated in "world space," Player 2's troops must move in the negative Y direction. The waypoint generation logic needs to account for the `playerID` or starting Y-coordinate to ensure troops march *toward* each other rather than off the same side of the screen.
-* **Waypoint "Overshooting" (MEDIUM):** In `entity_update()`, if a troop moves at a constant speed, it might "skip" over the exact coordinates of a waypoint in a single frame. The logic should check if the distance to the waypoint is less than the movement step to prevent "orbiting" or jittery backtracking.
-* **Struct Desynchronization (LOW):** Wave 0 redefines "minimal struct stubs." While efficient for testing, there is a risk that if `types.h` changes, the tests will pass against outdated mocks while the real game crashes.
-* **Sprite Flipping Hysteresis (LOW):** "Dominant axis" sprite direction switching can cause rapid "flickering" between `DIR_SIDE` and `DIR_UP` if the path is exactly 45 degrees or if floating-point errors occur.
+### Suggestions
+- Fix the Enums: Rename the `Direction` enum values to match their actual visual representation (e.g., `DIR_SIDE`, `DIR_FRONT`, `DIR_BACK`) or fix the `pathfind_apply_direction` mapping to align with the names.
+- Restore the Test Suite: Re-implement `tests/test_pathfinding.c`. Automated verification is critical for a project with 10+ phases.
+- Implement Hysteresis: If `DIRECTION_HYSTERESIS` was intended to prevent "sprite flickering" on curves, it should be implemented. If not, remove it from `config.h`.
+- Add State Validation: Wrap the movement logic in `pathfind_step_entity` with a check: `if (e->state == ESTATE_DEAD) return false;`.
+- Seed the RNG: Ensure `srand()` is called in `game.c` so that the endpoint jitter is not identical every time the game launches.
 
-### 4. Suggestions
-* **Directional Inversion:** In `lane_generate_waypoints()`, multiply the Y-increment by a `direction` variable (1 for Player 1, -1 for Player 2) based on the player's side of the board.
-* **Arrival Threshold:** Use a `WAYPOINT_THRESHOLD` (e.g., 2.0-5.0 pixels) in the movement logic. If `Distance(entity, target) < threshold`, immediately snap to the waypoint and increment `waypointIndex`.
-* **Frame-Rate Independence:** Ensure the movement logic in Wave 2 utilizes `GetFrameTime()` (delta time) to ensure troops move at the same speed regardless of the hardware's refresh rate.
-* **Coordinate Space Clarification:** Ensure `LANE_BOW_INTENSITY` is defined clearly (e.g., as a percentage of screen width or a fixed pixel value) to avoid scaling issues on different resolutions.
-
-### 5. Risk Assessment: LOW
-The plan is low-risk because it relies on simple trigonometry (sine waves) and linear interpolation, both of which are computationally inexpensive and easy to debug. The inclusion of a standalone test runner and a visual debug path overlay provides two layers of validation (mathematical and visual) before the phase is considered complete.
+### Risk Assessment
+**MEDIUM.** The implementation is functionally sound for the current scope, but the structural integrity is concerning. The combination of misleading enums, deleted tests, and known dangling pointer issues in the broader codebase creates a "fragile" foundation.
 
 ---
 
 ## Codex Review
 
-### Plan 01-00
+Phase 1 is good enough as a visual prototype, but not yet a stable foundation for the roadmap. The plan decomposition was strong: test harness first, then path generation/state integration, then render/debug verification. The implementation does achieve the immediate demo goals: troops follow per-lane waypoints, outer lanes curve, center stays straight, and units idle at the end. Fidelity drops in the parts that matter for later phases, though: the planned tests are gone, several documented contracts drifted, and the current "cross into enemy territory" behavior is mostly a render-space illusion rather than a shared gameplay-space model.
 
-**Summary**
-Good instinct to add tests before implementation, and the plan is trying to keep them lightweight and CI-friendly. The main problem is that the proposed tests are pointed at `pathfinding.c`, while the actual movement behavior this phase cares about still lives in `src/entities/entities.c`, so several tests would only validate a hand-built model rather than production behavior.
+### Strengths
+- The 3-wave plan was well structured. Separating test infrastructure, movement logic, and viewport/debug work reduced integration risk.
+- Precomputing `laneWaypoints` on `Player` is a good design choice for determinism and cheap per-frame updates.
+- The spawn integration is clean. Setting `e->lane` and starting at `waypointIndex = 1` avoids the zero-distance pause at spawn.
+- Movement is centralized through `pathfind_step_entity()` instead of being inlined in update code, which is the right direction for maintainability.
+- The F1 lane overlay is a practical verification tool and was the right addition for this phase.
+- Adding `pathfind_apply_direction()` was a reasonable extension once mirrored rendering was introduced.
 
-**Strengths**
-- Keeps test runtime cheap by avoiding Raylib windowing and DB setup.
-- Covers the core geometry decisions: center lane straight, outer lane bow, endpoint idle, sprite facing.
-- Calls out the spawn-snap issue explicitly and tests for it.
-- Adds a `make test` path, which the repo currently lacks.
+### Concerns
+- **HIGH: Automated validation removed.** `tests/test_pathfinding.c` is deleted, and the Makefile still advertises `test`/`test_pathfinding` as phony targets but provides no real recipe; `make test` currently no-ops. That creates false confidence around a geometry-heavy feature.
+- **HIGH: Enemy-side crossing is render-only.** Future combat is planned around raw world-space distance checks. `game_map_crossed_world_point()` and the crossed draw path only affect rendering; entity positions remain in owner space, while combat TODOs assume direct `Vector2Distance(a, b)` semantics. Phase 3 will not work correctly without a shared-space or transform-aware combat model.
+- **HIGH: Lane endpoints not aligned with future base contract.** `endDepth = 2.125f` maps the last waypoint to the opponent's spawn line, while `player_base_pos()` places the base deeper in the defensive end. Center lane stops about 96 px short in depth, and outer lanes stay hundreds of pixels off a centered base. Phase 2/6 will need either different endpoints or lane-specific base sockets.
+- **MEDIUM: Tuned bow no longer matches documented decision D-02.** `LANE_BOW_INTENSITY = 0.3f` means 30% not ~50%. That may be visually fine, but it is requirements drift that should be recorded explicitly.
+- **MEDIUM: Direction system has contract drift and dead config.** `DIRECTION_HYSTERESIS` is defined but unused, header comments describe one mapping, and the implementation uses `DIR_DOWN` for side-facing sprites because enum names no longer match sheet rows.
+- **LOW: Hardcoded magic depths.** Path generation relies on `0.125f`, `2.125f` even though comments describe derived geometry. If slot placement or board proportions change, the path math will silently drift.
 
-**Concerns**
-- HIGH: The tests include `pathfinding.c` directly, but the phase's actual waypoint stepping and facing logic is planned for `src/entities/entities.c`. That creates false confidence.
-- HIGH: The "movement step" and "idle at last waypoint" tests are described as manual simulations, not calls into production code. Those can pass while the game still behaves incorrectly.
-- MEDIUM: Predefining header guards and re-stubbing project structs is brittle. Any new include or type use in `pathfinding.c` can silently break the test harness.
-- MEDIUM: The `-lm` only constraint is tighter than necessary and may fight the codebase instead of testing it.
-- LOW: Edge cases are missing: invalid lane, zero-distance waypoint, and waypoint index already out of range.
+### Suggestions
+- Restore the deleted pathfinding tests and make `make test` fail loudly if the harness is missing.
+- Decide the battlefield coordinate contract before Phase 2/3. Either put both players into one real gameplay space, or formalize transform helpers that movement, combat, and base targeting all use -- not just rendering.
+- Replace magic `spawnDepth`/`endDepth` with waypoint endpoints derived from landmarks such as slot positions, front line, and intended base attack points.
+- Resolve the base-path relationship now. If the base is centered, outer lanes need final convergence or attack sockets. If lanes stay separate, the base system should expose per-lane targets.
+- Clean up the direction API. Either implement the planned hysteresis or delete the dead config/commentary, and rename or remap the direction enum so names match actual sprite rows.
+- Before combat phases, expand and lock the entity state machine. `ESTATE_ATTACKING` is still absent from the enum, and current transitions allow illegal future flows such as DEAD back to WALKING.
+- Cap `deltaTime` before later phases so frame stalls do not distort movement/combat timing.
 
-**Suggestions**
-- Either move the stepping/direction logic into a pure helper in `src/logic/pathfinding.c`, or narrow Wave 0 to geometry-only tests and add real movement tests later against production helpers.
-- Add tests for invalid lane/index handling and for the spawn-at-waypoint-zero case.
-- Prefer compiling a small production unit with explicit seams over direct `.c` inclusion plus duplicated structs.
-
-**Risk Assessment: MEDIUM**
-
-### Plan 01-01
-
-**Summary**
-This is the strongest of the three plans. Precomputing per-player lane waypoints in init is the right level of complexity for this phase, and reusing `player_lane_pos()` matches the existing codebase well. The main gap is specification precision: the plan needs to define the exact depth schedule and bow normalization more clearly so waypoint 0 matches spawn without distorting the intended `( | )` taper.
-
-**Strengths**
-- Correctly keeps waypoint generation out of the frame loop.
-- Uses existing lane geometry from `src/systems/player.c`.
-- Stores lane data on `Player`, which is the right ownership model.
-- Adds tuning knobs in `src/core/config.h` instead of hardcoding values.
-- Integrates after card slot init, which is the correct dependency order.
-
-**Concerns**
-- HIGH: Cross-wave mismatch remains: Wave 0 tests focus on `pathfinding.c`, but Wave 2 movement stays in `src/entities/entities.c`.
-- MEDIUM: "Waypoint[0] equals spawn" and "sine taper to zero at the ends" conflict unless the depth mapping is explicitly normalized or waypoint 0 is special-cased.
-- MEDIUM: The plan does not mention null/defensive checks for `lane_generate_waypoints(Player *p)`.
-- MEDIUM: It hardcodes `3` lanes conceptually instead of leaning on `NUM_CARD_SLOTS`.
-- LOW: Visual symmetry across the rotated split-screen setup should be verified explicitly.
-
-**Suggestions**
-- Specify the exact depth rule: `waypoint[0] = slot`, remaining waypoints interpolate from spawn depth to final depth, with bow normalized over that range.
-- Keep a small pure helper API in `src/logic/pathfinding.c` for later movement tests.
-- Use `NUM_CARD_SLOTS` for loops and add a null guard for generator entry.
-- Add one acceptance check that left/right lanes stay within reasonable lane bounds.
-
-**Risk Assessment: MEDIUM**
-
-### Plan 01-02
-
-**Summary**
-This plan delivers the visible gameplay change the phase needs, and the scope is still disciplined. The main risks are around edge handling and visual correctness: the current repo still forces crossed entities to `DIR_DOWN` in `src/core/game.c`, and the proposed movement code has a few cases where troops can freeze, pause at spawn, or show the wrong facing on waypoint transitions.
-
-**Strengths**
-- Replaces the current straight-line movement in the correct place.
-- Removes the old off-screen despawn behavior, which matches the phase goal.
-- Uses dominant-axis facing, which fits the existing 3-direction sprite system.
-- Adds a debug overlay and explicit visual verification.
-- Avoids over-engineering with splines or runtime curve evaluation.
-
-**Concerns**
-- HIGH: Invalid `lane` just `break`s, leaving the entity in `ESTATE_WALKING` but frozen forever.
-- HIGH: Facing is computed from the pre-advance `diff`; after snapping to a waypoint, direction can lag or be wrong at bends.
-- HIGH: `waypointIndex == 0` targeting `waypoint[0] == spawn` creates a zero-distance first target and can cause a visible one-frame pause.
-- MEDIUM: Random jitter on both axes can push the final idle position backward/across the border.
-- MEDIUM: The repo still overrides crossed entities to `DIR_DOWN` in `src/core/game.c`, which may conflict with lane-facing goals in the opponent viewport.
-- LOW: Performance impact is negligible for current entity counts.
-
-**Suggestions**
-- On invalid lane/index, transition to `ESTATE_IDLE` or mark removal, and log once.
-- Consume zero-distance waypoints immediately, or spawn with `waypointIndex = 1`.
-- Recompute facing after waypoint advancement using the new target.
-- Clamp endpoint jitter so it stays near the lane endpoint and out of the border-crossing seam.
-- Decide explicitly whether direction correctness is required in both owner and opponent viewports.
-
-**Risk Assessment: MEDIUM-HIGH**
-
-### Cross-Plan Note
-
-The biggest issue across all three plans is alignment: Wave 0 tests are designed around `src/logic/pathfinding.c`, while the actual runtime movement change is designed for `src/entities/entities.c`. If that is not corrected, the phase can finish with passing tests and still have broken on-screen behavior.
+### Risk Assessment
+**HIGH.** For the full roadmap, it is high risk because the current implementation does not yet define a gameplay-space model that combat and base destruction can build on, and it has no effective regression coverage to catch geometry or direction breakage while those systems are added.
 
 ---
 
 ## Consensus Summary
 
 ### Agreed Strengths
-- **Test-first approach** — both reviewers praise the standalone test infrastructure (Gemini: "exceptionally well-structured", Codex: "good instinct")
-- **Visual debug overlay** — both agree F1 toggle is critical for tuning curve shape
-- **Pre-computed waypoints at init** — both confirm this is the right complexity level
-- **Sine bow curve** — both agree it's elegant and fits the requirements
+- Pre-computed waypoint arrays on Player struct is the right design (deterministic, O(1) per frame)
+- 3-wave plan decomposition (tests -> data layer -> behavior) was well structured
+- Centralized movement through `pathfind_step_entity()` improves maintainability
+- Adding `pathfind_apply_direction(AnimState*)` for viewport mirroring was proactive and correct
+- Sine bow function is clean, symmetric, and computationally cheap
+- Debug overlay with F1 toggle is practical for tuning and verification
 
 ### Agreed Concerns
-1. **Player 2 directionality (MEDIUM)** — Gemini flags that P2 waypoint generation may need direction inversion. Codex flags the `DIR_DOWN` mirror override in game.c may conflict with lane-facing. Both point at the same gap: behavior correctness in the opponent's viewport.
-2. **Test/production code alignment (HIGH — Codex)** — Codex raises that CORE-01d/01e tests simulate movement logic inline rather than testing production code in entities.c. The tests prove the math but don't verify the actual game behavior. Gemini didn't flag this but noted struct desync risk.
-3. **Zero-distance first waypoint (MEDIUM-HIGH)** — Codex flags that spawning at waypoint[0] creates a zero-distance target causing a one-frame pause. The plan does handle `dist < 1.0f` but this edge case needs explicit attention.
-4. **Sprite flicker at 45-degree angles (LOW)** — Gemini flags dominant-axis switching could flicker. Codex flags facing computed from pre-advance diff can lag at bends.
-5. **Struct stub brittleness (MEDIUM)** — Both note the test stubs could desync from types.h over time.
+| Severity | Concern | Gemini | Codex |
+|----------|---------|--------|-------|
+| **HIGH** | Test file deleted -- zero regression coverage for geometry-heavy pathfinding | HIGH | HIGH |
+| **HIGH** | Direction enum names (`DIR_DOWN`, `DIR_SIDE`, `DIR_UP`) do not match their sprite row mapping -- latent bug vector | HIGH | MEDIUM |
+| **MEDIUM** | `DIRECTION_HYSTERESIS` defined in config.h but never used in any .c file -- dead config | MEDIUM | MEDIUM |
+| **MEDIUM** | No `ESTATE_DEAD` guard in state transitions -- dead entities can re-enter WALKING | MEDIUM | raised in suggestions |
+| **LOW** | Magic depth constants (`0.125f`, `2.125f`) should be derived or named | LOW | LOW |
 
 ### Divergent Views
-- **Overall risk level**: Gemini rates LOW overall, Codex rates MEDIUM to MEDIUM-HIGH. Codex is more concerned about the test-to-production alignment gap and edge cases in movement logic.
-- **Test scope**: Gemini sees the test approach as a clear strength. Codex sees it as partially misaligned since stepping logic lives in entities.c not pathfinding.c.
+| Topic | Gemini | Codex |
+|-------|--------|-------|
+| **Overall risk** | MEDIUM -- functionally sound for current scope | HIGH -- not a stable foundation for the full 10-phase roadmap |
+| **Gameplay-space model** | Not addressed | HIGH concern -- render-only mirroring won't support combat distance checks in Phase 3 |
+| **Base-path endpoint alignment** | Not addressed | HIGH concern -- lane endpoints don't converge on future base position |
+| **Requirements drift (bow intensity 0.3 vs 0.5)** | Not flagged | MEDIUM -- documented decision D-02 says ~50%, implementation is 30% |
+| **RNG seeding for jitter** | Suggested `srand()` call | Not mentioned |
+
+### Key Takeaway
+Both reviewers agree the visual outcome is correct but the engineering foundation needs cleanup before Phase 2. The top priorities are: (1) restore test coverage, (2) resolve the direction enum naming, (3) remove dead `DIRECTION_HYSTERESIS` config. Codex additionally flags that the gameplay-space coordinate model must be decided before combat phases -- entities live in per-player coordinate space but combat needs cross-player distance calculations.
 
 ---
 
 *Review completed: 2026-03-28*
-*Reviewers: Gemini CLI, Codex CLI*
+*Reviewers: Gemini CLI, Codex CLI (Claude excluded for independence)*
