@@ -15,8 +15,8 @@
 // TODO:   pregame_handle_card_scan() — mark the scanning player as ready and record their deck
 // TODO:   pregame_are_players_ready()— return true only when both players have confirmed
 // TODO: Wire these into a GamePhase state machine in game.c (PHASE_PREGAME → PHASE_PLAYING → PHASE_OVER).
-void pregame_init(GameState *gs);
-void pregame_update(GameState *gs);
-void pregame_render(GameState *gs);
-void pregame_handle_card_scan(GameState *gs, NFCEvent *event);
-bool pregame_are_players_ready(GameState *gs);
+void pregame_init(GameState * gs);
+void pregame_update(GameState * gs);
+void pregame_render(GameState * gs);
+void pregame_handle_card_scan(GameState * gs, NFCEvent * event);
+bool pregame_are_players_ready(GameState * gs);

@@ -63,7 +63,7 @@ void entity_set_state(Entity *e, EntityState newState) {
 
     // TODO: oldState is discarded — there is no transition-from validation. Any state → any state
     // TODO: is permitted (e.g. DEAD → WALKING). Add guard logic if illegal transitions must be blocked.
-    (void)oldState;
+    (void) oldState;
 }
 
 // TODO: No combat system is wired into entity_update. Entities walk in a straight line and never

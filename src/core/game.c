@@ -19,7 +19,7 @@
 static bool s_showLaneDebug = false;
 
 bool game_init(GameState *g) {
-    srand((unsigned int)time(NULL));
+    srand((unsigned int) time(NULL));
 
     const char *db_path = getenv("DB_PATH");
     if (!db_path) db_path = "cardgame.db";
@@ -56,8 +56,8 @@ bool game_init(GameState *g) {
     g->nfc.fds[0] = -1;
     g->nfc.fds[1] = -1;
     const char *single_port = getenv("NFC_PORT");
-    const char *port0       = getenv("NFC_PORT_P1");
-    const char *port1       = getenv("NFC_PORT_P2");
+    const char *port0 = getenv("NFC_PORT_P1");
+    const char *port1 = getenv("NFC_PORT_P2");
 
     if (single_port) {
         if (!nfc_init_single(&g->nfc, single_port)) {
@@ -219,7 +219,7 @@ void game_render(GameState *g) {
     }
 
     // HUD — screen space, drawn after all viewports
-    ui_draw_energy_bar(&g->players[0], 0,   SCREEN_WIDTH / 2);
+    ui_draw_energy_bar(&g->players[0], 0, SCREEN_WIDTH / 2);
     ui_draw_energy_bar(&g->players[1], 960, SCREEN_WIDTH / 2);
 
     // TODO: No visual divider line is drawn between Player 1 and Player 2 viewports. Add a separator.

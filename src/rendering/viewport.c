@@ -55,10 +55,10 @@ void viewport_init_split_screen(GameState *gs) {
 
 void viewport_begin(Player *p) {
     BeginScissorMode(
-        (int)p->screenArea.x,
-        (int)p->screenArea.y,
-        (int)p->screenArea.width,
-        (int)p->screenArea.height
+        (int) p->screenArea.x,
+        (int) p->screenArea.y,
+        (int) p->screenArea.width,
+        (int) p->screenArea.height
     );
     BeginMode2D(p->camera);
 }
@@ -102,7 +102,7 @@ void viewport_draw_card_slots_debug(Player *p) {
 
 void debug_draw_lane_paths_screen(const Player *p, Camera2D cam) {
     // Colors per lane: left=BLUE, center=GREEN, right=RED
-    const Color laneColors[3] = { BLUE, GREEN, RED };
+    const Color laneColors[3] = {BLUE, GREEN, RED};
 
     for (int lane = 0; lane < 3; lane++) {
         Color c = laneColors[lane];

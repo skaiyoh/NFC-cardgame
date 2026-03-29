@@ -47,17 +47,17 @@ TroopData troop_create_data_from_card(const Card *card) {
 
     cJSON *atkSpd = cJSON_GetObjectItem(root, "attackSpeed");
     if (atkSpd && cJSON_IsNumber(atkSpd)) {
-        data.attackSpeed = (float)atkSpd->valuedouble;
+        data.attackSpeed = (float) atkSpd->valuedouble;
     }
 
     cJSON *atkRange = cJSON_GetObjectItem(root, "attackRange");
     if (atkRange && cJSON_IsNumber(atkRange)) {
-        data.attackRange = (float)atkRange->valuedouble;
+        data.attackRange = (float) atkRange->valuedouble;
     }
 
     cJSON *spd = cJSON_GetObjectItem(root, "moveSpeed");
     if (spd && cJSON_IsNumber(spd)) {
-        data.moveSpeed = (float)spd->valuedouble;
+        data.moveSpeed = (float) spd->valuedouble;
     }
 
     cJSON *tgt = cJSON_GetObjectItem(root, "targeting");

@@ -15,9 +15,9 @@
 //   | 0xAA | reader_idx | uid_len | uid_byte_0 ... uid_byte_N | checksum |
 // checksum = XOR of all preceding bytes (start byte through last UID byte)
 typedef struct {
-    uint8_t reader_index;               // 0, 1, or 2 (TCA multiplexer channel)
-    uint8_t uid_len;                    // 4 or 7
-    uint8_t uid[ARDUINO_MAX_UID_LEN];   // raw UID bytes
+    uint8_t reader_index; // 0, 1, or 2 (TCA multiplexer channel)
+    uint8_t uid_len; // 4 or 7
+    uint8_t uid[ARDUINO_MAX_UID_LEN]; // raw UID bytes
 } ArduinoPacket;
 
 // Non-blocking read from fd. Returns true and fills *out if a complete, valid

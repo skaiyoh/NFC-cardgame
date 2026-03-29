@@ -9,12 +9,12 @@
 // TODO: base destruction. Implement base entity creation using entity_create(ENTITY_BUILDING, ...).
 // TODO: Call this from player_init and assign the result to p->base.
 Entity *building_create_base(Player *owner, Vector2 position) {
-    (void)owner;
-    (void)position;
+    (void) owner;
+    (void) position;
     return NULL;
 }
 
 void building_take_damage(Entity *building, int damage) {
-    (void)building;
-    (void)damage;
+    (void) building;
+    (void) damage;
 }

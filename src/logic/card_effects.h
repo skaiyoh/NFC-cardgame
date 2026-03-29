@@ -13,7 +13,9 @@ typedef struct GameState GameState;
 typedef void (*CardPlayFn)(const Card *card, GameState *state, int playerIndex, int slotIndex);
 
 void card_action_register(const char *type, CardPlayFn fn);
+
 bool card_action_play(const Card *card, GameState *state, int playerIndex, int slotIndex);
+
 void card_action_init(void);
 
 #endif //NFC_CARDGAME_CARD_EFFECTS_H

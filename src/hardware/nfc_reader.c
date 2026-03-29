@@ -30,7 +30,7 @@ static int open_serial_port(const char *path) {
     cfsetispeed(&tty, B115200);
     cfsetospeed(&tty, B115200);
 
-    tty.c_cc[VMIN]  = 0;   // Non-blocking: return immediately if no data
+    tty.c_cc[VMIN] = 0; // Non-blocking: return immediately if no data
     tty.c_cc[VTIME] = 0;
 
     if (tcsetattr(fd, TCSANOW, &tty) != 0) {
@@ -96,7 +96,7 @@ int nfc_poll(NFCReader *r, NFCEvent *events, int max_events) {
             int ri = pkt.reader_index;
             if (ri < 0 || ri >= NFC_READERS_PER_PLAYER) continue;
             seen[ri] = true;
-            r->noPacketFrames[player][ri] = 0;  // card still present, reset counter
+            r->noPacketFrames[player][ri] = 0; // card still present, reset counter
 
             char uid_str[32];
             arduino_uid_to_string(pkt.uid, pkt.uid_len, uid_str);

@@ -10,18 +10,30 @@
 void tilemap_init_defs(Texture2D *tex, TileDef tileDefs[TILE_COUNT]) {
     for (int r = 0; r < 4; r++) {
         for (int c = 0; c < 4; c++) {
-            tileDefs[r * 4 + c] = (TileDef){
-                .texture = tex,
-                .source  = (Rectangle){ c * 32, r * 32, 32, 32 }
+            tileDefs[r * 4 + c] = (TileDef)
+            {
+                .
+                texture = tex,
+                .
+                source = (Rectangle)
+                {
+                    c * 32, r * 32, 32, 32
+                }
             };
         }
     }
 
     for (int r = 0; r < 4; r++) {
         for (int c = 0; c < 4; c++) {
-            tileDefs[16 + r * 4 + c] = (TileDef){
-                .texture = tex,
-                .source  = (Rectangle){ 128 + c * 32, r * 32, 32, 32 }
+            tileDefs[16 + r * 4 + c] = (TileDef)
+            {
+                .
+                texture = tex,
+                .
+                source = (Rectangle)
+                {
+                    128 + c * 32, r * 32, 32, 32
+                }
             };
         }
     }
@@ -31,8 +43,8 @@ void tilemap_init_defs(Texture2D *tex, TileDef tileDefs[TILE_COUNT]) {
 // TODO: Remove this function or repurpose it, to avoid confusion about which creation path is active.
 TileMap tilemap_create(Rectangle area, float tileSize, unsigned int seed) {
     TileMap map;
-    map.cols = (int)(area.width  / tileSize) + 1;
-    map.rows = (int)(area.height / tileSize) + 1;
+    map.cols = (int) (area.width / tileSize) + 1;
+    map.rows = (int) (area.height / tileSize) + 1;
     map.tileSize = tileSize;
     map.originX = area.x;
     map.originY = area.y;
@@ -44,7 +56,7 @@ TileMap tilemap_create(Rectangle area, float tileSize, unsigned int seed) {
     for (int r = 0; r < map.rows; r++) {
         for (int c = 0; c < map.cols; c++) {
             map.cells[r * map.cols + c] =
-                (rand() % 10 < 8) ? (rand() % 16) : (16 + rand() % 16);
+                    (rand() % 10 < 8) ? (rand() % 16) : (16 + rand() % 16);
         }
     }
 
@@ -57,8 +69,8 @@ TileMap tilemap_create_biome(Rectangle area, float tileSize, unsigned int seed,
     // Scale adjusts the rendered tile size so different native sizes look the same.
     // e.g. 16px tiles with scale 2.0 render at tileSize/2, doubling the grid density.
     float renderSize = tileSize / biome->tileScale;
-    map.cols = (int)(area.width  / renderSize) + 1;
-    map.rows = (int)(area.height / renderSize) + 1;
+    map.cols = (int) (area.width / renderSize) + 1;
+    map.rows = (int) (area.height / renderSize) + 1;
     map.tileSize = renderSize;
     map.originX = area.x;
     map.originY = area.y;
@@ -89,7 +101,7 @@ TileMap tilemap_create_biome(Rectangle area, float tileSize, unsigned int seed,
                 }
             }
             int tileIdx = biome->blockStart[blockIdx]
-                        + (rand() % biome->blockSize[blockIdx]);
+                          + (rand() % biome->blockSize[blockIdx]);
             map.cells[r * map.cols + c] = tileIdx;
         }
     }
@@ -131,7 +143,7 @@ TileMap tilemap_create_biome(Rectangle area, float tileSize, unsigned int seed,
                         }
                     }
                     detailIdx = biome->detailBlockStart[blockIdx]
-                              + (rand() % biome->detailBlockSize[blockIdx]);
+                                + (rand() % biome->detailBlockSize[blockIdx]);
                 }
                 map.detailCells[r * map.cols + c] = detailIdx;
             }
@@ -145,10 +157,11 @@ TileMap tilemap_create_biome(Rectangle area, float tileSize, unsigned int seed,
     for (int li = 0; li < biome->biomeLayerCount && li < MAX_BIOME_LAYERS; li++) {
         const BiomeLayer *bl = &biome->biomeLayerDefs[li];
         if (bl->isRandom && bl->defCount > 0) {
-            map.biomeLayerCells[li] = malloc((size_t)n * sizeof(int));
+            map.biomeLayerCells[li] = malloc((size_t) n * sizeof(int));
             for (int i = 0; i < n; i++) {
                 map.biomeLayerCells[li][i] = (rand() % 100 < bl->density)
-                                             ? (rand() % bl->defCount) : -1;
+                                                 ? (rand() % bl->defCount)
+                                                 : -1;
             }
         }
         // PAINT layers: cells are static const data in BiomeLayer, no allocation needed
@@ -168,8 +181,19 @@ void tilemap_draw(TileMap *map, TileDef tileDefs[TILE_COUNT]) {
             float tx = map->originX + col * map->tileSize;
             float ty = map->originY + row * map->tileSize;
             DrawTexturePro(*td->texture, td->source,
-                (Rectangle){ tx, ty, map->tileSize, map->tileSize },
-                (Vector2){ 0, 0 }, 0.0f, WHITE);
+                           (Rectangle)
+            {
+                tx, ty, map->tileSize, map->tileSize
+            }
+            ,
+            (Vector2)
+            {
+                0, 0
+            }
+            ,
+            0.0f, WHITE
+            )
+            ;
         }
     }
 }
@@ -187,7 +211,7 @@ void tilemap_draw_details(TileMap *map, TileDef *detailDefs) {
             if (idx < 0) continue;
 
             TileDef *td = &detailDefs[idx];
-            float dw = td->source.width  * scale;
+            float dw = td->source.width * scale;
             float dh = td->source.height * scale;
             // TODO: Detail tiles can be larger than tileSize (e.g. a 40×21 pixel detail on a 32px tile).
             // TODO: The centering offsets (tileSize - dw) * 0.5 can go negative, causing the detail
@@ -195,8 +219,19 @@ void tilemap_draw_details(TileMap *map, TileDef *detailDefs) {
             float tx = map->originX + col * map->tileSize + (map->tileSize - dw) * 0.5f;
             float ty = map->originY + row * map->tileSize + (map->tileSize - dh) * 0.5f;
             DrawTexturePro(*td->texture, td->source,
-                (Rectangle){ tx, ty, dw, dh },
-                (Vector2){ 0, 0 }, 0.0f, WHITE);
+                           (Rectangle)
+            {
+                tx, ty, dw, dh
+            }
+            ,
+            (Vector2)
+            {
+                0, 0
+            }
+            ,
+            0.0f, WHITE
+            )
+            ;
         }
     }
 }
@@ -219,33 +254,55 @@ void tilemap_draw_biome_layers(TileMap *map, const struct BiomeDef *def) {
                     int idx = layerCells[row * map->cols + col];
                     if (idx < 0 || idx >= bl->defCount) continue;
                     const TileDef *td = &def->biomeLayerTileDefs[li][idx];
-                    float dw = td->source.width  * scale;
+                    float dw = td->source.width * scale;
                     float dh = td->source.height * scale;
                     float tx = map->originX + col * map->tileSize + (map->tileSize - dw) * 0.5f;
                     float ty = map->originY + row * map->tileSize + (map->tileSize - dh) * 0.5f;
                     DrawTexturePro(*td->texture, td->source,
-                        (Rectangle){ tx, ty, dw, dh },
-                        (Vector2){ 0, 0 }, 0.0f, WHITE);
+                                   (Rectangle)
+                    {
+                        tx, ty, dw, dh
+                    }
+                    ,
+                    (Vector2)
+                    {
+                        0, 0
+                    }
+                    ,
+                    0.0f, WHITE
+                    )
+                    ;
                 }
             }
         } else {
             // PAINT layer: sparse {row, col, defIdx} triples in bl->cells
             if (!bl->cells) continue;
             for (int ci = 0; ci < bl->cellCount; ci++) {
-                int row    = bl->cells[ci][0];
-                int col    = bl->cells[ci][1];
+                int row = bl->cells[ci][0];
+                int col = bl->cells[ci][1];
                 int defIdx = bl->cells[ci][2];
                 if (row < 0 || row >= map->rows) continue;
                 if (col < 0 || col >= map->cols) continue;
                 if (defIdx < 0 || defIdx >= bl->defCount) continue;
                 const TileDef *td = &def->biomeLayerTileDefs[li][defIdx];
-                float dw = td->source.width  * scale;
+                float dw = td->source.width * scale;
                 float dh = td->source.height * scale;
                 float tx = map->originX + col * map->tileSize + (map->tileSize - dw) * 0.5f;
                 float ty = map->originY + row * map->tileSize + (map->tileSize - dh) * 0.5f;
                 DrawTexturePro(*td->texture, td->source,
-                    (Rectangle){ tx, ty, dw, dh },
-                    (Vector2){ 0, 0 }, 0.0f, WHITE);
+                               (Rectangle)
+                {
+                    tx, ty, dw, dh
+                }
+                ,
+                (Vector2)
+                {
+                    0, 0
+                }
+                ,
+                0.0f, WHITE
+                )
+                ;
             }
         }
     }

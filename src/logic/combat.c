@@ -14,6 +14,6 @@
 // TODO:   combat_resolve()     — apply attacker->attack to target->hp, call entity_take_damage,
 // TODO:                          respect attacker->attackSpeed (track cooldown via attackCooldown field)
 // TODO: Call combat_find_target / combat_resolve from entity_update when ESTATE_ATTACKING.
-void combat_resolve(Entity *attacker, Entity *target);
-bool combat_in_range(Entity *a, Entity *b);
-Entity* combat_find_target(Entity *attacker, GameState *gs);
+void combat_resolve(Entity * attacker, Entity * target);
+bool combat_in_range(Entity * a, Entity * b);
+Entity *combat_find_target(Entity * attacker, GameState * gs);

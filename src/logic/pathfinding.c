@@ -29,7 +29,7 @@ void lane_generate_waypoints(Player *p) {
     // For spawnY = playArea.y + playArea.height * 0.8:
     //   depth = (0.9 - 0.8) / 0.8 = 0.125
     float spawnDepth = 0.125f;
-    float endDepth = 2.125f;  // Mirrors spawn position — last waypoint lands at opponent's spawn
+    float endDepth = 2.125f; // Mirrors spawn position — last waypoint lands at opponent's spawn
 
     for (int lane = 0; lane < 3; lane++) {
         for (int i = 0; i < LANE_WAYPOINT_COUNT; i++) {
@@ -43,7 +43,7 @@ void lane_generate_waypoints(Player *p) {
             }
 
             // Normalized parameter t: 0.0 at spawn, 1.0 at enemy base
-            float t = (float)i / (float)(LANE_WAYPOINT_COUNT - 1);
+            float t = (float) i / (float) (LANE_WAYPOINT_COUNT - 1);
 
             // Map t to depth: linearly interpolate from spawnDepth to endDepth
             float depth = spawnDepth + (endDepth - spawnDepth) * t;
@@ -89,8 +89,8 @@ bool pathfind_step_entity(Entity *e, const Player *owner, float deltaTime) {
 
         if (e->waypointIndex >= LANE_WAYPOINT_COUNT) {
             // End of path: apply random jitter (per D-11)
-            float jx = ((float)(rand() % ((int)(LANE_JITTER_RADIUS * 2) + 1)) - LANE_JITTER_RADIUS);
-            float jy = ((float)(rand() % ((int)(LANE_JITTER_RADIUS * 2) + 1)) - LANE_JITTER_RADIUS);
+            float jx = ((float) (rand() % ((int) (LANE_JITTER_RADIUS * 2) + 1)) - LANE_JITTER_RADIUS);
+            float jy = ((float) (rand() % ((int) (LANE_JITTER_RADIUS * 2) + 1)) - LANE_JITTER_RADIUS);
             e->position.x += jx;
             e->position.y += jy;
             // Face toward the enemy (down) when idling at the end of the path
@@ -110,7 +110,7 @@ bool pathfind_step_entity(Entity *e, const Player *owner, float deltaTime) {
     // where the entity just arrived at a waypoint. This preserves the
     // walking direction so entities don't snap to a new facing on arrival.
     if (!advancedWaypoint) {
-        Vector2 diff = { target.x - e->position.x, target.y - e->position.y };
+        Vector2 diff = {target.x - e->position.x, target.y - e->position.y};
         float ddist = sqrtf(diff.x * diff.x + diff.y * diff.y);
         if (ddist > 1.0f) {
             pathfind_apply_direction(&e->anim, diff);

@@ -19,9 +19,9 @@ typedef enum {
 } AnimationType;
 
 typedef enum {
-    DIR_SIDE,       // Row 0: side-facing (right by default; flipH for left)
-    DIR_DOWN,       // Row 1: front-facing (character faces camera)
-    DIR_UP,         // Row 2: back-facing (character faces away)
+    DIR_SIDE, // Row 0: side-facing (right by default; flipH for left)
+    DIR_DOWN, // Row 1: front-facing (character faces camera)
+    DIR_UP, // Row 2: back-facing (character faces away)
     DIR_COUNT
 } SpriteDirection;
 
@@ -30,7 +30,7 @@ typedef struct {
     Texture2D texture;
     int frameWidth;
     int frameHeight;
-    int frameCount;     // number of columns (frames per direction)
+    int frameCount; // number of columns (frames per direction)
 } SpriteSheet;
 
 // All animations for one character type
@@ -50,9 +50,9 @@ typedef enum {
 
 // Shared atlas — one per GameState, holds all character types
 typedef struct {
-    CharacterSprite base;                       // Default fallback
-    CharacterSprite types[SPRITE_TYPE_COUNT];    // Per-type sprites
-    bool typeLoaded[SPRITE_TYPE_COUNT];          // Whether unique assets exist
+    CharacterSprite base; // Default fallback
+    CharacterSprite types[SPRITE_TYPE_COUNT]; // Per-type sprites
+    bool typeLoaded[SPRITE_TYPE_COUNT]; // Whether unique assets exist
 } SpriteAtlas;
 
 // Per-entity animation state (lightweight, no texture data)
@@ -66,16 +66,19 @@ typedef struct {
 } AnimState;
 
 void sprite_atlas_init(SpriteAtlas *atlas);
+
 void sprite_atlas_free(SpriteAtlas *atlas);
 
 void sprite_draw(const CharacterSprite *cs, const AnimState *state,
                  Vector2 pos, float scale);
 
 void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir, float fps);
+
 void anim_state_update(AnimState *state, float dt);
 
 // Sprite type registry
 const CharacterSprite *sprite_atlas_get(const SpriteAtlas *atlas, SpriteType type);
+
 SpriteType sprite_type_from_card(const char *cardType);
 
 #endif //NFC_CARDGAME_SPRITE_RENDERER_H

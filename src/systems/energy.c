@@ -20,12 +20,12 @@ void energy_update(Player *p, float deltaTime) {
 }
 
 bool energy_can_afford(Player *p, int cost) {
-    return p->energy >= (float)cost;
+    return p->energy >= (float) cost;
 }
 
 bool energy_consume(Player *p, int cost) {
     if (!energy_can_afford(p, cost)) return false;
-    p->energy -= (float)cost;
+    p->energy -= (float) cost;
     return true;
 }
 

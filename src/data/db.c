@@ -41,10 +41,10 @@ const char *db_error(DB *db) {
 // Collect all rows from a prepared, bound statement into a DBResult.
 static DBResult *collect_results(DB *db, sqlite3_stmt *stmt) {
     int cols = sqlite3_column_count(stmt);
-    int cap  = 8;
+    int cap = 8;
     int rows = 0;
 
-    char ***data = malloc((size_t)cap * sizeof(char **));
+    char ***data = malloc((size_t) cap * sizeof(char **));
     if (!data) {
         sqlite3_finalize(stmt);
         return NULL;
@@ -54,7 +54,7 @@ static DBResult *collect_results(DB *db, sqlite3_stmt *stmt) {
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         if (rows == cap) {
             cap *= 2;
-            char ***tmp = realloc(data, (size_t)cap * sizeof(char **));
+            char ***tmp = realloc(data, (size_t) cap * sizeof(char **));
             if (!tmp) {
                 for (int i = 0; i < rows; i++) {
                     for (int c = 0; c < cols; c++) free(data[i][c]);
@@ -67,7 +67,7 @@ static DBResult *collect_results(DB *db, sqlite3_stmt *stmt) {
             data = tmp;
         }
 
-        data[rows] = calloc((size_t)cols, sizeof(char *));
+        data[rows] = calloc((size_t) cols, sizeof(char *));
         if (!data[rows]) {
             for (int i = 0; i < rows; i++) {
                 for (int c = 0; c < cols; c++) free(data[i][c]);
@@ -80,7 +80,7 @@ static DBResult *collect_results(DB *db, sqlite3_stmt *stmt) {
 
         for (int c = 0; c < cols; c++) {
             const unsigned char *val = sqlite3_column_text(stmt, c);
-            data[rows][c] = val ? strdup((const char *)val) : NULL;
+            data[rows][c] = val ? strdup((const char *) val) : NULL;
         }
         rows++;
     }

@@ -22,7 +22,9 @@ typedef struct GameState GameState;
 
 // Entity enums
 typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
+
 typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
+
 typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_DEAD } EntityState;
 
 // Entity definition
@@ -48,9 +50,9 @@ struct Entity {
     float spriteScale;
 
     // Ownership
-    int ownerID;    // Player index (0 or 1)
-    int lane;       // Which lane (0-2)
-    int waypointIndex;  // Current target waypoint index along lane path
+    int ownerID; // Player index (0 or 1)
+    int lane; // Which lane (0-2)
+    int waypointIndex; // Current target waypoint index along lane path
 
     // Flags
     bool alive;
@@ -63,23 +65,23 @@ struct Entity {
 
 // Card slot - represents a physical NFC reader position
 typedef struct {
-    Vector2 worldPos;       // Spawn position in world coordinates
-    Card *activeCard;       // Currently placed card (NULL if empty)
-    float cooldownTimer;    // Cooldown before slot can be used again
+    Vector2 worldPos; // Spawn position in world coordinates
+    Card *activeCard; // Currently placed card (NULL if empty)
+    float cooldownTimer; // Cooldown before slot can be used again
 } CardSlot;
 
 // Player state
 struct Player {
-    int id;                         // 0 or 1
-    Rectangle playArea;             // World space play area
-    Rectangle screenArea;           // Screen space viewport
-    Camera2D camera;                // Camera for this player's view
-    float cameraRotation;           // 90 or -90 for split screen orientation
+    int id; // 0 or 1
+    Rectangle playArea; // World space play area
+    Rectangle screenArea; // Screen space viewport
+    Camera2D camera; // Camera for this player's view
+    float cameraRotation; // 90 or -90 for split screen orientation
 
     // Tilemap (per-player biome tile definitions)
     TileMap tilemap;
     BiomeType biome;
-    const BiomeDef *biomeDef;       // pointer into GameState::biomeDefs[]
+    const BiomeDef *biomeDef; // pointer into GameState::biomeDefs[]
     TileDef tileDefs[TILE_COUNT];
     int tileDefCount;
     TileDef detailDefs[MAX_DETAIL_DEFS];
@@ -121,7 +123,7 @@ struct GameState {
     SpriteAtlas spriteAtlas;
 
     // Screen layout
-    int halfWidth;  // Half screen width for split screen
+    int halfWidth; // Half screen width for split screen
 
     // NFC hardware (two Arduinos, one per player)
     NFCReader nfc;

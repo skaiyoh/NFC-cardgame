@@ -53,10 +53,10 @@ typedef struct {
     int rows;
     int cols;
     int *cells;
-    int *detailCells;                       // overlay layer (-1 = empty, >= 0 = detail tileDef index)
+    int *detailCells; // overlay layer (-1 = empty, >= 0 = detail tileDef index)
     int *biomeLayerCells[MAX_BIOME_LAYERS]; // per-layer cells (NULL for PAINT layers)
     float tileSize;
-    float tileScale;    // source tile scale (e.g. 2.0 for 16px tiles matching 32px)
+    float tileScale; // source tile scale (e.g. 2.0 for 16px tiles matching 32px)
     float originX;
     float originY;
 } TileMap;
@@ -65,12 +65,18 @@ typedef struct {
 typedef struct BiomeDef BiomeDef;
 
 void tilemap_init_defs(Texture2D *tex, TileDef tileDefs[TILE_COUNT]);
+
 TileMap tilemap_create(Rectangle area, float tileSize, unsigned int seed);
+
 TileMap tilemap_create_biome(Rectangle area, float tileSize, unsigned int seed,
                              const BiomeDef *biome);
+
 void tilemap_draw(TileMap *map, TileDef tileDefs[TILE_COUNT]);
+
 void tilemap_draw_details(TileMap *map, TileDef *detailDefs);
+
 void tilemap_draw_biome_layers(TileMap *map, const struct BiomeDef *def);
+
 void tilemap_free(TileMap *map);
 
 #endif //NFC_CARDGAME_TILEMAP_RENDERER_H

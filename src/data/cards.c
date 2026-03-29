@@ -13,7 +13,7 @@ bool cards_load(Deck *deck, DB *db) {
     memset(deck, 0, sizeof(Deck));
 
     DBResult *res = db_query(db,
-        "SELECT card_id, name, cost, type, rules_text, data FROM cards");
+                             "SELECT card_id, name, cost, type, rules_text, data FROM cards");
 
     if (!res) {
         fprintf(stderr, "Failed to load cards from database\n");
@@ -37,12 +37,12 @@ bool cards_load(Deck *deck, DB *db) {
 
     for (int i = 0; i < rows; i++) {
         Card *c = &deck->cards[i];
-        c->card_id    = strdup(db_result_value(res, i, 0));
-        c->name       = strdup(db_result_value(res, i, 1));
-        c->cost       = atoi(db_result_value(res, i, 2));
-        c->type       = strdup(db_result_value(res, i, 3));
+        c->card_id = strdup(db_result_value(res, i, 0));
+        c->name = strdup(db_result_value(res, i, 1));
+        c->cost = atoi(db_result_value(res, i, 2));
+        c->type = strdup(db_result_value(res, i, 3));
         c->rules_text = db_result_isnull(res, i, 4) ? NULL : strdup(db_result_value(res, i, 4));
-        c->data       = db_result_isnull(res, i, 5) ? NULL : strdup(db_result_value(res, i, 5));
+        c->data = db_result_isnull(res, i, 5) ? NULL : strdup(db_result_value(res, i, 5));
     }
 
     db_result_free(res);
@@ -88,7 +88,7 @@ bool cards_load_nfc_map(Deck *deck, DB *db) {
 
     deck->uid_map_count = rows;
     for (int i = 0; i < rows; i++) {
-        strncpy(deck->uid_map[i].uid,     db_result_value(res, i, 0), sizeof(deck->uid_map[i].uid) - 1);
+        strncpy(deck->uid_map[i].uid, db_result_value(res, i, 0), sizeof(deck->uid_map[i].uid) - 1);
         strncpy(deck->uid_map[i].card_id, db_result_value(res, i, 1), sizeof(deck->uid_map[i].card_id) - 1);
     }
 
@@ -104,7 +104,7 @@ const Card *cards_find_by_uid(const Deck *deck, const char *uid) {
         if (strcmp(deck->uid_map[i].uid, uid) == 0) {
             // uid_map entry found — now look up the card by card_id.
             // Cast away const for cards_find (which takes non-const Deck*).
-            return cards_find((Deck *)deck, deck->uid_map[i].card_id);
+            return cards_find((Deck *) deck, deck->uid_map[i].card_id);
         }
     }
 
