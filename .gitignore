@@ -1,5 +1,6 @@
 *.txt
 *.aseprite
+.idea/
 cardgame
 card_preview
 import.json
