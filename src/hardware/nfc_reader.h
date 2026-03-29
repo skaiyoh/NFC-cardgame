@@ -13,16 +13,16 @@
 
 // A single card-scan event produced by an Arduino.
 typedef struct {
-    char uid[32];       // Uppercase hex UID string (e.g. "04A1B2C3")
-    int  readerIndex;   // Which reader slot fired (0–2, maps to card slot / lane)
-    int  playerIndex;   // Which player this reader belongs to (0 or 1)
+    char uid[32]; // Uppercase hex UID string (e.g. "04A1B2C3")
+    int readerIndex; // Which reader slot fired (0–2, maps to card slot / lane)
+    int playerIndex; // Which player this reader belongs to (0 or 1)
 } NFCEvent;
 
 // One serial file descriptor per Arduino (one per player).
 typedef struct {
-    int  fds[NFC_NUM_PLAYERS];                                          // serial fd per Arduino (-1 if not open)
-    char lastUID[NFC_NUM_PLAYERS][NFC_READERS_PER_PLAYER][32];          // debounce table
-    int  noPacketFrames[NFC_NUM_PLAYERS][NFC_READERS_PER_PLAYER];       // frames since last packet
+    int fds[NFC_NUM_PLAYERS]; // serial fd per Arduino (-1 if not open)
+    char lastUID[NFC_NUM_PLAYERS][NFC_READERS_PER_PLAYER][32]; // debounce table
+    int noPacketFrames[NFC_NUM_PLAYERS][NFC_READERS_PER_PLAYER]; // frames since last packet
 } NFCReader;
 
 // Opens serial ports for both Arduinos at 115200 baud, non-blocking.
@@ -35,7 +35,7 @@ bool nfc_init_single(NFCReader *r, const char *port);
 
 // Polls both serial ports (non-blocking). Fills events[0..max_events-1].
 // Returns the number of events produced (0 if no cards were scanned this frame).
-int  nfc_poll(NFCReader *r, NFCEvent *events, int max_events);
+int nfc_poll(NFCReader *r, NFCEvent *events, int max_events);
 
 // Closes open serial port file descriptors.
 void nfc_shutdown(NFCReader *r);

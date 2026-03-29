@@ -3,6 +3,7 @@
 //
 
 #include "entities.h"
+#include "../logic/pathfinding.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -41,24 +42,28 @@ void entity_set_state(Entity *e, EntityState newState) {
     if (!e || e->state == newState) return;
 
     EntityState oldState = e->state;
+    SpriteDirection dir = e->anim.dir;
+    bool flipH = e->anim.flipH;
     e->state = newState;
 
     // Reset animation on state change
     switch (newState) {
         case ESTATE_IDLE:
-            anim_state_init(&e->anim, ANIM_IDLE, e->anim.dir, 8.0f);
+            anim_state_init(&e->anim, ANIM_IDLE, dir, 8.0f);
             break;
         case ESTATE_WALKING:
-            anim_state_init(&e->anim, ANIM_WALK, e->anim.dir, 10.0f);
+            anim_state_init(&e->anim, ANIM_WALK, dir, 10.0f);
             break;
         case ESTATE_DEAD:
-            anim_state_init(&e->anim, ANIM_DEATH, e->anim.dir, 8.0f);
+            anim_state_init(&e->anim, ANIM_DEATH, dir, 8.0f);
             break;
     }
 
+    e->anim.flipH = flipH;
+
     // TODO: oldState is discarded — there is no transition-from validation. Any state → any state
     // TODO: is permitted (e.g. DEAD → WALKING). Add guard logic if illegal transitions must be blocked.
-    (void)oldState;
+    (void) oldState;
 }
 
 // TODO: No combat system is wired into entity_update. Entities walk in a straight line and never
@@ -76,25 +81,8 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
 
         case ESTATE_WALKING: {
             Player *owner = &gs->players[e->ownerID];
-
-            // Move forward (decreasing Y) through own area and into opponent's
-            e->position.y -= e->moveSpeed * deltaTime;
-
-            // Despawn when entity reaches the opponent's base depth
-            // TODO: despawnY = playArea.y - playArea.height * 0.9 can be deeply negative for large
-            // TODO: play areas. Entity can travel far off-screen before despawning. Tune this threshold
-            // TODO: or tie despawn to actually reaching / damaging the opponent's base building.
-            float despawnY = owner->playArea.y - owner->playArea.height * 0.9f;
-            if (e->position.y < despawnY) {
-                e->markedForRemoval = true;
-            }
-
-            // Flip direction when entity center crosses the border
-            // TODO: When position.y < owner->playArea.y (border), direction flips to DIR_DOWN.
-            // TODO: The opponent viewport also mirrors the entity with DIR_DOWN forced in game.c.
-            // TODO: This double-flip may cause incorrect sprite orientation — verify visually.
-            float borderY = owner->playArea.y;
-            e->anim.dir = (e->position.y > borderY) ? DIR_UP : DIR_DOWN;
+            // Delegate to pathfinding helpers (same code tested by Wave 0 unit tests)
+            pathfind_step_entity(e, owner, deltaTime);
             break;
         }
 

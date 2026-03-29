@@ -13,5 +13,6 @@
 // TODO:                   Requires building_create_base to be implemented first.
 // TODO:   win_trigger() — set gs->gameOver = true, gs->winnerID = winnerID, display win screen.
 // TODO: Call win_check() from game_update() each frame after entity updates.
-void win_check(GameState *gs);
+void win_check(GameState * gs);
+
 void win_trigger(GameState *gs, int winnerID);

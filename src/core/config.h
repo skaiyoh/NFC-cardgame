@@ -35,4 +35,10 @@
 #define ENERGY_BAR_MARGIN    16
 #define ENERGY_BAR_Y_OFFSET  40
 
+// Lane pathfinding
+#define LANE_WAYPOINT_COUNT  8
+#define LANE_BOW_INTENSITY   0.3f
+#define LANE_JITTER_RADIUS   10.0f
+#define PI_F 3.14159265f
+
 #endif //NFC_CARDGAME_CONFIG_H

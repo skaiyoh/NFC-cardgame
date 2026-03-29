@@ -41,63 +41,63 @@ typedef struct {
 //   RANDOM (isRandom=true):  density% of cells get a randomly chosen def.
 //   PAINT  (isRandom=false): specific cells from a static const array.
 typedef struct {
-    const char *texPath;    // texture path (compared to base/detail at init; else loaded fresh)
-    float     tileScale;
-    bool      isRandom;
-    int       density;                           // RANDOM only: 0-100 percent
+    const char *texPath; // texture path (compared to base/detail at init; else loaded fresh)
+    float tileScale;
+    bool isRandom;
+    int density; // RANDOM only: 0-100 percent
     Rectangle defSources[MAX_BIOME_LAYER_DEFS];
-    int       defCount;
-    const int (*cells)[3];  // PAINT: static {row, col, defIdx} triples; NULL for RANDOM
-    int       cellCount;
+    int defCount;
+    const int (*cells)[3]; // PAINT: static {row, col, defIdx} triples; NULL for RANDOM
+    int cellCount;
 } BiomeLayer;
 
 // Full definition of a biome's tileset mapping and generation weights.
 typedef struct BiomeDef {
     const char *texturePath;
-    Texture2D   texture;
-    bool        loaded;
+    Texture2D texture;
+    bool loaded;
 
-    TileBlock   blocks[MAX_TILE_BLOCKS];
-    int         blockCount;
+    TileBlock blocks[MAX_TILE_BLOCKS];
+    int blockCount;
 
     // Compiled flat TileDef array built from blocks
-    TileDef     tileDefs[TILE_COUNT];
-    int         tileDefCount;
+    TileDef tileDefs[TILE_COUNT];
+    int tileDefCount;
 
     // Per-block index ranges into tileDefs[]
-    int         blockStart[MAX_TILE_BLOCKS];
-    int         blockSize[MAX_TILE_BLOCKS];
+    int blockStart[MAX_TILE_BLOCKS];
+    int blockSize[MAX_TILE_BLOCKS];
 
     // Distribution weights for tilemap generation (per block)
-    int         blockWeights[MAX_TILE_BLOCKS];
+    int blockWeights[MAX_TILE_BLOCKS];
 
     // Scale factor applied to source tiles so different native sizes render equally.
     // e.g. 1.0 for 32px tiles, 2.0 for 16px tiles (scales up to match 32px).
-    float       tileScale;
+    float tileScale;
 
     // Detail overlay (transparent tiles drawn on top of base ground)
-    const char *detailTexturePath;  // NULL if no detail layer
-    Texture2D   detailTexture;
-    bool        detailLoaded;
+    const char *detailTexturePath; // NULL if no detail layer
+    Texture2D detailTexture;
+    bool detailLoaded;
 
-    TileBlock   detailBlocks[MAX_TILE_BLOCKS];
-    int         detailBlockCount;
+    TileBlock detailBlocks[MAX_TILE_BLOCKS];
+    int detailBlockCount;
 
-    TileDef     detailDefs[MAX_DETAIL_DEFS];
-    int         detailDefCount;
+    TileDef detailDefs[MAX_DETAIL_DEFS];
+    int detailDefCount;
 
-    int         detailBlockStart[MAX_TILE_BLOCKS];
-    int         detailBlockSize[MAX_TILE_BLOCKS];
-    int         detailBlockWeights[MAX_TILE_BLOCKS];
+    int detailBlockStart[MAX_TILE_BLOCKS];
+    int detailBlockSize[MAX_TILE_BLOCKS];
+    int detailBlockWeights[MAX_TILE_BLOCKS];
 
-    int         detailDensity;  // percentage chance (0-100) a cell gets a detail
+    int detailDensity; // percentage chance (0-100) a cell gets a detail
 
     // Biome overlay layers (applied on top of base + detail)
-    BiomeLayer  biomeLayerDefs[MAX_BIOME_LAYERS];
-    int         biomeLayerCount;
-    TileDef     biomeLayerTileDefs[MAX_BIOME_LAYERS][MAX_BIOME_LAYER_DEFS];  // wired at init
-    Texture2D   layerTextures[MAX_BIOME_LAYERS];     // extra textures owned by this biome
-    bool        layerTextureOwned[MAX_BIOME_LAYERS]; // true if we must unload it
+    BiomeLayer biomeLayerDefs[MAX_BIOME_LAYERS];
+    int biomeLayerCount;
+    TileDef biomeLayerTileDefs[MAX_BIOME_LAYERS][MAX_BIOME_LAYER_DEFS]; // wired at init
+    Texture2D layerTextures[MAX_BIOME_LAYERS]; // extra textures owned by this biome
+    bool layerTextureOwned[MAX_BIOME_LAYERS]; // true if we must unload it
 } BiomeDef;
 
 // Compile TileBlocks into the flat tileDefs[] array (called internally by biome_init_all,

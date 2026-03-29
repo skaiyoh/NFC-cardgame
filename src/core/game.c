@@ -5,6 +5,7 @@
 #include "game.h"
 #include "config.h"
 #include "../logic/card_effects.h"
+#include "../logic/pathfinding.h"
 #include "../rendering/viewport.h"
 #include "../rendering/sprite_renderer.h"
 #include "../rendering/ui.h"
@@ -12,9 +13,14 @@
 #include "../entities/entities.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
+#include <time.h>
 
+static bool s_showLaneDebug = false;
 
 bool game_init(GameState *g) {
+    srand((unsigned int) time(NULL));
+
     const char *db_path = getenv("DB_PATH");
     if (!db_path) db_path = "cardgame.db";
     if (!db_init(&g->db, db_path)) {
@@ -50,8 +56,8 @@ bool game_init(GameState *g) {
     g->nfc.fds[0] = -1;
     g->nfc.fds[1] = -1;
     const char *single_port = getenv("NFC_PORT");
-    const char *port0       = getenv("NFC_PORT_P1");
-    const char *port1       = getenv("NFC_PORT_P2");
+    const char *port0 = getenv("NFC_PORT_P1");
+    const char *port1 = getenv("NFC_PORT_P2");
 
     if (single_port) {
         if (!nfc_init_single(&g->nfc, single_port)) {
@@ -70,13 +76,13 @@ bool game_init(GameState *g) {
 
 // Simulate a knight card play through the full production code path:
 // cards_find → card_action_play → play_knight → spawn_troop_from_card → troop_spawn
-static void game_test_play_knight(GameState *g, int playerIndex) {
-    Card *card = cards_find(&g->deck, "KNIGHT_001");
+static void game_test_play_knight(GameState *g, int playerIndex, int slotIndex) {
+    Card *card = cards_find(&g->deck, "KNIGHT_01");
     if (!card) {
-        printf("[TEST] KNIGHT_001 not found in deck\n");
+        printf("[TEST] KNIGHT_01 not found in deck\n");
         return;
     }
-    card_action_play(card, g, playerIndex, 0);
+    card_action_play(card, g, playerIndex, slotIndex);
 }
 
 static void game_handle_nfc_events(GameState *g) {
@@ -93,18 +99,22 @@ static void game_handle_nfc_events(GameState *g) {
 }
 
 static void game_handle_test_input(GameState *g) {
+    // Toggle lane debug overlay
+    if (IsKeyPressed(KEY_F1)) s_showLaneDebug = !s_showLaneDebug;
+
     // Player 1: key 1
-    if (IsKeyPressed(KEY_ONE)) game_test_play_knight(g, 0);
+    if (IsKeyPressed(KEY_ONE)) game_test_play_knight(g, 0, 0);
+    if (IsKeyPressed(KEY_TWO)) game_test_play_knight(g, 0, 1);
+    if (IsKeyPressed(KEY_THREE)) game_test_play_knight(g, 0, 2);
 
     // Player 2: key Q
-    if (IsKeyPressed(KEY_Q)) game_test_play_knight(g, 1);
+    if (IsKeyPressed(KEY_Q)) game_test_play_knight(g, 1, 0);
+    if (IsKeyPressed(KEY_W)) game_test_play_knight(g, 1, 1);
+    if (IsKeyPressed(KEY_E)) game_test_play_knight(g, 1, 2);
 }
 
 void game_update(GameState *g) {
-    // TODO: No delta-time cap — on frame stalls (debugger breakpoints, OS preemption)
-    // TODO: GetFrameTime() can return large values and teleport entities. Cap with:
-    // TODO:   float deltaTime = fminf(GetFrameTime(), 1.0f / 20.0f);
-    float deltaTime = GetFrameTime();
+    float deltaTime = fminf(GetFrameTime(), 1.0f / 20.0f);
 
     game_handle_nfc_events(g);
     game_handle_test_input(g);
@@ -119,10 +129,36 @@ void game_update(GameState *g) {
 }
 
 // Draw entities for a viewport. Owner's entities draw normally; opponent's
-// crossed entities appear at a mirrored position walking down.
+// crossed entities appear at a mirrored position with mirrored waypoint facing.
 // TODO: Iterates all entities from both players per viewport — O(2 × totalEntities) draw calls per frame.
 // TODO: At MAX_ENTITIES=64 per player (128 entities × 2 passes = 256 iterations), this is fine now,
 // TODO: but consider a spatial cull if entity counts grow.
+static Vector2 game_map_crossed_world_point(const Player *owner, const Player *opponent, Vector2 worldPos) {
+    float lateral = (worldPos.x - owner->playArea.x) / owner->playArea.width;
+    float mirroredLateral = 1.0f - lateral;
+    float depth = owner->playArea.y - worldPos.y;
+    return (Vector2){
+        opponent->playArea.x + mirroredLateral * opponent->playArea.width,
+        opponent->playArea.y + depth
+    };
+}
+
+static void game_apply_crossed_direction(const Entity *e, const Player *owner,
+                                         const Player *opponent, AnimState *crossed) {
+    if (e->lane < 0 || e->lane >= 3) return;
+    if (e->waypointIndex < 0 || e->waypointIndex >= LANE_WAYPOINT_COUNT) return;
+
+    Vector2 mappedPos = game_map_crossed_world_point(owner, opponent, e->position);
+    Vector2 target = owner->laneWaypoints[e->lane][e->waypointIndex];
+    Vector2 mappedTarget = game_map_crossed_world_point(owner, opponent, target);
+    Vector2 diff = {
+        mappedTarget.x - mappedPos.x,
+        mappedTarget.y - mappedPos.y
+    };
+
+    pathfind_apply_direction(crossed, diff);
+}
+
 static void game_draw_entities_for_viewport(GameState *g, const Player *viewportPlayer) {
     for (int pid = 0; pid < 2; pid++) {
         const Player *owner = &g->players[pid];
@@ -139,19 +175,9 @@ static void game_draw_entities_for_viewport(GameState *g, const Player *viewport
                 entity_draw(e);
             } else if (e->position.y < owner->playArea.y) {
                 // Entity has crossed the border — draw in opponent's viewport
-                float lateral = (e->position.x - owner->playArea.x) / owner->playArea.width;
-                float mirroredLateral = 1.0f - lateral;
-                float depth = owner->playArea.y - e->position.y;
-                Vector2 mappedPos = {
-                    opponent->playArea.x + mirroredLateral * opponent->playArea.width,
-                    opponent->playArea.y + depth
-                };
-
-                // TODO: Forcing DIR_DOWN here may interact with entity_update's own direction flip
-                // TODO: (which also flips on border crossing), potentially causing double-flip visual
-                // TODO: artifacts depending on camera rotation. Verify the mirrored-viewport result.
+                Vector2 mappedPos = game_map_crossed_world_point(owner, opponent, e->position);
                 AnimState crossed = e->anim;
-                crossed.dir = DIR_DOWN;
+                game_apply_crossed_direction(e, owner, opponent, &crossed);
                 sprite_draw(e->sprite, &crossed, mappedPos, e->spriteScale);
             }
         }
@@ -186,8 +212,14 @@ void game_render(GameState *g) {
     // viewport_draw_card_slots_debug(&g->players[1]);
     viewport_end();
 
+    // Debug lane overlay — screen space, both players' paths overlap
+    if (s_showLaneDebug) {
+        debug_draw_lane_paths_screen(&g->players[0], g->players[0].camera);
+        debug_draw_lane_paths_screen(&g->players[1], g->players[1].camera);
+    }
+
     // HUD — screen space, drawn after all viewports
-    ui_draw_energy_bar(&g->players[0], 0,   SCREEN_WIDTH / 2);
+    ui_draw_energy_bar(&g->players[0], 0, SCREEN_WIDTH / 2);
     ui_draw_energy_bar(&g->players[1], 960, SCREEN_WIDTH / 2);
 
     // TODO: No visual divider line is drawn between Player 1 and Player 2 viewports. Add a separator.

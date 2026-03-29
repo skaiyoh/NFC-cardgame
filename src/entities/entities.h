@@ -9,10 +9,12 @@
 
 // Lifecycle
 Entity *entity_create(EntityType type, Faction faction, Vector2 pos);
-void entity_destroy(Entity *e);
+
+void entity_destroy(Entity * e);
 
 // Per-frame
 void entity_update(Entity *e, GameState *gs, float deltaTime);
+
 void entity_draw(const Entity *e);
 
 // State transitions

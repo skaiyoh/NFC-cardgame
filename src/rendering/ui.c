@@ -14,11 +14,11 @@ void ui_draw_energy_bar(Player *p, int screenX, int viewportWidth) {
 
     int barW = ENERGY_BAR_WIDTH;
     int barH = ENERGY_BAR_HEIGHT;
-    int x    = screenX + (viewportWidth - barW) / 2;
-    int y    = SCREEN_HEIGHT - ENERGY_BAR_Y_OFFSET - barH;
+    int x = screenX + (viewportWidth - barW) / 2;
+    int y = SCREEN_HEIGHT - ENERGY_BAR_Y_OFFSET - barH;
 
     DrawRectangle(x, y, barW, barH, DARKGRAY);
-    DrawRectangle(x, y, (int)(barW * ratio), barH, GOLD);
+    DrawRectangle(x, y, (int) (barW * ratio), barH, GOLD);
     DrawRectangleLines(x, y, barW, barH, WHITE);
 
     char label[32];

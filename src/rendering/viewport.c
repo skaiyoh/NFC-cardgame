@@ -55,10 +55,10 @@ void viewport_init_split_screen(GameState *gs) {
 
 void viewport_begin(Player *p) {
     BeginScissorMode(
-        (int)p->screenArea.x,
-        (int)p->screenArea.y,
-        (int)p->screenArea.width,
-        (int)p->screenArea.height
+        (int) p->screenArea.x,
+        (int) p->screenArea.y,
+        (int) p->screenArea.width,
+        (int) p->screenArea.height
     );
     BeginMode2D(p->camera);
 }
@@ -97,5 +97,28 @@ void viewport_draw_card_slots_debug(Player *p) {
         slotNum[0] = '1' + i;
         slotNum[1] = '\0';
         DrawText(slotNum, slot->worldPos.x - 5, slot->worldPos.y - 8, 16, WHITE);
+    }
+}
+
+void debug_draw_lane_paths_screen(const Player *p, Camera2D cam) {
+    // Colors per lane: left=BLUE, center=GREEN, right=RED
+    const Color laneColors[3] = {BLUE, GREEN, RED};
+
+    for (int lane = 0; lane < 3; lane++) {
+        Color c = laneColors[lane];
+
+        for (int i = 0; i < LANE_WAYPOINT_COUNT; i++) {
+            // Convert world-space waypoint to screen-space
+            Vector2 sp = GetWorldToScreen2D(p->laneWaypoints[lane][i], cam);
+
+            // Draw waypoint dot in screen space
+            DrawCircleV(sp, 4.0f, c);
+
+            // Draw line segment to next waypoint in screen space
+            if (i < LANE_WAYPOINT_COUNT - 1) {
+                Vector2 spNext = GetWorldToScreen2D(p->laneWaypoints[lane][i + 1], cam);
+                DrawLineV(sp, spNext, c);
+            }
+        }
     }
 }

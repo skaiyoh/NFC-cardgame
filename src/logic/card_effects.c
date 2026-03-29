@@ -19,7 +19,7 @@ typedef struct {
     // TODO: handlers[i].type stores a raw string pointer — safe only if called with string literals.
     // TODO: If ever called with a stack buffer or heap string, this becomes a dangling pointer.
     const char *type;
-    CardPlayFn  play;
+    CardPlayFn play;
 } CardHandler;
 
 static CardHandler handlers[MAX_HANDLERS];
@@ -81,6 +81,7 @@ static void spawn_troop_from_card(const Card *card, GameState *state, int player
     Entity *e = troop_spawn(player, &data, spawnPos, &state->spriteAtlas);
     if (e) {
         e->lane = slotIndex;
+        e->waypointIndex = 1; // Skip waypoint[0] (== spawn pos) to avoid zero-distance pause
         player_add_entity(player, e);
     }
 }
@@ -88,7 +89,7 @@ static void spawn_troop_from_card(const Card *card, GameState *state, int player
 // TODO: play_spell only prints to the console — it has no in-game effect.
 // TODO: Implement actual spell logic: apply damage to targeted entities, trigger AOE effects, etc.
 static void play_spell(const Card *card, GameState *state, int playerIndex, int slotIndex) {
-    (void)slotIndex;
+    (void) slotIndex;
     if (state && !energy_consume(&state->players[playerIndex], card->cost)) {
         printf("[PLAY] Not enough energy for spell '%s' (need %d)\n", card->name, card->cost);
         return;

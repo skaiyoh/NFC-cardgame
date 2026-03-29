@@ -45,29 +45,29 @@ typedef struct {
 } CardLayerOffsets;
 
 typedef struct {
-    CardColor        border_color;
-    bool             show_border;
-    BGStyle          bg_style;
-    bool             show_bg;
-    CardColor        banner_color;
-    bool             show_banner;
-    CardColor        corner_color;
-    bool             show_corner;
-    CardColor        container_color;
+    CardColor border_color;
+    bool show_border;
+    BGStyle bg_style;
+    bool show_bg;
+    CardColor banner_color;
+    bool show_banner;
+    CardColor corner_color;
+    bool show_corner;
+    CardColor container_color;
     ContainerVariant container_variant;
-    bool             show_container;
-    BGStyle          description_style;
-    bool             show_description;
+    bool show_container;
+    BGStyle description_style;
+    bool show_description;
     InnerCornerStyle innercorner_style;
-    bool             show_innercorner;
-    CardColor        gem_color;
-    bool             show_gem;
-    CardColor        socket_color;
-    bool             show_socket;
-    CardColor        energy_top_color;
-    bool             show_energy_top;
-    CardColor        energy_bot_color;
-    bool             show_energy_bot;
+    bool show_innercorner;
+    CardColor gem_color;
+    bool show_gem;
+    CardColor socket_color;
+    bool show_socket;
+    CardColor energy_top_color;
+    bool show_energy_top;
+    CardColor energy_bot_color;
+    bool show_energy_bot;
     CardLayerOffsets offsets;
 } CardVisual;
 
@@ -89,18 +89,30 @@ typedef struct {
 } CardAtlas;
 
 void card_atlas_init(CardAtlas *atlas);
+
 void card_atlas_free(CardAtlas *atlas);
+
 void card_draw(const CardAtlas *atlas, const CardVisual *visual, Vector2 pos, float scale);
+
 void card_draw_ex(const CardAtlas *atlas, const CardVisual *visual,
                   const CardLayerOffsets *offsets, Vector2 pos, float scale);
+
 CardLayerOffsets card_layer_offsets_default(void);
+
 void card_draw_back(const CardAtlas *atlas, CardColor color, Vector2 pos, float scale);
+
 CardVisual card_visual_default(void);
+
 CardVisual card_visual_from_json(const char *json_data);
+
 void card_visual_print_json(const CardVisual *visual);
+
 const char *card_color_name(CardColor c);
+
 const char *bg_style_name(BGStyle s);
+
 const char *container_variant_name(ContainerVariant v);
+
 const char *innercorner_style_name(InnerCornerStyle s);
 
 #endif //NFC_CARDGAME_CARD_RENDERER_H

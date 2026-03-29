@@ -4,14 +4,16 @@
 
 #include "player.h"
 #include "energy.h"
+#include "../logic/pathfinding.h"
 #include "../entities/entities.h"
 #include <string.h>
 #include <stdio.h>
 
 static Vector2 rect_center(Rectangle r) {
-    return (Vector2){
+    return (Vector2)
+    {
         r.x + r.width / 2.0f,
-        r.y + r.height / 2.0f
+                r.y + r.height / 2.0f
     };
 }
 
@@ -37,11 +39,15 @@ void player_init(Player *p, int id, Rectangle playArea, Rectangle screenArea,
     p->detailDefCount = biomeDef->detailDefCount;
 
     // Setup camera
-    p->camera = (Camera2D){0};
+    p->camera = (Camera2D)
+    {
+        0
+    };
     p->camera.target = rect_center(playArea);
-    p->camera.offset = (Vector2){
+    p->camera.offset = (Vector2)
+    {
         screenArea.x + screenArea.width / 2.0f,
-        screenArea.y + screenArea.height / 2.0f
+                screenArea.y + screenArea.height / 2.0f
     };
     p->camera.rotation = cameraRotation;
     p->camera.zoom = 1.0f;
@@ -54,6 +60,9 @@ void player_init(Player *p, int id, Rectangle playArea, Rectangle screenArea,
 
     // Initialize card slots
     player_init_card_slots(p);
+
+    // Pre-compute lane waypoints (must be after player_init_card_slots)
+    lane_generate_waypoints(p);
 
     // Initialize energy
     energy_init(p, 10.0f, 1.0f);
@@ -81,9 +90,10 @@ void player_init_card_slots(Player *p) {
     // TODO: Set e->lane = i inside spawn_troop_from_card when the slot is chosen.
 
     for (int i = 0; i < NUM_CARD_SLOTS; i++) {
-        p->slots[i].worldPos = (Vector2){
+        p->slots[i].worldPos = (Vector2)
+        {
             p->playArea.x + (i + 0.5f) * laneWidth,
-            spawnY
+                    spawnY
         };
         p->slots[i].activeCard = NULL;
         p->slots[i].cooldownTimer = 0.0f;
@@ -197,38 +207,42 @@ bool player_slot_is_available(Player *p, int slotIndex) {
 
 Vector2 player_tile_to_world(Player *p, int col, int row) {
     float ts = p->tilemap.tileSize;
-    return (Vector2){
+    return (Vector2)
+    {
         p->tilemap.originX + col * ts + ts / 2.0f,
-        p->tilemap.originY + row * ts + ts / 2.0f
+                p->tilemap.originY + row * ts + ts / 2.0f
     };
 }
 
 void player_world_to_tile(Player *p, Vector2 world, int *col, int *row) {
     float ts = p->tilemap.tileSize;
-    *col = (int)((world.x - p->tilemap.originX) / ts);
-    *row = (int)((world.y - p->tilemap.originY) / ts);
+    *col = (int) ((world.x - p->tilemap.originX) / ts);
+    *row = (int) ((world.y - p->tilemap.originY) / ts);
 }
 
 Vector2 player_center(Player *p) {
-    return (Vector2){
+    return (Vector2)
+    {
         p->playArea.x + p->playArea.width / 2.0f,
-        p->playArea.y + p->playArea.height / 2.0f
+                p->playArea.y + p->playArea.height / 2.0f
     };
 }
 
 Vector2 player_base_pos(Player *p) {
     // Base sits at the back of the player's area (high Y = near their edge)
-    return (Vector2){
+    return (Vector2)
+    {
         p->playArea.x + p->playArea.width / 2.0f,
-        p->playArea.y + p->playArea.height * 0.9f
+                p->playArea.y + p->playArea.height * 0.9f
     };
 }
 
 Vector2 player_front_pos(Player *p) {
     // Front line: the edge closest to the opponent
-    return (Vector2){
+    return (Vector2)
+    {
         p->playArea.x + p->playArea.width / 2.0f,
-        p->playArea.y + p->playArea.height * 0.1f
+                p->playArea.y + p->playArea.height * 0.1f
     };
 }
 
@@ -241,7 +255,10 @@ Vector2 player_lane_pos(Player *p, int lane, float depth) {
     // Lerp from base (0.9) to front (0.1)
     float t = 0.9f - depth * 0.8f;
     float y = p->playArea.y + p->playArea.height * t;
-    return (Vector2){ x, y };
+    return (Vector2)
+    {
+        x, y
+    };
 }
 
 Vector2 player_slot_spawn_pos(Player *p, int slotIndex) {
