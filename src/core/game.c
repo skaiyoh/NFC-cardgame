@@ -166,6 +166,10 @@ static void game_draw_entities_for_viewport(GameState *g, const Player *viewport
 
         for (int i = 0; i < owner->entityCount; i++) {
             const Entity *e = owner->entities[i];
+            // Compute sprite half-height for seam overlap detection
+            float spriteHalfH = (SPRITE_FRAME_SIZE * e->spriteScale) * 0.5f;
+            // The seam boundary is at the top edge of the owner's play area
+            float seamBorder = owner->playArea.y;
 
             if (viewportPlayer == owner) {
                 // Draw in owner's viewport — scissor clips at the edge naturally
@@ -173,12 +177,18 @@ static void game_draw_entities_for_viewport(GameState *g, const Player *viewport
                 // TODO: owner's space). The scissor clips it, but the draw call still reaches the GPU.
                 // TODO: Consider skipping draw when entity is clearly outside the owner's viewport bounds.
                 entity_draw(e);
-            } else if (e->position.y < owner->playArea.y) {
-                // Entity has crossed the border — draw in opponent's viewport
-                Vector2 mappedPos = game_map_crossed_world_point(owner, opponent, e->position);
-                AnimState crossed = e->anim;
-                game_apply_crossed_direction(e, owner, opponent, &crossed);
-                sprite_draw(e->sprite, &crossed, mappedPos, e->spriteScale);
+            } else {
+                // Opponent viewport: draw if entity has crossed OR if sprite overlaps seam
+                bool crossed = (e->position.y < seamBorder);
+                bool spriteOverlapsSeam = (e->position.y - spriteHalfH < seamBorder) &&
+                                          (e->position.y + spriteHalfH > seamBorder);
+
+                if (crossed || spriteOverlapsSeam) {
+                    Vector2 mappedPos = game_map_crossed_world_point(owner, opponent, e->position);
+                    AnimState crossedAnim = e->anim;
+                    game_apply_crossed_direction(e, owner, opponent, &crossedAnim);
+                    sprite_draw(e->sprite, &crossedAnim, mappedPos, e->spriteScale);
+                }
             }
         }
     }
