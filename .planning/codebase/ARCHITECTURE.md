@@ -10,6 +10,8 @@
 - Single-threaded game loop (init -> update -> render -> cleanup)
 - Flat struct-based data model (no OOP inheritance; C structs with function-based dispatch)
 - Split-screen 2-player design with rotated Camera2D viewports
+- Canonical single-world battlefield shared by both players
+- Player 2 viewport composited through an offscreen `RenderTexture2D`
 - Physical NFC hardware integration via serial protocol (optional; keyboard fallback)
 - SQLite database for card definitions and NFC tag enrollment
 - Card type -> behavior dispatch via a function pointer registry (`CardHandler`)
@@ -23,9 +25,9 @@
 - Depends on: Every other layer (initializes and orchestrates all subsystems)
 - Used by: Nothing (top-level entry point)
 - Key files:
-  - `src/core/game.c` -- `main()`, game loop, NFC event dispatch, entity drawing per viewport
+  - `src/core/game.c` -- `main()`, game loop, NFC event dispatch, canonical battlefield rendering, P2 RT composite
   - `src/core/game.h` -- Public API: `game_init`, `game_update`, `game_render`, `game_cleanup`
-  - `src/core/types.h` -- Central type definitions (`GameState`, `Player`, `Entity`, `CardSlot`); includes all subsystem headers
+  - `src/core/types.h` -- Central type definitions (`GameState`, `Player`, `Entity`, `CardSlot`, `Battlefield`); includes all subsystem headers
   - `src/core/config.h` -- Compile-time constants (screen size, asset paths, gameplay tuning, energy bar dimensions)
 
 **Data (`src/data/`):**
@@ -46,10 +48,10 @@
 - Used by: `src/core/game.c` (render path), `src/entities/entities.c` (entity_draw), `tools/`
 - Key files:
   - `src/rendering/biome.h` / `src/rendering/biome.c` -- BiomeDef definitions (grass, undead, snow, swamp), tile block compilation, multi-layer overlay system
-  - `src/rendering/tilemap_renderer.h` / `src/rendering/tilemap_renderer.c` -- TileMap creation, weighted random tile placement, base/detail/layer drawing
+  - `src/rendering/tilemap_renderer.h` / `src/rendering/tilemap_renderer.c` -- TileMap creation, weighted random tile placement, base/detail/layer drawing, oriented draws for opposing-side terrain art
   - `src/rendering/sprite_renderer.h` / `src/rendering/sprite_renderer.c` -- SpriteAtlas (loads all character sprite sheets), AnimState per-entity, directional sprite drawing
   - `src/rendering/card_renderer.h` / `src/rendering/card_renderer.c` -- CardAtlas from sprite sheet, layered card compositing (11 visual layers), JSON-to-visual parsing
-  - `src/rendering/viewport.h` / `src/rendering/viewport.c` -- Split-screen initialization (scissor + Camera2D), world/screen coordinate conversion, per-player tilemap draw
+  - `src/rendering/viewport.h` / `src/rendering/viewport.c` -- Split-screen initialization (scissor + Camera2D), world/screen coordinate conversion, battlefield territory drawing
   - `src/rendering/ui.h` / `src/rendering/ui.c` -- Energy bar HUD drawing in screen space
 
 **Entities (`src/entities/`):**
@@ -71,7 +73,7 @@
 - Depends on: `src/core/types.h`, `src/entities/`, `src/rendering/biome.h`
 - Used by: `src/core/game.c` (player updates), `src/logic/card_effects.c` (spawn/energy), `src/rendering/viewport.c` (init)
 - Key files:
-  - `src/systems/player.h` / `src/systems/player.c` -- `player_init` (camera, tilemap, energy, card slots), `player_update` (energy + cooldowns), `player_update_entities` (update + sweep dead), entity add/remove/find, position helpers (lane, base, front, tile-to-world)
+  - `src/systems/player.h` / `src/systems/player.c` -- `player_init` (camera, side, energy, card slots from Battlefield spawn anchors), `player_update` (energy + cooldowns), lightweight seat/view state
   - `src/systems/energy.h` / `src/systems/energy.c` -- `energy_init`, `energy_update` (time-based regen), `energy_can_afford`, `energy_consume`, `energy_restore`
   - `src/systems/spawn.h` / `src/systems/spawn.c` -- Stub: spawn logic currently lives in `src/logic/card_effects.c`
   - `src/systems/match.h` / `src/systems/match.c` -- Stub: pregame/match phase system declared but unimplemented
@@ -79,13 +81,13 @@
 **Logic (`src/logic/`):**
 - Purpose: Game rules -- card effect dispatch, combat resolution, pathfinding, win conditions
 - Location: `src/logic/`
-- Contains: Card action registry (function pointer table), troop/spell handlers, combat/pathfinding/win stubs
+- Contains: Card action registry (function pointer table), troop/spell handlers, canonical combat/pathfinding, win stubs
 - Depends on: `src/entities/`, `src/systems/`, `src/data/cards.h`, `lib/cJSON.h`
 - Used by: `src/core/game.c` (card_action_play on NFC/keyboard events)
 - Key files:
-  - `src/logic/card_effects.h` / `src/logic/card_effects.c` -- `CardPlayFn` typedef, `card_action_register`, `card_action_play` dispatcher, per-type handlers (knight, healer, assassin, brute, farmer, spell), `spawn_troop_from_card` helper
-  - `src/logic/combat.h` / `src/logic/combat.c` -- Stub: `combat_resolve`, `combat_in_range`, `combat_find_target` declared but not implemented
-  - `src/logic/pathfinding.h` / `src/logic/pathfinding.c` -- Stub: `pathfind_next_step` declared but not implemented
+  - `src/logic/card_effects.h` / `src/logic/card_effects.c` -- `CardPlayFn` typedef, `card_action_register`, `card_action_play` dispatcher, per-type handlers, canonical troop spawn via Battlefield
+  - `src/logic/combat.h` / `src/logic/combat.c` -- Canonical direct-distance targeting and damage resolution over the Battlefield registry
+  - `src/logic/pathfinding.h` / `src/logic/pathfinding.c` -- Battlefield waypoint following and sprite-facing updates in canonical space
   - `src/logic/win_condition.h` / `src/logic/win_condition.c` -- Stub: `win_check`, `win_trigger` declared but not implemented
 
 **Hardware (`src/hardware/`):**
@@ -110,9 +112,10 @@
 6. Handler (e.g. `play_knight`) calls `spawn_troop_from_card()` which:
    - Checks `energy_consume()` for cost deduction
    - Parses card JSON via cJSON into `TroopData`
+   - Gets canonical spawn coordinates from `Battlefield`
    - Calls `troop_spawn()` which calls `entity_create()` and configures stats/sprite
-   - Calls `player_add_entity()` to insert entity into the player's entity array
-7. Entity walks upward each frame in `entity_update()`, eventually crossing into opponent viewport
+   - Calls `bf_add_entity()` to insert the entity into the Battlefield registry
+7. Entity updates in canonical space in `entity_update()` and can traverse either territory with no cross-space remap
 
 **Keyboard Test Input (debug fallback):**
 
@@ -123,20 +126,23 @@
 **Rendering Pipeline (per frame):**
 
 1. `game_render()` calls `BeginDrawing()` + `ClearBackground()`
-2. For each player (P1, P2):
-   a. `viewport_begin()` -- `BeginScissorMode()` (clips to half-screen) + `BeginMode2D()` (rotated camera)
-   b. `viewport_draw_tilemap()` -- draws base tiles, detail overlay, biome layers
-   c. `game_draw_entities_for_viewport()` -- draws owner's entities normally, mirrors crossed-border entities into opponent viewport
+2. Player 1 renders directly to the left viewport:
+   a. `viewport_begin()` -- `BeginScissorMode()` + `BeginMode2D()`
+   b. `viewport_draw_battlefield_tilemap()` -- draws both battlefield territories
+   c. `game_draw_canonical_entities()` -- draws every live entity directly from canonical coordinates
    d. `DrawText()` -- player label
    e. `viewport_end()` -- `EndMode2D()` + `EndScissorMode()`
-3. HUD layer (screen space, no camera): `ui_draw_energy_bar()` for each player
-4. `EndDrawing()`
+3. Player 2 renders into an offscreen `RenderTexture2D` using its camera, then that texture is composited into the right viewport
+4. Battlefield tilemaps are drawn by territory; the top territory's terrain sprites are rotated 180 degrees in world space so the biome reads correctly from the opposing side
+5. HUD layer (screen space, no camera): `ui_draw_energy_bar()` for each player
+6. `EndDrawing()`
 
 **State Management:**
 - All game state is owned by a single `GameState` struct allocated on the stack in `main()`
-- `GameState` owns: `DB`, `Deck`, `CardAtlas`, `Player[2]`, `BiomeDef[BIOME_COUNT]`, `SpriteAtlas`, `NFCReader`
-- Each `Player` owns: `TileMap`, local `TileDef[]` copies, `CardSlot[3]`, `Entity*[MAX_ENTITIES]`, energy state, `Camera2D`
-- Entities are heap-allocated (`malloc`), owned by their player's entity array, freed via swap-with-last sweep
+- `GameState` owns: `DB`, `Deck`, `CardAtlas`, `Player[2]`, `BiomeDef[BIOME_COUNT]`, `Battlefield`, `SpriteAtlas`, `NFCReader`, `p2RT`
+- `Battlefield` owns: world geometry, territories, per-territory tilemaps/biome defs, canonical waypoints, spawn anchors, and the entity registry
+- Each `Player` owns: seat/view state (`side`, `screenArea`, `Camera2D`), `CardSlot[3]`, and energy state
+- Entities are heap-allocated (`malloc`), registered in the Battlefield array, and freed during the backward sweep in `game_update()`
 
 ## Key Abstractions
 
@@ -161,7 +167,7 @@
 - Pattern: Static array of `{type, CardPlayFn}` pairs; O(n) linear scan dispatch
 
 **TileMap:**
-- Purpose: Per-player generated grid of tile indices with optional detail and biome layer overlays
+- Purpose: Per-territory generated grid of tile indices with optional detail and biome layer overlays
 - Definition: `src/rendering/tilemap_renderer.h` (lines 52-62)
 - Pattern: 1D flat arrays (`cells`, `detailCells`, `biomeLayerCells[]`) indexed by `row * cols + col`
 

@@ -54,9 +54,10 @@ Vector2 viewport_screen_to_world(Player *p, Vector2 screenPos) {
 
 void viewport_draw_battlefield_tilemap(const Battlefield *bf, BattleSide side) {
     Territory *t = bf_territory_for_side((Battlefield *)bf, side);
-    tilemap_draw(&t->tilemap, t->tileDefs);
-    tilemap_draw_details(&t->tilemap, t->detailDefs);
-    tilemap_draw_biome_layers(&t->tilemap, t->biomeDef);
+    float rotationDegrees = (side == SIDE_TOP) ? 180.0f : 0.0f;
+    tilemap_draw_oriented(&t->tilemap, t->tileDefs, rotationDegrees);
+    tilemap_draw_details_oriented(&t->tilemap, t->detailDefs, rotationDegrees);
+    tilemap_draw_biome_layers_oriented(&t->tilemap, t->biomeDef, rotationDegrees);
 }
 
 void viewport_draw_card_slots_debug(Player *p) {

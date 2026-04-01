@@ -72,10 +72,14 @@ TileMap tilemap_create_biome(Rectangle area, float tileSize, unsigned int seed,
                              const BiomeDef *biome);
 
 void tilemap_draw(TileMap *map, TileDef tileDefs[TILE_COUNT]);
+void tilemap_draw_oriented(TileMap *map, TileDef tileDefs[TILE_COUNT], float rotationDegrees);
 
 void tilemap_draw_details(TileMap *map, TileDef *detailDefs);
+void tilemap_draw_details_oriented(TileMap *map, TileDef *detailDefs, float rotationDegrees);
 
 void tilemap_draw_biome_layers(TileMap *map, const struct BiomeDef *def);
+void tilemap_draw_biome_layers_oriented(TileMap *map, const struct BiomeDef *def,
+                                        float rotationDegrees);
 
 void tilemap_free(TileMap *map);
 

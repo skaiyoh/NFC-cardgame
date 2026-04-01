@@ -8,6 +8,7 @@ Built in C with Raylib, SQLite, and Arduino hardware.
 
 - **Physical NFC card input** — each player has 3 NFC reader slots wired to an Arduino, mapped to in-game lanes
 - **Split-screen two-player** — rotated viewports so players sit across from each other
+- **Canonical shared battlefield** — both players view the same `1080 x 1920` world with a seam at `y=960`
 - **Tile-based biome rendering** — procedural tilemaps with multiple biome themes (plains, cursed lands, undead, etc.)
 - **Entity system** — troops, buildings, and projectiles with combat, pathfinding, and win conditions
 - **Energy system** — card plays cost energy that regenerates over time
@@ -74,16 +75,27 @@ lib/            Third-party libs (cJSON, Raylib headers)
 sqlite/         Database schema and seed data
 ```
 
+## Rendering Model
+
+- The match runs in one canonical battlefield owned by `Battlefield`, not separate per-player world spaces.
+- The board is `1080 x 1920` world units with two territories:
+  - top: `{0, 0, 1080, 960}`
+  - bottom: `{0, 960, 1080, 960}`
+- Player 1 and Player 2 each render that same world through their own rotated viewport.
+- Player 2 is rendered through a `RenderTexture2D` and composited into the right half of the screen to preserve seam visibility and opposite-seat perspective.
+- The top territory biome art is rotated `180°` in world space so terrain reads correctly from the opposing side without reintroducing seam clipping.
+
 ## Card Flow
 
 ```
-NFC read  ->  cards_find(card_id)  ->  g->currentPlayerIndex = playerIndex
-          ->  card_action_play(card, g)
+NFC read  ->  cards_find_by_uid(uid)
+          ->  card_action_play(card, g, playerIndex, slotIndex)
                 ->  play_knight(card, state)
                       ->  spawn_troop_from_card(card, state)
                             ->  troop_create_data_from_card(card)   <- reads JSON data
-                            ->  troop_spawn(player, data, pos, atlas)
-                            ->  player_add_entity(player, e)
+                            ->  bf_spawn_pos(battlefield, side, slot)
+                            ->  troop_spawn(player, data, canonical_pos, atlas)
+                            ->  bf_add_entity(battlefield, e)
 ```
 
 ## Database

@@ -7,6 +7,20 @@
 #include <stdlib.h>
 #include <string.h>
 
+static void draw_tile_sprite(const TileDef *td, float x, float y, float w, float h,
+                             float rotationDegrees) {
+    Rectangle dst = {x, y, w, h};
+    Vector2 origin = {0.0f, 0.0f};
+
+    if (rotationDegrees != 0.0f) {
+        dst.x = x + w * 0.5f;
+        dst.y = y + h * 0.5f;
+        origin = (Vector2){w * 0.5f, h * 0.5f};
+    }
+
+    DrawTexturePro(*td->texture, td->source, dst, origin, rotationDegrees, WHITE);
+}
+
 void tilemap_init_defs(Texture2D *tex, TileDef tileDefs[TILE_COUNT]) {
     for (int r = 0; r < 4; r++) {
         for (int c = 0; c < 4; c++) {
@@ -170,7 +184,7 @@ TileMap tilemap_create_biome(Rectangle area, float tileSize, unsigned int seed,
     return map;
 }
 
-void tilemap_draw(TileMap *map, TileDef tileDefs[TILE_COUNT]) {
+void tilemap_draw_oriented(TileMap *map, TileDef tileDefs[TILE_COUNT], float rotationDegrees) {
     for (int row = 0; row < map->rows; row++) {
         for (int col = 0; col < map->cols; col++) {
             // TODO: No bounds check on the cell value before indexing tileDefs[].
@@ -180,25 +194,16 @@ void tilemap_draw(TileMap *map, TileDef tileDefs[TILE_COUNT]) {
             TileDef *td = &tileDefs[map->cells[row * map->cols + col]];
             float tx = map->originX + col * map->tileSize;
             float ty = map->originY + row * map->tileSize;
-            DrawTexturePro(*td->texture, td->source,
-                           (Rectangle)
-            {
-                tx, ty, map->tileSize, map->tileSize
-            }
-            ,
-            (Vector2)
-            {
-                0, 0
-            }
-            ,
-            0.0f, WHITE
-            )
-            ;
+            draw_tile_sprite(td, tx, ty, map->tileSize, map->tileSize, rotationDegrees);
         }
     }
 }
 
-void tilemap_draw_details(TileMap *map, TileDef *detailDefs) {
+void tilemap_draw(TileMap *map, TileDef tileDefs[TILE_COUNT]) {
+    tilemap_draw_oriented(map, tileDefs, 0.0f);
+}
+
+void tilemap_draw_details_oriented(TileMap *map, TileDef *detailDefs, float rotationDegrees) {
     if (!map->detailCells || !detailDefs) return;
 
     // Scale source pixels to screen pixels consistently.
@@ -218,25 +223,17 @@ void tilemap_draw_details(TileMap *map, TileDef *detailDefs) {
             // TODO: sprite to visually bleed into adjacent tiles. Clamp or cap dw/dh to tileSize.
             float tx = map->originX + col * map->tileSize + (map->tileSize - dw) * 0.5f;
             float ty = map->originY + row * map->tileSize + (map->tileSize - dh) * 0.5f;
-            DrawTexturePro(*td->texture, td->source,
-                           (Rectangle)
-            {
-                tx, ty, dw, dh
-            }
-            ,
-            (Vector2)
-            {
-                0, 0
-            }
-            ,
-            0.0f, WHITE
-            )
-            ;
+            draw_tile_sprite(td, tx, ty, dw, dh, rotationDegrees);
         }
     }
 }
 
-void tilemap_draw_biome_layers(TileMap *map, const struct BiomeDef *def) {
+void tilemap_draw_details(TileMap *map, TileDef *detailDefs) {
+    tilemap_draw_details_oriented(map, detailDefs, 0.0f);
+}
+
+void tilemap_draw_biome_layers_oriented(TileMap *map, const struct BiomeDef *def,
+                                        float rotationDegrees) {
     if (!def || def->biomeLayerCount <= 0) return;
 
     for (int li = 0; li < def->biomeLayerCount && li < MAX_BIOME_LAYERS; li++) {
@@ -258,20 +255,7 @@ void tilemap_draw_biome_layers(TileMap *map, const struct BiomeDef *def) {
                     float dh = td->source.height * scale;
                     float tx = map->originX + col * map->tileSize + (map->tileSize - dw) * 0.5f;
                     float ty = map->originY + row * map->tileSize + (map->tileSize - dh) * 0.5f;
-                    DrawTexturePro(*td->texture, td->source,
-                                   (Rectangle)
-                    {
-                        tx, ty, dw, dh
-                    }
-                    ,
-                    (Vector2)
-                    {
-                        0, 0
-                    }
-                    ,
-                    0.0f, WHITE
-                    )
-                    ;
+                    draw_tile_sprite(td, tx, ty, dw, dh, rotationDegrees);
                 }
             }
         } else {
@@ -289,23 +273,14 @@ void tilemap_draw_biome_layers(TileMap *map, const struct BiomeDef *def) {
                 float dh = td->source.height * scale;
                 float tx = map->originX + col * map->tileSize + (map->tileSize - dw) * 0.5f;
                 float ty = map->originY + row * map->tileSize + (map->tileSize - dh) * 0.5f;
-                DrawTexturePro(*td->texture, td->source,
-                               (Rectangle)
-                {
-                    tx, ty, dw, dh
-                }
-                ,
-                (Vector2)
-                {
-                    0, 0
-                }
-                ,
-                0.0f, WHITE
-                )
-                ;
+                draw_tile_sprite(td, tx, ty, dw, dh, rotationDegrees);
             }
         }
     }
+}
+
+void tilemap_draw_biome_layers(TileMap *map, const struct BiomeDef *def) {
+    tilemap_draw_biome_layers_oriented(map, def, 0.0f);
 }
 
 void tilemap_free(TileMap *map) {
