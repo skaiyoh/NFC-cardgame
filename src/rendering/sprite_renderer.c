@@ -5,21 +5,113 @@
 #include "sprite_renderer.h"
 #include "../core/config.h"
 #include <string.h>
+#include <stdlib.h>
+
+typedef struct {
+    const char *path;
+    int frameCount;
+    const Rectangle *visibleBounds;
+} SpriteSheetAtlasEntry;
+
+#include "sprite_frame_atlas.h"
+
+static int sheet_bounds_index(const SpriteSheet *sheet, SpriteDirection dir, int frame) {
+    return dir * sheet->frameCount + frame;
+}
+
+static Rectangle compute_visible_bounds(const Color *pixels, int imageWidth,
+                                        int frameX, int frameY,
+                                        int frameWidth, int frameHeight) {
+    int minX = frameWidth;
+    int minY = frameHeight;
+    int maxX = -1;
+    int maxY = -1;
+
+    for (int y = 0; y < frameHeight; y++) {
+        for (int x = 0; x < frameWidth; x++) {
+            Color px = pixels[(frameY + y) * imageWidth + (frameX + x)];
+            if (px.a == 0) continue;
+
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+        }
+    }
+
+    if (maxX < minX || maxY < minY) {
+        return (Rectangle){0.0f, 0.0f, 0.0f, 0.0f};
+    }
+
+    return (Rectangle){
+        (float) minX,
+        (float) minY,
+        (float) (maxX - minX + 1),
+        (float) (maxY - minY + 1)
+    };
+}
+
+static const SpriteSheetAtlasEntry *find_sheet_atlas_entry(const char *path, int frameCount) {
+    for (int i = 0; i < kSpriteSheetAtlasCount; i++) {
+        const SpriteSheetAtlasEntry *entry = &kSpriteSheetAtlas[i];
+        if (entry->frameCount == frameCount && strcmp(entry->path, path) == 0) {
+            return entry;
+        }
+    }
+    return NULL;
+}
+
+static Rectangle *alloc_visible_bounds(int frameCount) {
+    return calloc((size_t) (frameCount * DIR_COUNT), sizeof(Rectangle));
+}
+
+static void populate_visible_bounds_from_image(SpriteSheet *sheet, const char *path) {
+    if (!sheet->visibleBounds) return;
+
+    Image image = LoadImage(path);
+    if (!image.data) return;
+
+    Color *pixels = LoadImageColors(image);
+    if (pixels) {
+        for (int dir = 0; dir < DIR_COUNT; dir++) {
+            for (int frame = 0; frame < sheet->frameCount; frame++) {
+                int frameX = frame * sheet->frameWidth;
+                int frameY = dir * sheet->frameHeight;
+                sheet->visibleBounds[sheet_bounds_index(sheet, (SpriteDirection) dir, frame)] =
+                    compute_visible_bounds(pixels, image.width, frameX, frameY,
+                                           sheet->frameWidth, sheet->frameHeight);
+            }
+        }
+        UnloadImageColors(pixels);
+    }
+
+    UnloadImage(image);
+}
 
 // Helper: load one animation sheet and compute frame dimensions
 static SpriteSheet load_sheet(const char *path, int frameCount) {
     SpriteSheet s = {0};
-    // TODO: LoadTexture returns a texture with id==0 on failure (file missing / wrong path).
-    // TODO: No error is logged here — init continues silently with a broken texture.
-    // TODO: Check s.texture.id == 0 after load and log the failing path so asset issues are visible.
     s.texture = LoadTexture(path);
+    if (s.texture.id == 0) return s;
+
     SetTextureFilter(s.texture, TEXTURE_FILTER_POINT);
+
     s.frameCount = frameCount;
     s.frameWidth = s.texture.width / frameCount;
     // TODO: frameHeight assumes exactly DIR_COUNT (3) rows in the sheet (DOWN, SIDE, UP).
     // TODO: If any sprite sheet has a different row layout this silently produces wrong frame heights.
     // TODO: Validate texture.height % DIR_COUNT == 0 and log a warning if not.
     s.frameHeight = s.texture.height / DIR_COUNT;
+    s.visibleBounds = alloc_visible_bounds(s.frameCount);
+
+    const SpriteSheetAtlasEntry *entry = find_sheet_atlas_entry(path, frameCount);
+    if (s.visibleBounds && entry) {
+        memcpy(s.visibleBounds, entry->visibleBounds,
+               (size_t) (s.frameCount * DIR_COUNT) * sizeof(Rectangle));
+    } else {
+        populate_visible_bounds_from_image(&s, path);
+    }
+
     return s;
 }
 
@@ -87,6 +179,8 @@ void sprite_atlas_free(SpriteAtlas *atlas) {
     // Free base sprites
     CharacterSprite *b = &atlas->base;
     for (int i = 0; i < ANIM_COUNT; i++) {
+        free(b->anims[i].visibleBounds);
+        b->anims[i].visibleBounds = NULL;
         if (b->anims[i].texture.id > 0) {
             UnloadTexture(b->anims[i].texture);
         }
@@ -96,6 +190,8 @@ void sprite_atlas_free(SpriteAtlas *atlas) {
     for (int t = 0; t < SPRITE_TYPE_COUNT; t++) {
         if (!atlas->typeLoaded[t]) continue;
         for (int i = 0; i < ANIM_COUNT; i++) {
+            free(atlas->types[t].anims[i].visibleBounds);
+            atlas->types[t].anims[i].visibleBounds = NULL;
             if (atlas->types[t].anims[i].texture.id > 0) {
                 UnloadTexture(atlas->types[t].anims[i].texture);
             }
@@ -103,12 +199,49 @@ void sprite_atlas_free(SpriteAtlas *atlas) {
     }
 }
 
+const SpriteSheet *sprite_sheet_get(const CharacterSprite *cs, AnimationType anim) {
+    if (!cs || anim < 0 || anim >= ANIM_COUNT) return NULL;
+    return &cs->anims[anim];
+}
+
+Rectangle sprite_visible_bounds(const CharacterSprite *cs, const AnimState *state,
+                                Vector2 pos, float scale) {
+    if (!state) return (Rectangle){pos.x, pos.y, 0.0f, 0.0f};
+
+    const SpriteSheet *sheet = sprite_sheet_get(cs, state->anim);
+    if (!sheet) return (Rectangle){pos.x, pos.y, 0.0f, 0.0f};
+
+    int frame = state->frame % sheet->frameCount;
+    Rectangle bounds = {0.0f, 0.0f, (float) sheet->frameWidth, (float) sheet->frameHeight};
+    if (sheet->visibleBounds) {
+        bounds = sheet->visibleBounds[sheet_bounds_index(sheet, state->dir, frame)];
+    }
+    if (bounds.width <= 0.0f || bounds.height <= 0.0f) {
+        return (Rectangle){pos.x, pos.y, 0.0f, 0.0f};
+    }
+
+    float frameLeft = pos.x - (float) sheet->frameWidth * scale * 0.5f;
+    float frameTop = pos.y - (float) sheet->frameHeight * scale * 0.5f;
+    float visibleX = frameLeft + bounds.x * scale;
+
+    if (state->flipH) {
+        visibleX = frameLeft + ((float) sheet->frameWidth - (bounds.x + bounds.width)) * scale;
+    }
+
+    return (Rectangle){
+        visibleX,
+        frameTop + bounds.y * scale,
+        bounds.width * scale,
+        bounds.height * scale
+    };
+}
+
 void sprite_draw(const CharacterSprite *cs, const AnimState *state,
                  Vector2 pos, float scale) {
-    const SpriteSheet *sheet = &cs->anims[state->anim];
+    const SpriteSheet *sheet = sprite_sheet_get(cs, state->anim);
     // TODO: When LoadTexture fails, texture.id == 0 and we silently return without drawing.
     // TODO: This is safe but gives no indication of why nothing appears. Log a warning at load time.
-    if (sheet->texture.id == 0) return;
+    if (!sheet || sheet->texture.id == 0) return;
 
     int col = state->frame % sheet->frameCount;
     int row = state->dir;

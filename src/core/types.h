@@ -135,6 +135,10 @@ struct GameState {
     // Screen layout
     int halfWidth; // Half screen width for split screen
 
+    // Render target for crossed entities near the center seam.
+    // Drawn without scissor so sprites extend past x=halfWidth seamlessly.
+    RenderTexture2D seamRT;
+
     // NFC hardware (two Arduinos, one per player)
     NFCReader nfc;
 };

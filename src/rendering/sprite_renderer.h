@@ -31,6 +31,7 @@ typedef struct {
     int frameWidth;
     int frameHeight;
     int frameCount; // number of columns (frames per direction)
+    Rectangle *visibleBounds; // frame-local opaque bounds, indexed by dir * frameCount + frame
 } SpriteSheet;
 
 // All animations for one character type
@@ -68,6 +69,11 @@ typedef struct {
 void sprite_atlas_init(SpriteAtlas *atlas);
 
 void sprite_atlas_free(SpriteAtlas *atlas);
+
+const SpriteSheet *sprite_sheet_get(const CharacterSprite *cs, AnimationType anim);
+
+Rectangle sprite_visible_bounds(const CharacterSprite *cs, const AnimState *state,
+                                Vector2 pos, float scale);
 
 void sprite_draw(const CharacterSprite *cs, const AnimState *state,
                  Vector2 pos, float scale);

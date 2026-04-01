@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 11-01-PLAN.md
-last_updated: "2026-04-01T06:49:19.000Z"
-last_activity: 2026-04-01 -- Completed 11-01 (battlefield_math module)
+stopped_at: Replanned Phase 11 around full canonical Battlefield rewrite
+last_updated: "2026-04-01T16:56:03.061Z"
+last_activity: 2026-04-01 -- Phase 11 execution started
 progress:
   total_phases: 11
   completed_phases: 1
   total_plans: 8
-  completed_plans: 3
-  percent: 0
+  completed_plans: 4
+  percent: 20
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-10)
 ## Current Position
 
 Phase: 11 (canonical-single-world-space-refactor) — EXECUTING
-Plan: 2 of 5
+Plan: 1 of 5
 Status: Executing Phase 11
-Last activity: 2026-04-01 -- Completed 11-01 (battlefield_math module)
+Last activity: 2026-04-01 -- Phase 11 execution started
 
 Progress: [██░░░░░░░░] 20%
 
@@ -77,21 +77,29 @@ Recent decisions affecting current work:
 - [Phase 11]: Vector2 guarded with VECTOR2_DEFINED for Raylib/test coexistence
 - [Phase 11]: Mirror transform is self-inverse (same formula for canonical<->local SIDE_TOP)
 - [Phase 11]: On-seam boundary (y==SEAM_Y) assigned to SIDE_BOTTOM territory
+- [Phase 11]: Do not spend more work shipping a dual-space seam patch; Phase 11 deliverable is the full canonical Battlefield rewrite
+- [Phase 11]: Exact pixel continuity at screen x=960 is not a valid success criterion under +90/-90 opposite cameras; success criterion is correct independent views with no remap-driven disappearance
+- [Phase 11]: `seamRT`, crossed remap rendering, and duplicate cross-space math are transitional code and must be deleted before Phase 11 is complete
 
 ### Pending Todos
 
-None yet.
+- 11-02: Introduce Battlefield/Territory model and make it the authoritative source of board geometry
+- 11-03: Migrate spawn, pathfinding, combat, and entity registry to canonical Battlefield coordinates
+- 11-04: Rewrite rendering to draw canonical entities directly and delete seam remap / RenderTexture special cases
+- 11-05: Remove remaining Player adapter fields, add debug assertions, and finish test/manual validation
 
 ### Roadmap Evolution
 
-- Phase 11 added: Canonical single-world-space refactor — extract battlefield math, fix seam rendering, introduce Battlefield model, migrate simulation and rendering to canonical coordinates
+- Phase 11 refined: Canonical single-world-space refactor now proceeds as a full rewrite, not a tactical seam-fix plus refactor bundle
 
 ### Blockers/Concerns
 
 - `building_create_base` currently returns NULL -- must be fixed in Phase 2 before combat phases can terminate matches
+- The current dual-space seam fixes are not converging because the real problem is architectural ownership of world space, not frame bounds math
+- Opposite rotated cameras cannot both own the exact same seam pixels and remain visually identical; validation must focus on canonical visibility correctness instead
 
 ## Session Continuity
 
-Last session: 2026-04-01T06:49:19Z
-Stopped at: Completed 11-01-PLAN.md
+Last session: 2026-04-01T18:30:00Z
+Stopped at: Replanned Phase 11 around full canonical Battlefield rewrite
 Resume file: .planning/phases/11-canonical-single-world-space-refactor-extract-battlefield-math-fix-seam-rendering-introduce-battlefield-model-migrate-simulation-and-rendering-to-canonical-coordinates/11-01-SUMMARY.md

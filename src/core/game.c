@@ -52,6 +52,9 @@ bool game_init(GameState *g) {
     // Initialize split-screen viewports and players
     viewport_init_split_screen(g);
 
+    // Render target for crossed-entity seam compositing
+    g->seamRT = LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
+
     // Initialize NFC serial ports (optional — game works with keyboard input only if unset)
     g->nfc.fds[0] = -1;
     g->nfc.fds[1] = -1;
@@ -166,9 +169,8 @@ static void game_draw_entities_for_viewport(GameState *g, const Player *viewport
 
         for (int i = 0; i < owner->entityCount; i++) {
             const Entity *e = owner->entities[i];
-            // Compute sprite half-height for seam overlap detection
-            float spriteHalfH = (SPRITE_FRAME_SIZE * e->spriteScale) * 0.5f;
-            // The seam boundary is at the top edge of the owner's play area
+            Rectangle visibleBounds = sprite_visible_bounds(e->sprite, &e->anim,
+                                                            e->position, e->spriteScale);
             float seamBorder = owner->playArea.y;
 
             if (viewportPlayer == owner) {
@@ -178,27 +180,67 @@ static void game_draw_entities_for_viewport(GameState *g, const Player *viewport
                 // TODO: Consider skipping draw when entity is clearly outside the owner's viewport bounds.
                 entity_draw(e);
             } else {
-                // Opponent viewport: draw if entity has crossed OR if sprite overlaps seam
+                // Opponent viewport: only handle the pre-cross bleed case here. Once the
+                // entity center truly crosses, seamRT becomes the authoritative draw path.
                 bool crossed = (e->position.y < seamBorder);
-                bool spriteOverlapsSeam = (e->position.y - spriteHalfH < seamBorder) &&
-                                          (e->position.y + spriteHalfH > seamBorder);
+                bool spriteOverlapsSeam = (visibleBounds.height > 0.0f) &&
+                                          (visibleBounds.y < seamBorder) &&
+                                          (visibleBounds.y + visibleBounds.height > seamBorder);
 
-                if (crossed || spriteOverlapsSeam) {
+                if (!crossed && spriteOverlapsSeam) {
                     Vector2 mappedPos = game_map_crossed_world_point(owner, opponent, e->position);
-                    AnimState crossedAnim = e->anim;
-                    game_apply_crossed_direction(e, owner, opponent, &crossedAnim);
-                    sprite_draw(e->sprite, &crossedAnim, mappedPos, e->spriteScale);
+                    sprite_draw(e->sprite, &e->anim, mappedPos, e->spriteScale);
                 }
             }
         }
     }
 }
 
+// Render crossed entities near the center seam into seamRT.
+// Each viewport renders its crossed entities using its OWN camera with NO
+// scissor, so the sprite pixels naturally extend past x=halfWidth.  The RT
+// is later composited on top of the main framebuffer, filling in the pixels
+// that the tight scissor clipped during Pass 1.
+static void game_render_seam_rt(GameState *g) {
+    BeginTextureMode(g->seamRT);
+    ClearBackground(BLANK);
+
+    for (int vp = 0; vp < 2; vp++) {
+        const Player *viewportPlayer = &g->players[vp];
+
+        // No scissor — let entity pixels extend past x=halfWidth
+        BeginMode2D(viewportPlayer->camera);
+
+        for (int pid = 0; pid < 2; pid++) {
+            const Player *owner    = &g->players[pid];
+            const Player *opponent = &g->players[1 - pid];
+
+            // Only draw crossed entities rendered in this viewport's pass
+            if (viewportPlayer == owner) continue;
+
+            for (int i = 0; i < owner->entityCount; i++) {
+                const Entity *e = owner->entities[i];
+                if (e->position.y >= owner->playArea.y) continue;
+
+                Vector2 mappedPos = game_map_crossed_world_point(owner, opponent, e->position);
+                AnimState crossedAnim = e->anim;
+                game_apply_crossed_direction(e, owner, opponent, &crossedAnim);
+
+                sprite_draw(e->sprite, &crossedAnim, mappedPos, e->spriteScale);
+            }
+        }
+
+        EndMode2D();
+    }
+
+    EndTextureMode();
+}
+
 void game_render(GameState *g) {
     BeginDrawing();
     ClearBackground(RAYWHITE);
 
-    // Render Player 1's viewport
+    // --- Pass 1: Tilemaps, text, and entities with tight scissors ---
     viewport_begin(&g->players[0]);
     viewport_draw_tilemap(&g->players[0]);
     game_draw_entities_for_viewport(g, &g->players[0]);
@@ -206,11 +248,8 @@ void game_render(GameState *g) {
              g->players[0].playArea.x + 40,
              g->players[0].playArea.y + 40,
              40, DARKGREEN);
-    // TODO: viewport_draw_card_slots_debug is commented out — re-enable or replace with proper card slot UI.
-    // viewport_draw_card_slots_debug(&g->players[0]);
     viewport_end();
 
-    // Render Player 2's viewport
     viewport_begin(&g->players[1]);
     viewport_draw_tilemap(&g->players[1]);
     game_draw_entities_for_viewport(g, &g->players[1]);
@@ -218,9 +257,15 @@ void game_render(GameState *g) {
              g->players[1].playArea.x + 40,
              g->players[1].playArea.y + 40,
              40, MAROON);
-    // TODO: viewport_draw_card_slots_debug is commented out — re-enable or replace with proper card slot UI.
-    // viewport_draw_card_slots_debug(&g->players[1]);
     viewport_end();
+
+    // --- Pass 2: Seam composite — crossed entities rendered to RT without
+    //     scissor, then composited so sprites extend past x=halfWidth ---
+    game_render_seam_rt(g);
+    // RenderTexture Y is flipped (OpenGL convention) — use negative height
+    DrawTextureRec(g->seamRT.texture,
+        (Rectangle){0, 0, (float)SCREEN_WIDTH, (float)-SCREEN_HEIGHT},
+        (Vector2){0, 0}, WHITE);
 
     // Debug lane overlay — screen space, both players' paths overlap
     if (s_showLaneDebug) {
@@ -247,6 +292,7 @@ void game_cleanup(GameState *g) {
     player_cleanup(&g->players[0]);
     player_cleanup(&g->players[1]);
 
+    UnloadRenderTexture(g->seamRT);
     sprite_atlas_free(&g->spriteAtlas);
     card_atlas_free(&g->cardAtlas);
     biome_free_all(g->biomeDefs);

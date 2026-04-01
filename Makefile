@@ -1,4 +1,4 @@
-.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding test_combat test_battlefield_math
+.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding test_combat test_battlefield_math sprite-frame-atlas
 
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
@@ -62,6 +62,9 @@ test: test_pathfinding test_combat test_battlefield_math
 	./test_pathfinding
 	./test_combat
 	./test_battlefield_math
+
+sprite-frame-atlas:
+	python3 tools/generate_sprite_frame_atlas.py
 
 clean:
 	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding test_combat test_battlefield_math
