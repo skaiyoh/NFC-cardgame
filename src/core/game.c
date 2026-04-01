@@ -16,6 +16,7 @@
 #include <time.h>
 
 static bool s_showLaneDebug = false;
+static bool s_showCombatDebug = false;
 
 bool game_init(GameState *g) {
     srand((unsigned int) time(NULL));
@@ -107,8 +108,9 @@ static void game_handle_nfc_events(GameState *g) {
 }
 
 static void game_handle_test_input(GameState *g) {
-    // Toggle lane debug overlay
+    // Toggle debug overlays
     if (IsKeyPressed(KEY_F1)) s_showLaneDebug = !s_showLaneDebug;
+    if (IsKeyPressed(KEY_F2)) s_showCombatDebug = !s_showCombatDebug;
 
     // Player 1: key 1
     if (IsKeyPressed(KEY_ONE)) game_test_play_knight(g, 0, 0);
@@ -159,6 +161,26 @@ static void game_draw_canonical_entities(const Battlefield *bf) {
     }
 }
 
+// Second pass: attack range circles over all sprites.
+// Colors reflect raw EntityState — nothing more.
+static void game_draw_combat_debug(const Battlefield *bf) {
+    for (int i = 0; i < bf->entityCount; i++) {
+        const Entity *e = bf->entities[i];
+        if (!e || !e->alive) continue;
+
+        Color c;
+        switch (e->state) {
+            case ESTATE_ATTACKING: c = RED;   break;
+            case ESTATE_WALKING:   c = GREEN; break;
+            case ESTATE_IDLE:      c = GRAY;  break;
+            default:               continue;  // DEAD — skip
+        }
+
+        DrawCircleLines((int)e->position.x, (int)e->position.y,
+                        e->attackRange, c);
+    }
+}
+
 void game_render(GameState *g) {
     BeginDrawing();
     ClearBackground(RAYWHITE);
@@ -169,6 +191,7 @@ void game_render(GameState *g) {
     viewport_draw_battlefield_tilemap(bf, SIDE_BOTTOM);
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
     game_draw_canonical_entities(bf);
+    if (s_showCombatDebug) game_draw_combat_debug(bf);
     DrawText("PLAYER 1",
              (int)(bf->territories[SIDE_BOTTOM].bounds.x + 40),
              (int)(bf->territories[SIDE_BOTTOM].bounds.y + 40),
@@ -189,6 +212,7 @@ void game_render(GameState *g) {
     viewport_draw_battlefield_tilemap(bf, SIDE_BOTTOM);
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
     game_draw_canonical_entities(bf);
+    if (s_showCombatDebug) game_draw_combat_debug(bf);
     DrawText("PLAYER 2",
              (int)(bf->territories[SIDE_TOP].bounds.x + 40),
              (int)(bf->territories[SIDE_TOP].bounds.y + 40),
