@@ -83,8 +83,7 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
             break;
 
         case ESTATE_WALKING: {
-            Player *owner = &gs->players[e->ownerID];
-            pathfind_step_entity(e, owner, deltaTime);
+            pathfind_step_entity(e, &gs->battlefield, deltaTime);
 
             // Check for enemies in range — transition to attacking
             Entity *target = combat_find_target(e, gs);

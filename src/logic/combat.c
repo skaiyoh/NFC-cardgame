@@ -3,44 +3,23 @@
 //
 
 #include "combat.h"
+#include "../core/battlefield_math.h"
 #include "../entities/entities.h"
 #include <math.h>
 #include <float.h>
 #include <stdio.h>
 
-// Map a position from owner's coordinate space into opponent's coordinate space.
-// Same formula as game_map_crossed_world_point in game.c — duplicated here to
-// keep combat self-contained without exposing a static render helper.
-static Vector2 map_to_opponent_space(const Player *owner, const Player *opponent, Vector2 pos) {
-    float lateral = (pos.x - owner->playArea.x) / owner->playArea.width;
-    float mirroredLateral = 1.0f - lateral;
-    float depth = owner->playArea.y - pos.y;
-    return (Vector2){
-        opponent->playArea.x + mirroredLateral * opponent->playArea.width,
-        opponent->playArea.y + depth
-    };
-}
-
-static float dist2d(Vector2 a, Vector2 b) {
-    float dx = a.x - b.x;
-    float dy = a.y - b.y;
-    return sqrtf(dx * dx + dy * dy);
-}
+// All positions are now canonical -- direct distance via bf_distance (per D-18).
+// Cross-space mapping and per-axis distance helpers have been deleted.
 
 bool combat_in_range(const Entity *a, const Entity *b, const GameState *gs) {
+    (void)gs;  // No longer needs GameState for coordinate mapping
     if (!a || !b) return false;
 
-    Vector2 posB;
-    if (a->faction == b->faction) {
-        posB = b->position;
-    } else {
-        // Map b's position into a's coordinate space
-        const Player *ownerB = &gs->players[b->ownerID];
-        const Player *ownerA = &gs->players[a->ownerID];
-        posB = map_to_opponent_space(ownerB, ownerA, b->position);
-    }
-
-    return dist2d(a->position, posB) <= a->attackRange;
+    // Both positions are canonical -- direct distance (per D-18)
+    CanonicalPos posA = { a->position };
+    CanonicalPos posB = { b->position };
+    return bf_distance(posA, posB) <= a->attackRange;
 }
 
 Entity *combat_find_target(Entity *attacker, GameState *gs) {
@@ -48,23 +27,23 @@ Entity *combat_find_target(Entity *attacker, GameState *gs) {
 
     int enemyID = 1 - attacker->ownerID;
     Player *enemy = &gs->players[enemyID];
-    const Player *ownerA = &gs->players[attacker->ownerID];
 
     Entity *bestTarget = NULL;
     float bestDist = FLT_MAX;
+    CanonicalPos attackerPos = { attacker->position };
 
     for (int i = 0; i < enemy->entityCount; i++) {
         Entity *candidate = enemy->entities[i];
         if (!candidate->alive || candidate->markedForRemoval) continue;
 
-        // Map candidate position into attacker's coordinate space
-        Vector2 mappedPos = map_to_opponent_space(enemy, ownerA, candidate->position);
-        float d = dist2d(attacker->position, mappedPos);
+        // Direct canonical distance -- no coordinate mapping needed
+        CanonicalPos candidatePos = { candidate->position };
+        float d = bf_distance(attackerPos, candidatePos);
 
         switch (attacker->targeting) {
             case TARGET_BUILDING:
                 if (candidate->type == ENTITY_BUILDING) {
-                    // Prefer buildings — pick closest building
+                    // Prefer buildings -- pick closest building
                     if (d < bestDist || (bestTarget && bestTarget->type != ENTITY_BUILDING)) {
                         bestDist = d;
                         bestTarget = candidate;
@@ -74,7 +53,7 @@ Entity *combat_find_target(Entity *attacker, GameState *gs) {
                 // Fall through to nearest for non-buildings as fallback
                 // fallthrough
             case TARGET_NEAREST:
-            case TARGET_SPECIFIC_TYPE: // No name field on Entity yet — falls back to nearest
+            case TARGET_SPECIFIC_TYPE: // No name field on Entity yet -- falls back to nearest
                 if (d < bestDist || (bestTarget == NULL)) {
                     if (attacker->targeting == TARGET_BUILDING && bestTarget &&
                         bestTarget->type == ENTITY_BUILDING) {

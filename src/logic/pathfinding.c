@@ -1,6 +1,7 @@
 #include "pathfinding.h"
 #include "../systems/player.h"
 #include "../core/config.h"
+#include "../core/battlefield.h"
 #include "../entities/entities.h"
 #include <math.h>
 #include <stdlib.h>
@@ -61,7 +62,7 @@ void lane_generate_waypoints(Player *p) {
     }
 }
 
-bool pathfind_step_entity(Entity *e, const Player *owner, float deltaTime) {
+bool pathfind_step_entity(Entity *e, const Battlefield *bf, float deltaTime) {
     // Validate lane bounds -- invalid lane means entity cannot path
     if (e->lane < 0 || e->lane >= 3) {
         entity_set_state(e, ESTATE_IDLE);
@@ -74,7 +75,10 @@ bool pathfind_step_entity(Entity *e, const Player *owner, float deltaTime) {
         return false;
     }
 
-    Vector2 target = owner->laneWaypoints[e->lane][e->waypointIndex];
+    // Read canonical waypoint from Battlefield (per D-05, D-18)
+    BattleSide side = bf_side_for_player(e->ownerID);
+    CanonicalPos targetWP = bf_waypoint(bf, side, e->lane, e->waypointIndex);
+    Vector2 target = targetWP.v;
     float dx = target.x - e->position.x;
     float dy = target.y - e->position.y;
     float dist = sqrtf(dx * dx + dy * dy);

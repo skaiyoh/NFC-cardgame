@@ -8,6 +8,10 @@
  * SYNC REQUIREMENT: These struct stubs must match the field order and sizes
  * from src/core/types.h. If types.h changes, update these stubs.
  * Run `make test` after any types.h change to catch layout mismatches.
+ *
+ * Updated for Plan 11-03: combat now uses canonical coordinates and
+ * bf_distance instead of map_to_opponent_space. All positions are in
+ * the same canonical world space (0..1080 x, 0..1920 y).
  */
 
 #include <assert.h>
@@ -22,6 +26,7 @@
 #define NFC_CARDGAME_TYPES_H
 #define NFC_CARDGAME_COMBAT_H
 #define NFC_CARDGAME_ENTITIES_H
+#define NFC_CARDGAME_BATTLEFIELD_MATH_H
 
 /* ---- Config defines (must match src/core/config.h) ---- */
 #define LANE_WAYPOINT_COUNT  8
@@ -87,12 +92,12 @@ struct Entity {
     bool markedForRemoval;
 };
 
-/* Player stub — padded to match types.h layout */
+/* Player stub -- padded to match types.h layout */
 typedef struct { int width; int height; int tileSize; int *cells; int cellCount; void *texture; } TileMap_stub;
 typedef struct { Rectangle src; } TileDef_stub;
 typedef struct { float x; float y; float rotation; float zoom; } Camera2D_stub;
 
-/* BiomeType/BiomeDef stubs — minimal to match field layout */
+/* BiomeType/BiomeDef stubs -- minimal to match field layout */
 typedef int BiomeType;
 typedef struct { int dummy; } BiomeDef_stub;
 
@@ -119,8 +124,17 @@ struct Player {
     Vector2 laneWaypoints[3][LANE_WAYPOINT_COUNT];
 };
 
-/* GameState stub — only players needed for combat */
-typedef int BiomeCount_stub;
+/* ---- Battlefield math stubs (canonical coordinate types) ---- */
+typedef enum { SIDE_BOTTOM, SIDE_TOP } BattleSide;
+typedef struct { Vector2 v; } CanonicalPos;
+
+float bf_distance(CanonicalPos a, CanonicalPos b) {
+    float dx = a.v.x - b.v.x;
+    float dy = a.v.y - b.v.y;
+    return sqrtf(dx * dx + dy * dy);
+}
+
+/* GameState stub -- only players needed for combat */
 #define BIOME_COUNT 2
 typedef struct { int dummy; } SpriteAtlas_stub;
 typedef struct { int dummy; } DB_stub;
@@ -128,14 +142,24 @@ typedef struct { int dummy; } Deck_stub;
 typedef struct { int dummy; } CardAtlas_stub;
 typedef struct { int fds[2]; } NFCReader_stub;
 
+/* Battlefield stub -- combat no longer accesses Battlefield directly but
+ * GameState must have the right layout for the `#include "combat.c"` to work. */
+typedef struct {
+    float boardWidth, boardHeight, seamY;
+    /* Remaining fields not accessed by combat -- only need to be present for layout */
+} Battlefield_stub;
+
 struct GameState {
     DB_stub db;
     Deck_stub deck;
     CardAtlas_stub cardAtlas;
     Player players[2];
     BiomeDef_stub biomeDefs[BIOME_COUNT];
+    Battlefield_stub battlefield;
     SpriteAtlas_stub spriteAtlas;
     int halfWidth;
+    /* seamRT placeholder for RenderTexture2D (4 ints: id, texture.id, depth.id, format -- 16 bytes) */
+    char _seamRT_pad[16];
     NFCReader_stub nfc;
 };
 
@@ -186,15 +210,17 @@ static Entity make_entity(int ownerID, EntityType type, Vector2 pos) {
 
 static GameState make_game_state(void) {
     GameState gs = {0};
-    // P1: x=0, w=1080, h=960
+    /* All entities now use canonical coordinates (0..1080 x, 0..1920 y).
+     * P1 (SIDE_BOTTOM) territory: y=960..1920.
+     * P2 (SIDE_TOP) territory: y=0..960.
+     * No more overlapping play areas. */
     gs.players[0].id = 0;
-    gs.players[0].playArea = (Rectangle){0, 0, 1080, 960};
+    gs.players[0].playArea = (Rectangle){0, 960, 1080, 960};
     gs.players[0].entityCount = 0;
     gs.players[0].base = NULL;
 
-    // P2: x=960, w=1080, h=960
     gs.players[1].id = 1;
-    gs.players[1].playArea = (Rectangle){960, 0, 1080, 960};
+    gs.players[1].playArea = (Rectangle){0, 0, 1080, 960};
     gs.players[1].entityCount = 0;
     gs.players[1].base = NULL;
 
@@ -216,78 +242,66 @@ static int tests_passed = 0;
 
 static void test_in_range_same_space(void) {
     GameState gs = make_game_state();
-    // Two entities from same player — raw distance check
-    Entity a = make_entity(0, ENTITY_TROOP, (Vector2){100, 100});
-    Entity b = make_entity(0, ENTITY_TROOP, (Vector2){130, 100});
+    /* Two entities in canonical space -- direct distance */
+    Entity a = make_entity(0, ENTITY_TROOP, (Vector2){100, 1200});
+    Entity b = make_entity(0, ENTITY_TROOP, (Vector2){130, 1200});
     a.attackRange = 50.0f;
 
-    assert(combat_in_range(&a, &b, &gs) == true);  // dist=30 <= 50
+    assert(combat_in_range(&a, &b, &gs) == true);  /* dist=30 <= 50 */
 
-    b.position = (Vector2){200, 100};
-    assert(combat_in_range(&a, &b, &gs) == false);  // dist=100 > 50
+    b.position = (Vector2){200, 1200};
+    assert(combat_in_range(&a, &b, &gs) == false);  /* dist=100 > 50 */
 }
 
 static void test_in_range_cross_space(void) {
     GameState gs = make_game_state();
-    // P1 entity at its front line (low Y), P2 entity at its front line (low Y)
-    // These should be close together in mapped space
-    Entity a = make_entity(0, ENTITY_TROOP, (Vector2){540, -100});  // crossed border
+    /* In canonical space, P1 entity near seam (y~960) and P2 entity near seam (y~960)
+     * are close together -- no coordinate mapping needed */
+    Entity a = make_entity(0, ENTITY_TROOP, (Vector2){540, 970});
     a.attackRange = 100.0f;
 
-    Entity b = make_entity(1, ENTITY_TROOP, (Vector2){1500, -100}); // crossed border
+    Entity b = make_entity(1, ENTITY_TROOP, (Vector2){540, 950});
 
-    // Map b into a's space: lateral = (1500-960)/1080 = 0.5, mirrored = 0.5
-    // mapped.x = 0 + 0.5 * 1080 = 540, depth = 0 - (-100) = 100, mapped.y = 0 + 100 = 100
-    // But a is at (540, -100). Hmm, let me reconsider.
-    // Actually map_to_opponent_space maps FROM b's owner space TO a's owner space.
-    // b is owned by P1, so owner=P1, opponent=P0
-    // lateral = (1500 - 960)/1080 = 540/1080 = 0.5
-    // mirroredLateral = 0.5
-    // depth = 0 - (-100) = 100  (P1.playArea.y = 0)
-    // mapped = (0 + 0.5*1080, 0 + 100) = (540, 100)
-    // a is at (540, -100), dist = |100 - (-100)| = 200
-    // That's > 100, so not in range... let me adjust the test
-
-    a.position = (Vector2){540, 50};  // shallow crossing
-    // Now dist to mapped (540, 100) = 50, within range
+    /* dist = |970 - 950| = 20 <= 100 */
     assert(combat_in_range(&a, &b, &gs) == true);
 
     a.attackRange = 10.0f;
-    assert(combat_in_range(&a, &b, &gs) == false);
+    assert(combat_in_range(&a, &b, &gs) == false);  /* dist=20 > 10 */
 }
 
 static void test_in_range_null_safety(void) {
     GameState gs = make_game_state();
-    Entity a = make_entity(0, ENTITY_TROOP, (Vector2){100, 100});
+    Entity a = make_entity(0, ENTITY_TROOP, (Vector2){100, 1200});
     assert(combat_in_range(NULL, &a, &gs) == false);
     assert(combat_in_range(&a, NULL, &gs) == false);
 }
 
 static void test_find_target_nearest(void) {
     GameState gs = make_game_state();
-    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 50});
+    /* Attacker at P1 near seam */
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 970});
     attacker.targeting = TARGET_NEAREST;
 
-    // Place two enemy entities at different distances in P2's space
-    Entity far = make_entity(1, ENTITY_TROOP, (Vector2){1500, -300});
-    Entity near = make_entity(1, ENTITY_TROOP, (Vector2){1500, -50});
+    /* Two enemy entities in canonical P2 territory */
+    Entity far_e = make_entity(1, ENTITY_TROOP, (Vector2){540, 300});
+    Entity near_e = make_entity(1, ENTITY_TROOP, (Vector2){540, 900});
 
-    gs.players[1].entities[0] = &far;
-    gs.players[1].entities[1] = &near;
+    gs.players[1].entities[0] = &far_e;
+    gs.players[1].entities[1] = &near_e;
     gs.players[1].entityCount = 2;
 
     Entity *target = combat_find_target(&attacker, &gs);
-    assert(target == &near);
+    assert(target == &near_e);
 }
 
 static void test_find_target_skips_dead(void) {
     GameState gs = make_game_state();
-    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 50});
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 970});
 
-    Entity dead = make_entity(1, ENTITY_TROOP, (Vector2){1500, -50});
+    Entity dead = make_entity(1, ENTITY_TROOP, (Vector2){540, 900});
     dead.alive = false;
 
-    Entity alive_e = make_entity(1, ENTITY_TROOP, (Vector2){1500, -200});
+    Entity alive_e = make_entity(1, ENTITY_TROOP, (Vector2){540, 300});
 
     gs.players[1].entities[0] = &dead;
     gs.players[1].entities[1] = &alive_e;
@@ -299,12 +313,12 @@ static void test_find_target_skips_dead(void) {
 
 static void test_find_target_skips_marked(void) {
     GameState gs = make_game_state();
-    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 50});
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 970});
 
-    Entity marked = make_entity(1, ENTITY_TROOP, (Vector2){1500, -50});
+    Entity marked = make_entity(1, ENTITY_TROOP, (Vector2){540, 900});
     marked.markedForRemoval = true;
 
-    Entity valid = make_entity(1, ENTITY_TROOP, (Vector2){1500, -200});
+    Entity valid = make_entity(1, ENTITY_TROOP, (Vector2){540, 300});
 
     gs.players[1].entities[0] = &marked;
     gs.players[1].entities[1] = &valid;
@@ -316,12 +330,12 @@ static void test_find_target_skips_marked(void) {
 
 static void test_find_target_building_priority(void) {
     GameState gs = make_game_state();
-    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 50});
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 970});
     attacker.targeting = TARGET_BUILDING;
 
-    // Troop is closer, building is farther
-    Entity troop = make_entity(1, ENTITY_TROOP, (Vector2){1500, -50});
-    Entity building = make_entity(1, ENTITY_BUILDING, (Vector2){1500, -300});
+    /* Troop is closer, building is farther */
+    Entity troop = make_entity(1, ENTITY_TROOP, (Vector2){540, 900});
+    Entity building = make_entity(1, ENTITY_BUILDING, (Vector2){540, 300});
 
     gs.players[1].entities[0] = &troop;
     gs.players[1].entities[1] = &building;
@@ -333,7 +347,7 @@ static void test_find_target_building_priority(void) {
 
 static void test_find_target_returns_null_no_enemies(void) {
     GameState gs = make_game_state();
-    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 50});
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 970});
 
     gs.players[1].entityCount = 0;
     gs.players[1].base = NULL;
@@ -344,9 +358,9 @@ static void test_find_target_returns_null_no_enemies(void) {
 
 static void test_find_target_falls_back_to_base(void) {
     GameState gs = make_game_state();
-    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 50});
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 970});
 
-    Entity base = make_entity(1, ENTITY_BUILDING, (Vector2){1500, 800});
+    Entity base = make_entity(1, ENTITY_BUILDING, (Vector2){540, 100});
     gs.players[1].entityCount = 0;
     gs.players[1].base = &base;
 
@@ -374,21 +388,21 @@ static void test_resolve_respects_cooldown(void) {
     Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
     attacker.attack = 25;
     attacker.attackSpeed = 1.0f;
-    attacker.attackCooldown = 0.5f;  // still on cooldown
+    attacker.attackCooldown = 0.5f;  /* still on cooldown */
 
     Entity target = make_entity(1, ENTITY_TROOP, (Vector2){0, 0});
     target.hp = 100;
 
     combat_resolve(&attacker, &target, 0.016f);
 
-    // Cooldown decremented but no damage dealt
+    /* Cooldown decremented but no damage dealt */
     assert(target.hp == 100);
     assert(attacker.attackCooldown < 0.5f);
 }
 
 static void test_resolve_kills_at_zero_hp(void) {
     Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
-    attacker.attack = 150;  // overkill
+    attacker.attack = 150;  /* overkill */
     attacker.attackSpeed = 1.0f;
     attacker.attackCooldown = 0.0f;
 
@@ -413,7 +427,7 @@ static void test_resolve_skips_dead_target(void) {
 
     combat_resolve(&attacker, &target, 0.016f);
 
-    // Cooldown should not have been set (no attack happened)
+    /* Cooldown should not have been set (no attack happened) */
     assert(attacker.attackCooldown == 0.0f);
 }
 
@@ -426,7 +440,7 @@ static void test_take_damage_basic(void) {
 
     assert(e.hp == 70);
     assert(e.alive == true);
-    assert(e.state == ESTATE_WALKING);  // unchanged
+    assert(e.state == ESTATE_WALKING);  /* unchanged */
 }
 
 static void test_take_damage_kills(void) {
@@ -447,31 +461,29 @@ static void test_take_damage_clamps_zero(void) {
 
     entity_take_damage(&e, 999);
 
-    assert(e.hp == 0);  // clamped, not negative
+    assert(e.hp == 0);  /* clamped, not negative */
     assert(e.alive == false);
 }
 
 static void test_take_damage_null_safety(void) {
-    // Should not crash
+    /* Should not crash */
     entity_take_damage(NULL, 10);
 }
 
-static void test_cross_space_mapping_symmetry(void) {
-    // Verify that mapping an entity to opponent space and back gives a
-    // position that correctly reflects mirror + depth semantics
+static void test_canonical_distance_direct(void) {
+    /* Verify that combat_in_range uses direct canonical distance for
+     * cross-side entities. Two entities at the seam from opposite sides
+     * should be close together. */
     GameState gs = make_game_state();
 
-    // P1 center at depth 0 (on the border)
-    Entity a = make_entity(0, ENTITY_TROOP, (Vector2){540, 0});
+    /* P1 entity at seam center */
+    Entity a = make_entity(0, ENTITY_TROOP, (Vector2){540, 960});
     a.attackRange = 10.0f;
 
-    // P2 center at depth 0 (on the border)
-    Entity b = make_entity(1, ENTITY_TROOP, (Vector2){1500, 0});
+    /* P2 entity at seam center */
+    Entity b = make_entity(1, ENTITY_TROOP, (Vector2){540, 960});
 
-    // These should be at the same mapped position (both at their border centers)
-    // Map b to a's space: lateral=(1500-960)/1080=0.5, mirrored=0.5
-    // mapped = (0+0.5*1080, 0+0) = (540, 0) — same as a!
-    // Distance should be 0
+    /* Same position -- distance 0 <= 10 */
     assert(combat_in_range(&a, &b, &gs) == true);
 }
 
@@ -496,7 +508,7 @@ int main(void) {
     RUN_TEST(test_take_damage_kills);
     RUN_TEST(test_take_damage_clamps_zero);
     RUN_TEST(test_take_damage_null_safety);
-    RUN_TEST(test_cross_space_mapping_symmetry);
+    RUN_TEST(test_canonical_distance_direct);
 
     printf("\nAll %d tests passed!\n", tests_passed);
     return 0;
