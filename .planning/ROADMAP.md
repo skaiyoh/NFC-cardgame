@@ -151,18 +151,18 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 8. Win Screen | 0/TBD | Not started | - |
 | 9. Spell Effects | 0/TBD | Not started | - |
 | 10. Troop Type Behaviors | 0/TBD | Not started | - |
-| 11. Canonical World-Space Refactor | 1/5 | In Progress | - |
+| 11. Canonical World-Space Refactor | 2/5 | In Progress|  |
 
 ### Phase 11: Canonical single-world-space refactor: extract battlefield math, fix seam rendering, introduce Battlefield model, migrate simulation and rendering to canonical coordinates
 
 **Goal:** Unify the dual-coordinate-space system into a single canonical 1080x1920 world space with a first-class Battlefield model, eliminate duplicated remap formulas, and resolve the seam disappearance by removing cross-space handoff logic entirely
 **Requirements**: REFACTOR-11 (structural refactor, no new gameplay requirements)
 **Depends on:** Phase 10
-**Plans:** 1/5 plans executed
+**Plans:** 2/5 plans executed
 
 Plans:
 - [x] 11-01-PLAN.md -- Extract battlefield_math module with typed coordinate wrappers and test suite (Wave 1)
-- [ ] 11-02-PLAN.md -- Introduce Battlefield model, canonical board geometry, and the migration adapter boundary (Wave 2)
+- [x] 11-02-PLAN.md -- Introduce Battlefield model, canonical board geometry, and the migration adapter boundary (Wave 2)
 - [ ] 11-03-PLAN.md -- Migrate simulation and entity ownership to canonical Battlefield coordinates (Wave 3)
 - [ ] 11-04-PLAN.md -- Rewrite rendering to use canonical world space and delete seam remap / RenderTexture special cases (Wave 4)
 - [ ] 11-05-PLAN.md -- Remove remaining adapters, add invariants, and complete final validation for the canonical rewrite (Wave 5)

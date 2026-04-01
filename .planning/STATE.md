@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 11-02-PLAN.md
-last_updated: "2026-04-01T17:05:22.710Z"
+stopped_at: Completed 11-03-PLAN.md
+last_updated: "2026-04-01T17:17:33.797Z"
 last_activity: 2026-04-01
 progress:
   total_phases: 11
   completed_phases: 1
   total_plans: 8
-  completed_plans: 4
+  completed_plans: 5
   percent: 20
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-03-10)
 ## Current Position
 
 Phase: 11 (canonical-single-world-space-refactor) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-04-01
 
@@ -57,6 +57,7 @@ Progress: [██░░░░░░░░] 20%
 | Phase 01 P02 | 2min | 2 tasks | 4 files |
 | Phase 11 P01 | 3min | 2 tasks | 7 files |
 | Phase 11 P02 | 5min | 2 tasks | 9 files |
+| Phase 11 P03 | 6min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,9 @@ Recent decisions affecting current work:
 - [Phase 11]: NUM_CARD_SLOTS/MAX_ENTITIES moved to config.h to break battlefield.h <-> types.h circular dependency
 - [Phase 11]: battlefield_math.c added to SRC_CORE since battlefield.c links against it at compile time
 - [Phase 11]: VECTOR2_DEFINED guard set explicitly in battlefield.h before battlefield_math.h include to prevent Raylib conflict
+- [Phase 11]: Pathfinding reads Battlefield canonical waypoints via bf_waypoint instead of Player.laneWaypoints
+- [Phase 11]: Combat uses bf_distance on canonical CanonicalPos -- map_to_opponent_space deleted
+- [Phase 11]: Dual-registry pattern: entities in both Battlefield (authoritative) and Player (adapter) during transition
 
 ### Pending Todos
 
@@ -104,6 +108,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-01T17:05:22.709Z
-Stopped at: Completed 11-02-PLAN.md
-Resume file: .planning/phases/11-canonical-single-world-space-refactor-extract-battlefield-math-fix-seam-rendering-introduce-battlefield-model-migrate-simulation-and-rendering-to-canonical-coordinates/11-01-SUMMARY.md
+Last session: 2026-04-01T17:17:33.796Z
+Stopped at: Completed 11-03-PLAN.md
+Resume file: None
