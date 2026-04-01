@@ -83,7 +83,6 @@ static void biome_define_undead(BiomeDef *b) {
     b->detailBlockCount = 0;
     {
         int d = 0;
-#define R(x,y,w,h) (Rectangle){(x),(y),(w),(h)}
         b->detailDefCount = d;
 #undef R
     }
@@ -98,7 +97,6 @@ static void biome_define_undead(BiomeDef *b) {
         l->isRandom = false;
         l->density = 0;
         int d = 0;
-#define R(x,y,w,h) (Rectangle){(x),(y),(w),(h)}
         l->defSources[d++] = R(80, 64, 16, 16);
         l->defSources[d++] = R(16, 96, 32, 32);
         l->defSources[d++] = R(80, 96, 32, 32);
@@ -151,7 +149,6 @@ static void biome_define_undead(BiomeDef *b) {
         l->isRandom = false;
         l->density = 0;
         int d = 0;
-#define R(x,y,w,h) (Rectangle){(x),(y),(w),(h)}
         l->defSources[d++] = R(24, 136, 16, 16);
         l->defSources[d++] = R(96, 144, 32, 16);
         l->defSources[d++] = R(136, 128, 24, 24);
@@ -195,7 +192,6 @@ static void biome_define_undead(BiomeDef *b) {
         l->isRandom = false;
         l->density = 0;
         int d = 0;
-#define R(x,y,w,h) (Rectangle){(x),(y),(w),(h)}
         l->defSources[d++] = R(48, 16, 32, 32);
         l->defSources[d++] = R(80, 32, 16, 16);
         l->defSources[d++] = R(96, 32, 16, 16);
@@ -244,7 +240,6 @@ static void biome_define_undead(BiomeDef *b) {
         l->isRandom = false;
         l->density = 0;
         int d = 0;
-#define R(x,y,w,h) (Rectangle){(x),(y),(w),(h)}
         l->defSources[d++] = R(440, 72, 16, 16);
         l->defSources[d++] = R(440, 104, 16, 16);
         l->defSources[d++] = R(440, 128, 16, 16);
@@ -292,7 +287,6 @@ static void biome_define_undead(BiomeDef *b) {
         l->isRandom = false;
         l->density = 0;
         int d = 0;
-#define R(x,y,w,h) (Rectangle){(x),(y),(w),(h)}
         l->defSources[d++] = R(256, 576, 16, 16);
         l->defSources[d++] = R(272, 576, 16, 16);
         l->defSources[d++] = R(288, 576, 16, 16);
