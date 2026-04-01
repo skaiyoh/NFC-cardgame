@@ -151,14 +151,14 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 8. Win Screen | 0/TBD | Not started | - |
 | 9. Spell Effects | 0/TBD | Not started | - |
 | 10. Troop Type Behaviors | 0/TBD | Not started | - |
-| 11. Canonical World-Space Refactor | 1/5 | Executing | - |
+| 11. Canonical World-Space Refactor | 1/5 | In Progress|  |
 
 ### Phase 11: Canonical single-world-space refactor: extract battlefield math, fix seam rendering, introduce Battlefield model, migrate simulation and rendering to canonical coordinates
 
 **Goal:** Unify the dual-coordinate-space system into a single canonical 1080x1920 world space with a first-class Battlefield model, eliminating duplicated remap formulas, fixing seam rendering, and separating world geometry from Player
 **Requirements**: REFACTOR-11 (structural refactor, no new gameplay requirements)
 **Depends on:** Phase 10
-**Plans:** 5 plans
+**Plans:** 1/5 plans executed
 
 Plans:
 - [x] 11-01-PLAN.md -- Extract battlefield_math module with typed coordinate wrappers and test suite (Wave 1)
