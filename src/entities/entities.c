@@ -4,6 +4,7 @@
 
 #include "entities.h"
 #include "../logic/pathfinding.h"
+#include "../logic/combat.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -35,7 +36,9 @@ Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
 }
 
 void entity_destroy(Entity *e) {
-    if (e) free(e);
+    if (!e) return;
+    free((char *)e->targetType);
+    free(e);
 }
 
 void entity_set_state(Entity *e, EntityState newState) {
@@ -54,6 +57,9 @@ void entity_set_state(Entity *e, EntityState newState) {
         case ESTATE_WALKING:
             anim_state_init(&e->anim, ANIM_WALK, dir, 10.0f);
             break;
+        case ESTATE_ATTACKING:
+            anim_state_init(&e->anim, ANIM_ATTACK, dir, 10.0f);
+            break;
         case ESTATE_DEAD:
             anim_state_init(&e->anim, ANIM_DEATH, dir, 8.0f);
             break;
@@ -66,9 +72,6 @@ void entity_set_state(Entity *e, EntityState newState) {
     (void) oldState;
 }
 
-// TODO: No combat system is wired into entity_update. Entities walk in a straight line and never
-// TODO: attack, take damage, or interact with enemy entities. Implement combat_find_target() and
-// TODO: combat_resolve() calls here to complete the core gameplay loop.
 void entity_update(Entity *e, GameState *gs, float deltaTime) {
     if (!e || !e->alive) return;
 
@@ -81,8 +84,26 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
 
         case ESTATE_WALKING: {
             Player *owner = &gs->players[e->ownerID];
-            // Delegate to pathfinding helpers (same code tested by Wave 0 unit tests)
             pathfind_step_entity(e, owner, deltaTime);
+
+            // Check for enemies in range — transition to attacking
+            Entity *target = combat_find_target(e, gs);
+            if (target && combat_in_range(e, target, gs)) {
+                entity_set_state(e, ESTATE_ATTACKING);
+            }
+            break;
+        }
+
+        case ESTATE_ATTACKING: {
+            // Re-acquire target each frame (no cached pointer — avoids stale refs)
+            Entity *target = combat_find_target(e, gs);
+
+            if (!target || !combat_in_range(e, target, gs)) {
+                entity_set_state(e, ESTATE_WALKING);
+                break;
+            }
+
+            combat_resolve(e, target, deltaTime);
             break;
         }
 

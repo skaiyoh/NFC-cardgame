@@ -36,7 +36,8 @@ typedef struct { float x; float y; float width; float height; } Rectangle;
 
 typedef enum { ANIM_IDLE, ANIM_RUN, ANIM_WALK, ANIM_HURT, ANIM_DEATH, ANIM_ATTACK, ANIM_COUNT } AnimationType;
 typedef enum { DIR_SIDE, DIR_DOWN, DIR_UP, DIR_COUNT } SpriteDirection;
-typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_DEAD } EntityState;
+typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_ATTACKING, ESTATE_DEAD } EntityState;
+typedef enum { TARGET_NEAREST, TARGET_BUILDING, TARGET_SPECIFIC_TYPE } TargetingMode;
 typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
 typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
 
@@ -75,6 +76,9 @@ struct Entity {
     int attack;
     float attackSpeed;
     float attackRange;
+    float attackCooldown;
+    TargetingMode targeting;
+    const char *targetType;
     AnimState anim;
     const CharacterSprite *sprite;
     float spriteScale;

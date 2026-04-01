@@ -25,7 +25,14 @@ typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
 
 typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
 
-typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_DEAD } EntityState;
+typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_ATTACKING, ESTATE_DEAD } EntityState;
+
+// Targeting preference for combat (used by Entity and TroopData)
+typedef enum {
+    TARGET_NEAREST,
+    TARGET_BUILDING,
+    TARGET_SPECIFIC_TYPE
+} TargetingMode;
 
 // Entity definition
 struct Entity {
@@ -43,6 +50,9 @@ struct Entity {
     int attack;
     float attackSpeed;
     float attackRange;
+    float attackCooldown;       // time remaining before next attack
+    TargetingMode targeting;    // targeting preference
+    const char *targetType;     // for TARGET_SPECIFIC_TYPE (owned, freed in entity_destroy)
 
     // Animation
     AnimState anim;

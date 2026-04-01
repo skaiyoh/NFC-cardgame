@@ -8,12 +8,6 @@
 #include "../core/types.h"
 #include "../data/cards.h"
 
-typedef enum {
-    TARGET_NEAREST,
-    TARGET_BUILDING,
-    TARGET_SPECIFIC_TYPE
-} TargetingMode;
-
 typedef struct {
     const char *name;
     int hp, maxHP;
