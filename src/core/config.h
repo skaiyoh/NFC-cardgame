@@ -41,4 +41,9 @@
 #define LANE_JITTER_RADIUS   10.0f
 #define PI_F 3.14159265f
 
+// Canonical board dimensions (per D-01)
+#define BOARD_WIDTH   1080
+#define BOARD_HEIGHT  1920
+#define SEAM_Y        960
+
 #endif //NFC_CARDGAME_CONFIG_H

@@ -85,6 +85,12 @@ add_executable(test_pathfinding
 target_link_libraries(test_pathfinding ${MATH_LIB})
 add_test(NAME pathfinding COMMAND test_pathfinding)
 
+add_executable(test_battlefield_math
+    tests/test_battlefield_math.c
+    src/core/battlefield_math.c)
+target_link_libraries(test_battlefield_math ${MATH_LIB})
+add_test(NAME battlefield_math COMMAND test_battlefield_math)
+
 # --- Database init (convenience target) ---
 add_custom_target(init-db
     COMMAND sqlite3 ${CMAKE_SOURCE_DIR}/cardgame.db < ${CMAKE_SOURCE_DIR}/sqlite/schema.sql
