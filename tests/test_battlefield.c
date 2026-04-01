@@ -319,23 +319,25 @@ static void test_bf_lanes_coincide_at_seam(void) {
  * camera configurations used by the game.  This catches the P2 camera
  * orientation bug where the seam landed on the wrong edge. */
 static void test_bf_seam_screen_placement(void) {
-    // P1 camera: rot=+90, target=(540,1440), offset=(480,540)
-    // P2 camera: rot=-90, target=(540,480), offset=(1440,540)
-    // Opposite rotations for across-the-table perspective.
+    // Both cameras use rot=+90.  P2 renders to an RT then is flipped for
+    // across-the-table perspective.
+    //
+    // Raylib Camera2D transform (for dx=0, only Y matters):
+    //   rot=+90: screen_x = offset_x - (wy - target_y)  [sin(90)=1]
+    //     Derivation: rx = dx*cos(90) - dy*sin(90) = -dy = -(wy - target_y)
+    //     screen_x = rx + offset_x = offset_x - (wy - target_y)
     Vector2 seamPoint = {540.0f, 960.0f};
 
-    // P1 (rot=+90): screen_x = offset_x + (wy - target_y)
-    float p1_sx = 480.0f + (seamPoint.y - 1440.0f);
-    // P2 (rot=-90): screen_x = offset_x - (wy - target_y)
-    float p2_sx = 1440.0f - (seamPoint.y - 480.0f);
+    // P1 (rot=+90, target_y=1440, offset_x=480):
+    float p1_sx = 480.0f - (seamPoint.y - 1440.0f);
+    // P2 RT (rot=+90, target_y=480, offset_x=480 in RT):
+    float p2_rt_sx = 480.0f - (seamPoint.y - 480.0f);
 
-    // P1 sees seam at x=0 (outer edge of P1 viewport)
-    assert(approx_eq(p1_sx, 0.0f, 1.0f));
-    // P2 sees seam at x=960 (inner edge of P2 viewport / center of screen)
-    assert(approx_eq(p2_sx, 960.0f, 1.0f));
-
-    // Entity at y=960 is visible in BOTH viewports (at their respective edges)
-    // No gap: P1 scissor includes x=0, P2 scissor includes x=960
+    // P1 seam maps to x=960 (inner screen edge)
+    assert(approx_eq(p1_sx, 960.0f, 1.0f));
+    // P2 seam maps to x=0 in the RT; after compositing at screen x=960..1920,
+    // RT x=0 → screen x=960 (inner edge). ✓
+    assert(approx_eq(p2_rt_sx, 0.0f, 1.0f));
 
     printf("  PASS: test_bf_seam_screen_placement\n");
 }

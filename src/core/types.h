@@ -118,6 +118,11 @@ struct GameState {
     // Screen layout
     int halfWidth; // Half screen width for split screen
 
+    // P2 viewport render target -- P2 uses rot=+90 (same as P1) for correct
+    // seam placement, then the texture is flipped vertically when composited
+    // to reverse the X orientation for across-the-table perspective.
+    RenderTexture2D p2RT;
+
     // NFC hardware (two Arduinos, one per player)
     NFCReader nfc;
 };

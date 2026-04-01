@@ -57,6 +57,9 @@ bool game_init(GameState *g) {
     // Initialize split-screen viewports and players
     viewport_init_split_screen(g);
 
+    // P2 viewport render target (flipped vertically for across-the-table perspective)
+    g->p2RT = LoadRenderTexture(g->halfWidth, SCREEN_HEIGHT);
+
     // Initialize NFC serial ports (optional -- game works with keyboard input only if unset)
     g->nfc.fds[0] = -1;
     g->nfc.fds[1] = -1;
@@ -161,9 +164,8 @@ void game_render(GameState *g) {
     ClearBackground(RAYWHITE);
     Battlefield *bf = &g->battlefield;
 
-    // --- Player 1 viewport (SIDE_BOTTOM) ---
+    // --- Player 1 viewport (SIDE_BOTTOM) — direct to screen ---
     viewport_begin(&g->players[0]);
-    // Draw BOTH territories' tilemaps so the full board is visible
     viewport_draw_battlefield_tilemap(bf, SIDE_BOTTOM);
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
     game_draw_canonical_entities(bf);
@@ -173,8 +175,17 @@ void game_render(GameState *g) {
              40, DARKGREEN);
     viewport_end();
 
-    // --- Player 2 viewport (SIDE_TOP) ---
-    viewport_begin(&g->players[1]);
+    // --- Player 2 viewport (SIDE_TOP) — render to texture, then flip ---
+    // P2 uses rot=+90 (same as P1) for correct seam placement.
+    // The RT is flipped vertically when composited to reverse the world-X
+    // orientation, giving P2 the opposite (across-the-table) perspective.
+    BeginTextureMode(g->p2RT);
+    ClearBackground(RAYWHITE);
+    // Render with P2's camera but into the RT (no scissor needed — RT is viewport-sized).
+    // Override camera offset to center of RT (480,540) instead of screen position (1440,540).
+    Camera2D p2CamRT = g->players[1].camera;
+    p2CamRT.offset = (Vector2){ g->halfWidth / 2.0f, SCREEN_HEIGHT / 2.0f };
+    BeginMode2D(p2CamRT);
     viewport_draw_battlefield_tilemap(bf, SIDE_BOTTOM);
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
     game_draw_canonical_entities(bf);
@@ -182,7 +193,21 @@ void game_render(GameState *g) {
              (int)(bf->territories[SIDE_TOP].bounds.x + 40),
              (int)(bf->territories[SIDE_TOP].bounds.y + 40),
              40, MAROON);
-    viewport_end();
+    EndMode2D();
+    EndTextureMode();
+
+    // Composite P2 RT to right half of screen, flipped vertically.
+    // Negative height flips Y (OpenGL convention), and we also flip the
+    // source rect height to flip the image vertically on screen, which
+    // reverses the world-X → screen-Y mapping for across-the-table.
+    DrawTexturePro(
+        g->p2RT.texture,
+        (Rectangle){ 0, 0, (float)g->halfWidth, -(float)SCREEN_HEIGHT },   // src: flip Y (OpenGL)
+        (Rectangle){ (float)g->halfWidth, 0, (float)g->halfWidth, (float)SCREEN_HEIGHT },  // dst: right half
+        (Vector2){ 0, 0 },
+        0.0f,
+        WHITE
+    );
 
     // Debug lane overlay
     if (s_showLaneDebug) {
@@ -190,7 +215,7 @@ void game_render(GameState *g) {
         debug_draw_lane_paths_screen(bf, SIDE_TOP, g->players[1].camera);
     }
 
-    // HUD -- screen space, drawn after all viewports
+    // HUD — screen space, drawn after all viewports
     ui_draw_energy_bar(&g->players[0], 0, SCREEN_WIDTH / 2);
     ui_draw_energy_bar(&g->players[1], 960, SCREEN_WIDTH / 2);
 
@@ -203,6 +228,8 @@ void game_cleanup(GameState *g) {
     // Cleanup players (no resources to free -- Battlefield owns tilemaps and entities)
     player_cleanup(&g->players[0]);
     player_cleanup(&g->players[1]);
+
+    UnloadRenderTexture(g->p2RT);
 
     // Cleanup Battlefield (must be before biome_free_all since tilemaps reference biome textures)
     bf_cleanup(&g->battlefield);
