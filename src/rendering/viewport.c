@@ -14,7 +14,12 @@ void viewport_init_split_screen(GameState *gs) {
     Rectangle p1Screen = { 0, 0, gs->halfWidth, SCREEN_HEIGHT };
     Rectangle p2Screen = { gs->halfWidth, 0, gs->halfWidth, SCREEN_HEIGHT };
 
-    player_init(&gs->players[0], 0, SIDE_BOTTOM, p1Screen, 90.0f, bf);
+    // Both cameras use rot=-90 so that higher world Y maps to lower screen X.
+    // This places the seam (y=960) at the inner screen edge (x=960) for both.
+    // "Facing each other" is handled by sprite directions, not camera rotation.
+    // P1 target = center of bottom territory (540, 1440)
+    // P2 target = center of top territory (540, 480)
+    player_init(&gs->players[0], 0, SIDE_BOTTOM, p1Screen, -90.0f, bf);
     player_init(&gs->players[1], 1, SIDE_TOP, p2Screen, -90.0f, bf);
 
     printf("Split-screen viewports initialized (canonical)\n");

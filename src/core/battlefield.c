@@ -110,12 +110,15 @@ static void generate_canonical_waypoints(Battlefield *bf, BattleSide side) {
                 localY = t->bounds.y + t->bounds.height * (0.1f + depth * 0.8f);
             }
 
-            // Apply bow offset in local space
-            localX += bow_offset(lane, t_param, laneWidth);
-
-            // Convert to canonical coordinates
+            // Convert to canonical coordinates FIRST, then apply bow in canonical space.
+            // Applying bow before bf_to_canonical would flip the bow direction for SIDE_TOP
+            // because bf_to_canonical mirrors X (per D-06).
             SideLocalPos local = { .v = { localX, localY }, .side = side };
-            bf->laneWaypoints[side][lane][wp] = bf_to_canonical(local, bf->boardWidth);
+            CanonicalPos canonical = bf_to_canonical(local, bf->boardWidth);
+
+            // Apply bow offset in canonical space (sign is consistent for both sides)
+            canonical.v.x += bow_offset(lane, t_param, laneWidth);
+            bf->laneWaypoints[side][lane][wp] = canonical;
         }
     }
 

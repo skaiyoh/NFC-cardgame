@@ -44,8 +44,10 @@ bool pathfind_step_entity(Entity *e, const Battlefield *bf, float deltaTime) {
             float jy = ((float) (rand() % ((int) (LANE_JITTER_RADIUS * 2) + 1)) - LANE_JITTER_RADIUS);
             e->position.x += jx;
             e->position.y += jy;
-            // Face toward the enemy (down) when idling at the end of the path
-            e->anim.dir = DIR_DOWN;
+            // Face toward the enemy when idling at the end of the path.
+            // SIDE_BOTTOM walks toward decreasing y (enemy above) → DIR_UP
+            // SIDE_TOP walks toward increasing y (enemy below) → DIR_DOWN
+            e->anim.dir = (side == SIDE_BOTTOM) ? DIR_UP : DIR_DOWN;
             e->anim.flipH = false;
             entity_set_state(e, ESTATE_IDLE);
             return false;

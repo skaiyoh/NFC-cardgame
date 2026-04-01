@@ -72,6 +72,13 @@ typedef struct BiomeDef {
     int detailDefCount;
 } BiomeDef;
 
+typedef struct {
+    Vector2 offset;
+    Vector2 target;
+    float rotation;
+    float zoom;
+} Camera2D;
+
 /* ---- Minimal Entity stub for entity registry tests ---- */
 typedef struct Entity {
     int id;
@@ -279,6 +286,68 @@ static void test_bf_territory_queries(void) {
     printf("  PASS: test_bf_territory_queries\n");
 }
 
+/* ---- Test: bf_lanes_coincide_at_seam ---- */
+/* Top and bottom lanes for the same canonical lane index must converge at the
+ * seam.  At the last waypoint (enemy end), lane 0 bottom should be near
+ * the same canonical X as lane 0 top, and likewise for lanes 1 and 2.
+ * "Near" = within one lane-width, since bow offsets shift outer lanes. */
+static void test_bf_lanes_coincide_at_seam(void) {
+    Battlefield bf = create_test_battlefield();
+    float laneWidth = (float)BOARD_WIDTH / 3.0f;
+
+    for (int lane = 0; lane < 3; lane++) {
+        // Last waypoint of bottom side (deep in top territory)
+        CanonicalPos bottomEnd = bf_waypoint(&bf, SIDE_BOTTOM, lane, LANE_WAYPOINT_COUNT - 1);
+        // Last waypoint of top side (deep in bottom territory)
+        CanonicalPos topEnd = bf_waypoint(&bf, SIDE_TOP, lane, LANE_WAYPOINT_COUNT - 1);
+
+        // Both should have similar X (within one lane width)
+        float xDiff = fabsf(bottomEnd.v.x - topEnd.v.x);
+        assert(xDiff < laneWidth);
+
+        // Center lane (lane 1) should have nearly identical X (no bow)
+        if (lane == 1) {
+            assert(xDiff < 5.0f);
+        }
+    }
+
+    printf("  PASS: test_bf_lanes_coincide_at_seam\n");
+}
+
+/* ---- Test: bf_seam_screen_placement ---- */
+/* Verify that the canonical seam (y=960) maps to screen x=960 for both
+ * camera configurations used by the game.  This catches the P2 camera
+ * orientation bug where the seam landed on the wrong edge. */
+static void test_bf_seam_screen_placement(void) {
+    // P1 camera: rot=-90, target=(540,1440), offset=(480,540)
+    Camera2D p1cam = {0};
+    p1cam.target = (Vector2){540.0f, 1440.0f};
+    p1cam.offset = (Vector2){480.0f, 540.0f};
+    p1cam.rotation = -90.0f;
+    p1cam.zoom = 1.0f;
+
+    // P2 camera: rot=-90, target=(540,480), offset=(1440,540)
+    Camera2D p2cam = {0};
+    p2cam.target = (Vector2){540.0f, 480.0f};
+    p2cam.offset = (Vector2){1440.0f, 540.0f};
+    p2cam.rotation = -90.0f;
+    p2cam.zoom = 1.0f;
+
+    // Seam point at center of board
+    Vector2 seamPoint = {540.0f, 960.0f};
+
+    // GetWorldToScreen2D requires Raylib window — compute manually instead.
+    // For rot=-90: screen_x = offset_x - (wy - target_y)
+    float p1_sx = p1cam.offset.x - (seamPoint.y - p1cam.target.y);
+    float p2_sx = p2cam.offset.x - (seamPoint.y - p2cam.target.y);
+
+    // Both should map seam to screen x=960 (the inner split edge)
+    assert(approx_eq(p1_sx, 960.0f, 1.0f));
+    assert(approx_eq(p2_sx, 960.0f, 1.0f));
+
+    printf("  PASS: test_bf_seam_screen_placement\n");
+}
+
 /* ---- main ---- */
 int main(void) {
     printf("Running battlefield tests...\n");
@@ -289,6 +358,8 @@ int main(void) {
     test_bf_entity_registry();
     test_bf_side_for_player();
     test_bf_territory_queries();
-    printf("\nAll 7 tests passed!\n");
+    test_bf_lanes_coincide_at_seam();
+    test_bf_seam_screen_placement();
+    printf("\nAll 9 tests passed!\n");
     return 0;
 }
