@@ -1,6 +1,6 @@
 # Card Data Guide
 
-Reference for authoring card entries in the PostgreSQL database.
+Reference for authoring card entries in the SQLite database.
 
 ---
 
@@ -15,13 +15,13 @@ Cards are stored in the `cards` table with the following columns:
 | `cost` | INTEGER | Yes | Energy cost to play |
 | `type` | TEXT | Yes | Card type — determines which effect handler runs (see [Card Types](#card-types)) |
 | `rules_text` | TEXT | No | Flavor or rules text shown in the card description area |
-| `data` | JSONB | Yes | All visual styling and gameplay stats (see [Data JSON](#data-json)) |
+| `data` | TEXT | Yes | All visual styling and gameplay stats as JSON (see [Data JSON](#data-json)) |
 
 ---
 
 ## Card Types
 
-The following types are registered in `src/logic/card_effects.c`. Using an unregistered type will cause the card to silently fail when played.
+The following types are registered in `src/logic/card_effects.c`. Using an unregistered type will log an unknown-type message and fail when played.
 
 | Type | Behavior |
 |------|----------|
@@ -38,7 +38,7 @@ All troop types (`knight`, `healer`, `assassin`, `brute`, `farmer`) read their s
 
 ## Data JSON
 
-The `data` column is a JSONB object with two sections: `visual` for card appearance, and flat fields for gameplay stats.
+The `data` column is a JSON text object with two sections: `visual` for card appearance, and flat fields for gameplay stats. Parsed at runtime using cJSON.
 
 ```json
 {

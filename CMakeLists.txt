@@ -98,6 +98,11 @@ add_executable(test_battlefield
 target_link_libraries(test_battlefield ${MATH_LIB})
 add_test(NAME battlefield COMMAND test_battlefield)
 
+add_executable(test_combat
+    tests/test_combat.c)
+target_link_libraries(test_combat ${MATH_LIB})
+add_test(NAME combat COMMAND test_combat)
+
 # --- Database init (convenience target) ---
 add_custom_target(init-db
     COMMAND sqlite3 ${CMAKE_SOURCE_DIR}/cardgame.db < ${CMAKE_SOURCE_DIR}/sqlite/schema.sql
