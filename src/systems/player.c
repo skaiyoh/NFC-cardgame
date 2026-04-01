@@ -123,9 +123,9 @@ void player_update_entities(Player *p, GameState *gs, float deltaTime) {
     }
 }
 
-// TODO: player_draw_entities is never called — entity drawing is handled by
-// TODO: game_draw_entities_for_viewport in game.c instead. This function is dead code.
-// TODO: Either remove it or integrate it into the rendering path.
+// TODO: player_draw_entities is never called -- entity drawing is handled by
+// TODO: game_draw_canonical_entities in game.c (iterates Battlefield.entities).
+// TODO: This function is dead code. Remove in Plan 05 when Player adapter fields are deleted.
 void player_draw_entities(const Player *p) {
     for (int i = 0; i < p->entityCount; i++) {
         entity_draw(p->entities[i]);
