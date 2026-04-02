@@ -8,3 +8,5 @@ test_pathfinding
 test_battlefield_math
 test_battlefield
 test_combat
+test_animation
+test_debug_events
