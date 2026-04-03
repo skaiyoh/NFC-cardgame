@@ -82,21 +82,17 @@ target_link_libraries(card_enroll ${SQLITE3_LIB} ${MATH_LIB})
 enable_testing()
 
 add_executable(test_pathfinding
-    tests/test_pathfinding.c
-    src/logic/pathfinding.c)
+    tests/test_pathfinding.c)
 target_link_libraries(test_pathfinding ${MATH_LIB})
 add_test(NAME pathfinding COMMAND test_pathfinding)
 
 add_executable(test_battlefield_math
-    tests/test_battlefield_math.c
-    src/core/battlefield_math.c)
+    tests/test_battlefield_math.c)
 target_link_libraries(test_battlefield_math ${MATH_LIB})
 add_test(NAME battlefield_math COMMAND test_battlefield_math)
 
 add_executable(test_battlefield
-    tests/test_battlefield.c
-    src/core/battlefield.c
-    src/core/battlefield_math.c)
+    tests/test_battlefield.c)
 target_link_libraries(test_battlefield ${MATH_LIB})
 add_test(NAME battlefield COMMAND test_battlefield)
 
