@@ -77,7 +77,7 @@
 #include "../src/rendering/biome.h"
 #include "../src/rendering/tilemap_renderer.h"
 #include "../src/core/config.h"
-#include "../lib/raylib.h"
+#include <raylib.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

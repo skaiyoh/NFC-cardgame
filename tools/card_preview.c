@@ -1,5 +1,5 @@
 #include "../src/rendering/card_renderer.h"
-#include "../lib/raylib.h"
+#include <raylib.h>
 #include <stdio.h>
 #include <stdlib.h>
 
