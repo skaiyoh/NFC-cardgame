@@ -1,8 +1,10 @@
 # NFC Tabletop Card Game
 
-A two-player split-screen strategy game where physical NFC cards control the virtual board. Players place real cards on NFC readers connected via Arduino's to spawn troops, cast spells, and try to destroy their opponents base.
+A two-player split-screen strategy game where physical NFC cards control the virtual board. Players place real cards on NFC readers connected via Arduinos to spawn troops, cast spells, and try to destroy their opponent's base.
 
 Built in C with Raylib, SQLite, and Arduino hardware.
+
+Primary development target: Linux. The setup and run instructions below assume a Linux workstation or Raspberry Pi OS.
 
 ## Features
 
@@ -15,8 +17,14 @@ Built in C with Raylib, SQLite, and Arduino hardware.
 - **Card data from SQLite** — card stats, sprites, and metadata stored in a local `cardgame.db` file and loaded at runtime
 - **Standalone dev tools** — card preview, biome preview, and card enrollment utilities
 
+## Documentation
+
+- [Linux Setup](md/LINUX_SETUP.md) — package install, Raylib setup, serial permissions, and Raspberry Pi notes
+- [Card Data Guide](md/CARD_DATA_GUIDE.md) — authoring card entries in the SQLite database
+
 ## Requirements
 
+- Linux
 - A C compiler (`gcc` or `clang`)
 - CMake 3.20+
 - `pkg-config`
@@ -24,28 +32,14 @@ Built in C with Raylib, SQLite, and Arduino hardware.
 - SQLite3
 - Arduino(s) with NFC readers (for hardware input)
 
-## Installing Raylib
+## Linux Setup
 
 This repo expects Raylib to be installed system-wide. `cJSON` is already vendored in
 `third_party/cjson`, but `raylib.h` and `libraylib` must come from your machine.
 
-### macOS (Homebrew)
+For a fuller walkthrough, see [Linux Setup](md/LINUX_SETUP.md).
 
-Homebrew is the intended setup for macOS.
-
-```bash
-brew install cmake pkgconf raylib sqlite
-
-# Verify raylib is visible to the toolchain
-pkg-config --modversion raylib
-```
-
-If you need extra setup details, use the official Raylib macOS guide:
-https://github.com/raysan5/raylib/wiki/Working-on-macOS
-
-### Debian / Ubuntu
-
-Install the compiler toolchain, SQLite, and the libraries Raylib needs to build:
+On Debian / Ubuntu / Raspberry Pi OS, install the compiler toolchain, SQLite, and the libraries Raylib needs to build:
 
 ```bash
 sudo apt update
@@ -60,7 +54,7 @@ install Raylib from source:
 ```bash
 git clone https://github.com/raysan5/raylib.git /tmp/raylib
 cmake -S /tmp/raylib -B /tmp/raylib/build
-cmake --build /tmp/raylib/build -j
+cmake --build /tmp/raylib/build -j"$(nproc)"
 sudo cmake --install /tmp/raylib/build
 sudo ldconfig
 
@@ -78,7 +72,10 @@ https://github.com/raysan5/raylib/wiki/Working-on-GNU-Linux
 cmake -S . -B build
 
 # Build everything
-cmake --build build -j
+cmake --build build -j"$(nproc)"
+
+# Run tests
+ctest --test-dir build --output-on-failure
 
 # Recreate the database only if cardgame.db is missing or you want a reset
 cmake --build build --target init-db
@@ -179,7 +176,7 @@ The game uses a local SQLite file (`cardgame.db`) — no server required.
 
 To reset the database: `rm cardgame.db && cmake --build build --target init-db`
 
-To browse the database, use [DB Browser for SQLite](https://sqlitebrowser.org/) (`brew install --cask db-browser-for-sqlite`).
+To browse the database, use [DB Browser for SQLite](https://sqlitebrowser.org/) and install `sqlitebrowser` from your distro repository.
 
 ## Environment Variables
 
@@ -190,7 +187,7 @@ To browse the database, use [DB Browser for SQLite](https://sqlitebrowser.org/) 
 | `NFC_PORT_P1` | Player 1 Arduino serial port           | —               |
 | `NFC_PORT_P2` | Player 2 Arduino serial port           | —               |
 
-On macOS, serial ports look like `/dev/cu.usbserial-XXXXXXXX`. Run `ls /dev/cu.*` to find yours.
+On Linux, serial ports usually look like `/dev/ttyACM0` or `/dev/ttyUSB0`. Run `ls /dev/ttyACM* /dev/ttyUSB* 2>/dev/null` to find yours. If permissions block access, see [Linux Setup](md/LINUX_SETUP.md).
 
 ## AI Disclosure
 
