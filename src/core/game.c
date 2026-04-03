@@ -38,8 +38,10 @@ bool game_init(GameState *g) {
     // Load NFC UID -> card_id mappings (non-fatal if table is empty or missing)
     cards_load_nfc_map(&g->deck, &g->db);
 
+    SetConfigFlags(FLAG_FULLSCREEN_MODE);
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "NFC Card Game");
     SetTargetFPS(60);
+    HideCursor();
 
     // Initialize card system
     card_action_init();
