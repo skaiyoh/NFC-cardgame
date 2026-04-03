@@ -31,7 +31,7 @@ cmake -S . -B build
 # Build everything
 cmake --build build -j"$(nproc)"
 
-# Initialize the database (first time only)
+# Recreate the database only if cardgame.db is missing or you want a reset
 cmake --build build --target init-db
 
 # Run from the project root so relative asset paths resolve correctly
@@ -60,7 +60,7 @@ tail -f ~/NFC-cardgame/game.log
 | `cmake -S . -B build`                     | Configure the project                             |
 | `cmake --build build -j"$(nproc)"`        | Build all targets                                 |
 | `cmake --build build --target cardgame`   | Build the main game binary                        |
-| `cmake --build build --target init-db`    | Create and seed `cardgame.db` (first time setup)  |
+| `cmake --build build --target init-db`    | Recreate and seed `cardgame.db` if needed          |
 | `cmake --build build --target card_preview` | Build the card preview tool                     |
 | `cmake --build build --target biome_preview` | Build the biome preview tool                   |
 | `cmake --build build --target card_enroll`  | Build the card enrollment tool                  |
@@ -126,9 +126,9 @@ The game uses a local SQLite file (`cardgame.db`) — no server required.
 |-----------------------|----------------------------------|
 | `sqlite/schema.sql`   | Table definitions                |
 | `sqlite/seed.sql`     | Base card data                   |
-| `cardgame.db`         | Runtime database (git-ignored)   |
+| `cardgame.db`         | Runtime database shipped in repo |
 
-To reset the database: `rm cardgame.db && make init-db`
+To reset the database: `rm cardgame.db && cmake --build build --target init-db`
 
 To browse the database, use [DB Browser for SQLite](https://sqlitebrowser.org/) (`brew install --cask db-browser-for-sqlite`).
 
