@@ -226,3 +226,15 @@ CanonicalPos bf_waypoint(const Battlefield *bf, BattleSide side, int lane, int w
     }
     return bf->laneWaypoints[side][lane][waypointIdx];
 }
+
+CanonicalPos bf_base_anchor(const Battlefield *bf, BattleSide side) {
+    // Center lane (lane 1), first waypoint = spawn position
+    CanonicalPos spawn = bf->laneWaypoints[side][1][0];
+    CanonicalPos base = spawn;
+    if (side == SIDE_TOP) {
+        base.v.y = spawn.v.y - BASE_SPAWN_GAP;
+    } else {
+        base.v.y = spawn.v.y + BASE_SPAWN_GAP;
+    }
+    return base;
+}

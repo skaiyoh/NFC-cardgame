@@ -121,6 +121,7 @@ struct Player {
     float energy;
     float maxEnergy;
     float energyRegenRate;
+    void *base; // Entity *base (void * to avoid pulling in full Entity for stub)
 };
 
 float bf_distance(CanonicalPos a, CanonicalPos b) {

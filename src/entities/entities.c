@@ -129,8 +129,15 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
     switch (e->state) {
         case ESTATE_IDLE:
             if (!e->alive) break;
-            // TODO: ESTATE_IDLE has no combat or targeting behavior. Idle entities should scan for
-            // TODO: nearby enemies and transition to ESTATE_WALKING or trigger an attack when in range.
+            // Idle troops scan for nearby enemies (handles end-of-lane jitter edge case)
+            if (e->type == ENTITY_TROOP) {
+                Entity *target = combat_find_target(e, gs);
+                if (target && combat_in_range(e, target, gs)) {
+                    e->attackTargetId = target->id;
+                    entity_set_state(e, ESTATE_ATTACKING);
+                    entity_face_toward(e, target->position);
+                }
+            }
             break;
 
         case ESTATE_WALKING: {

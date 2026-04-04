@@ -35,6 +35,9 @@
 #define ENERGY_BAR_MARGIN    16
 #define ENERGY_BAR_Y_OFFSET  40
 
+// Base geometry
+#define BASE_SPAWN_GAP 32.0f
+
 // Lane pathfinding
 #define LANE_WAYPOINT_COUNT  8
 #define LANE_BOW_INTENSITY   0.3f

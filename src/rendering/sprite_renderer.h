@@ -46,6 +46,7 @@ typedef enum {
     SPRITE_TYPE_ASSASSIN,
     SPRITE_TYPE_BRUTE,
     SPRITE_TYPE_FARMER,
+    SPRITE_TYPE_BASE,
     SPRITE_TYPE_COUNT
 } SpriteType;
 

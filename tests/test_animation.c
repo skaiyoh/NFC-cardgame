@@ -425,8 +425,9 @@ static void test_attack_chained_swings(void) {
 }
 
 static void test_attack_spec_all_types_have_hit_marker(void) {
-    // Every sprite type's attack spec should have a valid hit marker
+    // Every attack-capable sprite type should have a valid hit marker
     for (int t = 0; t < SPRITE_TYPE_COUNT; t++) {
+        if (t == SPRITE_TYPE_BASE) continue; // buildings have no attack
         const EntityAnimSpec *spec = anim_spec_get((SpriteType)t, ANIM_ATTACK);
         assert(spec->hitNormalized > 0.0f && spec->hitNormalized <= 1.0f);
         assert(spec->mode == ANIM_PLAY_ONCE);

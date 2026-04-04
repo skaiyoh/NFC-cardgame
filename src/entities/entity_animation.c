@@ -56,6 +56,15 @@ static const EntityAnimSpec s_specs[SPRITE_TYPE_COUNT][ANIM_COUNT] = {
         [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.75f, -1.0f, false, true  },
         [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.60f,  0.5f, true,  false }, // 6 frames
     },
+    // SPRITE_TYPE_BASE (building — no attack, slow idle pulse, death one-shot)
+    {
+        [ANIM_IDLE]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 1.00f, -1.0f, false, false },
+        [ANIM_RUN]    = { ANIM_IDLE,   ANIM_PLAY_LOOP, 1.00f, -1.0f, false, false },
+        [ANIM_WALK]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 1.00f, -1.0f, false, false },
+        [ANIM_HURT]   = { ANIM_HURT,   ANIM_PLAY_ONCE, 0.50f, -1.0f, false, false },
+        [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 1.00f, -1.0f, false, true  },
+        [ANIM_ATTACK] = { ANIM_IDLE,   ANIM_PLAY_LOOP, 1.00f, -1.0f, false, false },
+    },
 };
 
 // Fallback spec for out-of-bounds lookups

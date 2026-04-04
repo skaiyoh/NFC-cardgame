@@ -88,6 +88,10 @@ CanonicalPos bf_spawn_pos(const Battlefield *bf, BattleSide side, int slotIndex)
 // Get canonical waypoint for a given side, lane, and waypoint index
 CanonicalPos bf_waypoint(const Battlefield *bf, BattleSide side, int lane, int waypointIdx);
 
+// Get canonical home-base anchor for a given side.
+// Positioned behind the center-lane spawn point by BASE_SPAWN_GAP.
+CanonicalPos bf_base_anchor(const Battlefield *bf, BattleSide side);
+
 // Map playerID (0 or 1) to BattleSide (per D-03, D-04: player 0 = SIDE_BOTTOM, player 1 = SIDE_TOP)
 BattleSide bf_side_for_player(int playerID);
 

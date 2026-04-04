@@ -99,6 +99,10 @@ struct Player {
     float energy;
     float maxEnergy;
     float energyRegenRate;
+
+    // Non-owning: Battlefield entity registry owns the base entity.
+    // NULL if destroyed or not yet spawned.
+    Entity *base;
 };
 
 // Game state

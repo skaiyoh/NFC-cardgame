@@ -25,6 +25,7 @@
 #define BOARD_WIDTH        1080
 #define BOARD_HEIGHT       1920
 #define SEAM_Y             960
+#define BASE_SPAWN_GAP     32.0f
 #define LANE_WAYPOINT_COUNT  8
 #define LANE_BOW_INTENSITY   0.3f
 #define PI_F               3.14159265f
@@ -342,6 +343,49 @@ static void test_bf_seam_screen_placement(void) {
     printf("  PASS: test_bf_seam_screen_placement\n");
 }
 
+/* ---- Test: bf_base_anchor_bottom ---- */
+/* Verify P1 (SIDE_BOTTOM) base anchor is behind spawn by BASE_SPAWN_GAP */
+static void test_bf_base_anchor_bottom(void) {
+    Battlefield bf = create_test_battlefield();
+    CanonicalPos anchor = bf_base_anchor(&bf, SIDE_BOTTOM);
+
+    // Center lane spawn Y = 960 + 960 * 0.8 = 1728; base = 1728 + 32 = 1760
+    assert(approx_eq(anchor.v.x, 540.0f, 5.0f));
+    assert(approx_eq(anchor.v.y, 1760.0f, 5.0f));
+
+    printf("  PASS: test_bf_base_anchor_bottom\n");
+}
+
+/* ---- Test: bf_base_anchor_top ---- */
+/* Verify P2 (SIDE_TOP) base anchor is behind spawn by BASE_SPAWN_GAP */
+static void test_bf_base_anchor_top(void) {
+    Battlefield bf = create_test_battlefield();
+    CanonicalPos anchor = bf_base_anchor(&bf, SIDE_TOP);
+
+    // Center lane spawn Y = 960 * 0.2 = 192; base = 192 - 32 = 160
+    assert(approx_eq(anchor.v.x, 540.0f, 5.0f));
+    assert(approx_eq(anchor.v.y, 160.0f, 5.0f));
+
+    printf("  PASS: test_bf_base_anchor_top\n");
+}
+
+/* ---- Test: bf_base_anchor_gap ---- */
+/* Verify base anchor and spawn anchor are separated by exactly BASE_SPAWN_GAP */
+static void test_bf_base_anchor_gap(void) {
+    Battlefield bf = create_test_battlefield();
+
+    for (int side = 0; side < 2; side++) {
+        CanonicalPos spawn = bf_spawn_pos(&bf, (BattleSide)side, 1); // center slot
+        CanonicalPos base = bf_base_anchor(&bf, (BattleSide)side);
+        float gap = fabsf(base.v.y - spawn.v.y);
+        assert(approx_eq(gap, BASE_SPAWN_GAP, 0.1f));
+        // X should be the same
+        assert(approx_eq(base.v.x, spawn.v.x, 0.1f));
+    }
+
+    printf("  PASS: test_bf_base_anchor_gap\n");
+}
+
 /* ---- main ---- */
 int main(void) {
     printf("Running battlefield tests...\n");
@@ -354,6 +398,9 @@ int main(void) {
     test_bf_territory_queries();
     test_bf_lanes_coincide_at_seam();
     test_bf_seam_screen_placement();
-    printf("\nAll 9 tests passed!\n");
+    test_bf_base_anchor_bottom();
+    test_bf_base_anchor_top();
+    test_bf_base_anchor_gap();
+    printf("\nAll 12 tests passed!\n");
     return 0;
 }

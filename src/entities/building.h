@@ -7,7 +7,7 @@
 
 #include "../core/types.h"
 
-Entity *building_create_base(Player *owner, Vector2 position);
+Entity *building_create_base(Player *owner, Vector2 position, const SpriteAtlas *atlas);
 
 void building_take_damage(Entity *building, int damage);
 

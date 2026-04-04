@@ -12,6 +12,7 @@
 #include "../rendering/ui.h"
 #include "../systems/player.h"
 #include "../entities/entities.h"
+#include "../entities/building.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -62,6 +63,17 @@ bool game_init(GameState *g) {
 
     // Initialize split-screen viewports and players
     viewport_init_split_screen(g);
+
+    // Spawn home bases behind center-lane spawn points
+    for (int i = 0; i < 2; i++) {
+        BattleSide side = bf_side_for_player(i);
+        CanonicalPos anchor = bf_base_anchor(&g->battlefield, side);
+        Entity *base = building_create_base(&g->players[i], anchor.v, &g->spriteAtlas);
+        if (base) {
+            g->players[i].base = base;
+            bf_add_entity(&g->battlefield, base);
+        }
+    }
 
     // P2 viewport render target (flipped vertically for across-the-table perspective)
     g->p2RT = LoadRenderTexture(g->halfWidth, SCREEN_HEIGHT);
@@ -151,6 +163,11 @@ void game_update(GameState *g) {
     for (int i = bf->entityCount - 1; i >= 0; i--) {
         if (bf->entities[i]->markedForRemoval) {
             Entity *dead = bf->entities[i];
+
+            // Clear stale base pointers before freeing memory
+            if (dead == g->players[0].base) g->players[0].base = NULL;
+            if (dead == g->players[1].base) g->players[1].base = NULL;
+
             bf->entities[i] = bf->entities[bf->entityCount - 1];
             bf->entityCount--;
             entity_destroy(dead);
@@ -243,6 +260,13 @@ void game_cleanup(GameState *g) {
     player_cleanup(&g->players[1]);
 
     UnloadRenderTexture(g->p2RT);
+
+    // Destroy all live entities before dropping the registry
+    for (int i = 0; i < g->battlefield.entityCount; i++) {
+        entity_destroy(g->battlefield.entities[i]);
+    }
+    g->players[0].base = NULL;
+    g->players[1].base = NULL;
 
     // Cleanup Battlefield (must be before biome_free_all since tilemaps reference biome textures)
     bf_cleanup(&g->battlefield);
