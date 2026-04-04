@@ -87,7 +87,7 @@ Rectangle sprite_visible_bounds(const CharacterSprite *cs, const AnimState *stat
                                 Vector2 pos, float scale);
 
 void sprite_draw(const CharacterSprite *cs, const AnimState *state,
-                 Vector2 pos, float scale);
+                 Vector2 pos, float scale, float rotationDegrees);
 
 void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir,
                      float cycleDuration, bool oneShot);

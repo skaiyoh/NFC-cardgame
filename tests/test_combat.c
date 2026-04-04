@@ -100,6 +100,7 @@ struct Entity {
     const CharacterSprite *sprite;
     int spriteType; // SpriteType enum, but int to avoid pulling in sprite_renderer.h
     float spriteScale;
+    float spriteRotationDegrees;
     int ownerID;
     int lane;
     int waypointIndex;

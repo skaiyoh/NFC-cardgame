@@ -61,6 +61,7 @@ struct Entity {
     const CharacterSprite *sprite;
     SpriteType spriteType;
     float spriteScale;
+    float spriteRotationDegrees;
 
     // Ownership
     int ownerID; // Player index (0 or 1)

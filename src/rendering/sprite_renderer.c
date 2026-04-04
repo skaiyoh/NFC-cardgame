@@ -98,7 +98,7 @@ static SpriteSheet load_sheet(const char *path, int frameCount) {
 
     s.frameCount = frameCount;
     s.frameWidth = s.texture.width / frameCount;
-    // TODO: frameHeight assumes exactly DIR_COUNT (3) rows in the sheet (DOWN, SIDE, UP).
+    // TODO: frameHeight assumes exactly DIR_COUNT (3) rows in the sheet (SIDE, DOWN, UP).
     // TODO: If any sprite sheet has a different row layout this silently produces wrong frame heights.
     // TODO: Validate texture.height % DIR_COUNT == 0 and log a warning if not.
     s.frameHeight = s.texture.height / DIR_COUNT;
@@ -239,7 +239,7 @@ Rectangle sprite_visible_bounds(const CharacterSprite *cs, const AnimState *stat
 }
 
 void sprite_draw(const CharacterSprite *cs, const AnimState *state,
-                 Vector2 pos, float scale) {
+                 Vector2 pos, float scale, float rotationDegrees) {
     const SpriteSheet *sheet = sprite_sheet_get(cs, state->anim);
     // TODO: When LoadTexture fails, texture.id == 0 and we silently return without drawing.
     // TODO: This is safe but gives no indication of why nothing appears. Log a warning at load time.
@@ -274,7 +274,7 @@ void sprite_draw(const CharacterSprite *cs, const AnimState *state,
     // Center the sprite on the position
     Vector2 origin = {dw / 2.0f, dh / 2.0f};
 
-    DrawTexturePro(sheet->texture, src, dst, origin, 0.0f, WHITE);
+    DrawTexturePro(sheet->texture, src, dst, origin, rotationDegrees, WHITE);
 }
 
 

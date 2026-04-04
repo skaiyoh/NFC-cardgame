@@ -33,9 +33,10 @@ Entity *building_create_base(Player *owner, Vector2 position, const SpriteAtlas 
     e->sprite = sprite_atlas_get(atlas, SPRITE_TYPE_BASE);
     e->spriteScale = 3.0f;
 
-    // Face toward enemy
-    e->anim.dir = (owner->side == SIDE_BOTTOM) ? DIR_UP : DIR_DOWN;
+    // Use the front-facing row for both base sprites.
+    e->anim.dir = DIR_DOWN;
     e->anim.flipH = false;
+    e->spriteRotationDegrees = (owner->side == SIDE_BOTTOM) ? 180.0f : 0.0f;
 
     printf("[BASE] Spawned base (id=%d) for player %d at (%.0f, %.0f)\n",
            e->id, owner->id, position.x, position.y);

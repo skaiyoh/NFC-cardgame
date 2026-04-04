@@ -54,6 +54,7 @@ Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
     // TODO: spriteScale is hardcoded to 2.0f here; troop_spawn overrides it correctly, but other
     // TODO: entity types that don't override this may inadvertently inherit the wrong scale.
     e->spriteScale = 2.0f;
+    e->spriteRotationDegrees = 0.0f;
 
     e->spriteType = SPRITE_TYPE_COUNT; // sentinel: no sprite type assigned yet
 
@@ -219,5 +220,5 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
 
 void entity_draw(const Entity *e) {
     if (!e || e->markedForRemoval || !e->sprite) return;
-    sprite_draw(e->sprite, &e->anim, e->position, e->spriteScale);
+    sprite_draw(e->sprite, &e->anim, e->position, e->spriteScale, e->spriteRotationDegrees);
 }
