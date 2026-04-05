@@ -5,6 +5,7 @@
 #include "building.h"
 #include "entities.h"
 #include "../logic/combat.h"
+#include "../logic/win_condition.h"
 #include <stdio.h>
 
 Entity *building_create_base(Player *owner, Vector2 position, const SpriteAtlas *atlas) {
@@ -44,6 +45,11 @@ Entity *building_create_base(Player *owner, Vector2 position, const SpriteAtlas 
     return e;
 }
 
-void building_take_damage(Entity *building, int damage) {
-    entity_take_damage(building, damage);
+void building_take_damage(Entity *building, int damage, GameState *gs) {
+    if (!building) return;
+
+    bool killed = entity_take_damage(building, damage);
+    if (killed && building->type == ENTITY_BUILDING) {
+        win_latch_from_destroyed_base(gs, building);
+    }
 }

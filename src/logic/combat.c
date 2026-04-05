@@ -3,6 +3,7 @@
 //
 
 #include "combat.h"
+#include "win_condition.h"
 #include "../core/battlefield.h"
 #include "../core/battlefield_math.h"
 #include "../core/debug_events.h"
@@ -76,30 +77,36 @@ Entity *combat_find_target(Entity *attacker, GameState *gs) {
     return bestTarget;
 }
 
-void entity_take_damage(Entity *entity, int damage) {
-    if (!entity || !entity->alive) return;
+bool entity_take_damage(Entity *entity, int damage) {
+    if (!entity || !entity->alive) return false;
 
     entity->hp -= damage;
     if (entity->hp <= 0) {
         entity->hp = 0;
         entity->alive = false;
         entity_set_state(entity, ESTATE_DEAD);
+        return true;
     }
+    return false;
 }
 
-void combat_apply_hit(Entity *attacker, Entity *target) {
-    if (!attacker || !target) return;
+void combat_apply_hit(Entity *attacker, Entity *target, GameState *gs) {
+    if (!attacker || !target || !gs) return;
     if (!target->alive) return;
 
-    entity_take_damage(target, attacker->attack);
+    bool killed = entity_take_damage(target, attacker->attack);
     debug_event_emit_xy(target->position.x, target->position.y, DEBUG_EVT_HIT);
 
     printf("[COMBAT] Entity %d dealt %d damage to entity %d (hp: %d/%d)\n",
            attacker->id, attacker->attack, target->id, target->hp, target->maxHP);
+
+    if (killed && target->type == ENTITY_BUILDING) {
+        win_latch_from_destroyed_base(gs, target);
+    }
 }
 
-void combat_resolve(Entity *attacker, Entity *target, float deltaTime) {
-    if (!attacker || !target) return;
+void combat_resolve(Entity *attacker, Entity *target, GameState *gs, float deltaTime) {
+    if (!attacker || !target || !gs) return;
     if (!attacker->alive || attacker->markedForRemoval) return;
     if (!target->alive || target->markedForRemoval) return;
 
@@ -111,11 +118,15 @@ void combat_resolve(Entity *attacker, Entity *target, float deltaTime) {
     if (attacker->attackCooldown > 0.0f) return;
 
     // Deal damage and reset cooldown
-    entity_take_damage(target, attacker->attack);
+    bool killed = entity_take_damage(target, attacker->attack);
     attacker->attackCooldown = (attacker->attackSpeed > 0.0f)
         ? 1.0f / attacker->attackSpeed
         : 1.0f;
 
     printf("[COMBAT] Entity %d dealt %d damage to entity %d (hp: %d/%d)\n",
            attacker->id, attacker->attack, target->id, target->hp, target->maxHP);
+
+    if (killed && target->type == ENTITY_BUILDING) {
+        win_latch_from_destroyed_base(gs, target);
+    }
 }

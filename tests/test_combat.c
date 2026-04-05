@@ -29,6 +29,7 @@
 #define NFC_CARDGAME_BATTLEFIELD_H
 #define NFC_CARDGAME_BATTLEFIELD_MATH_H
 #define NFC_CARDGAME_DEBUG_EVENTS_H
+#define NFC_CARDGAME_WIN_CONDTION_H
 
 /* ---- Config defines (must match src/core/config.h) ---- */
 #define LANE_WAYPOINT_COUNT  8
@@ -45,6 +46,15 @@ typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_ATTACKING, ESTATE_DEAD } Enti
 typedef enum { TARGET_NEAREST, TARGET_BUILDING, TARGET_SPECIFIC_TYPE } TargetingMode;
 typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
 typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
+typedef enum {
+    SPRITE_TYPE_KNIGHT,
+    SPRITE_TYPE_HEALER,
+    SPRITE_TYPE_ASSASSIN,
+    SPRITE_TYPE_BRUTE,
+    SPRITE_TYPE_FARMER,
+    SPRITE_TYPE_BASE,
+    SPRITE_TYPE_COUNT
+} SpriteType;
 
 typedef struct {
     AnimationType anim;
@@ -133,7 +143,7 @@ float bf_distance(CanonicalPos a, CanonicalPos b) {
 
 /* GameState stub -- only players and battlefield needed for combat */
 #define BIOME_COUNT 2
-typedef struct { int dummy; } SpriteAtlas_stub;
+typedef struct { int dummy; } SpriteAtlas;
 typedef struct { int dummy; } DB_stub;
 typedef struct { int dummy; } Deck_stub;
 typedef struct { int dummy; } CardAtlas_stub;
@@ -163,9 +173,11 @@ struct GameState {
     Player players[2];
     BiomeDef_stub biomeDefs[BIOME_COUNT];
     Battlefield battlefield;
-    SpriteAtlas_stub spriteAtlas;
+    SpriteAtlas spriteAtlas;
     int halfWidth;
     NFCReader_stub nfc;
+    bool gameOver;
+    int winnerID;
 };
 
 /* ---- Stub functions required by combat.c ---- */
@@ -191,8 +203,42 @@ void entity_set_state(Entity *e, EntityState newState) {
     e->state = newState;
 }
 
+/* win_condition stubs — must precede combat.c include */
+void win_trigger(GameState *gs, int winnerID) {
+    if (!gs || gs->gameOver) return;
+    gs->gameOver = true;
+    gs->winnerID = winnerID;
+}
+
+void win_latch_from_destroyed_base(GameState *gs, const Entity *destroyedBase) {
+    if (!gs || !destroyedBase || gs->gameOver) return;
+    for (int i = 0; i < 2; i++) {
+        if (gs->players[i].base == (void *)destroyedBase) {
+            win_trigger(gs, 1 - i);
+            return;
+        }
+    }
+}
+
 /* ---- Include combat.c directly ---- */
 #include "../src/logic/combat.c"
+
+/* ---- Stub functions required by building.c ---- */
+Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
+    (void)type;
+    (void)faction;
+    (void)pos;
+    return NULL;
+}
+
+const CharacterSprite *sprite_atlas_get(const SpriteAtlas *atlas, SpriteType type) {
+    (void)atlas;
+    (void)type;
+    return NULL;
+}
+
+/* ---- Include building.c directly ---- */
+#include "../src/entities/building.c"
 
 /* ---- Test helpers ---- */
 static int s_nextID = 1;
@@ -239,6 +285,8 @@ static GameState make_game_state(void) {
     gs.battlefield.entityCount = 0;
 
     gs.halfWidth = 960;
+    gs.gameOver = false;
+    gs.winnerID = -1;
     return gs;
 }
 
@@ -383,6 +431,7 @@ static void test_find_target_skips_friendly(void) {
 }
 
 static void test_resolve_deals_damage(void) {
+    GameState gs = make_game_state();
     Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
     attacker.attack = 25;
     attacker.attackSpeed = 1.0f;
@@ -392,13 +441,14 @@ static void test_resolve_deals_damage(void) {
     target.hp = 100;
     target.maxHP = 100;
 
-    combat_resolve(&attacker, &target, 0.016f);
+    combat_resolve(&attacker, &target, &gs, 0.016f);
 
     assert(target.hp == 75);
     assert(attacker.attackCooldown > 0.0f);
 }
 
 static void test_resolve_respects_cooldown(void) {
+    GameState gs = make_game_state();
     Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
     attacker.attack = 25;
     attacker.attackSpeed = 1.0f;
@@ -407,7 +457,7 @@ static void test_resolve_respects_cooldown(void) {
     Entity target = make_entity(1, ENTITY_TROOP, (Vector2){0, 0});
     target.hp = 100;
 
-    combat_resolve(&attacker, &target, 0.016f);
+    combat_resolve(&attacker, &target, &gs, 0.016f);
 
     /* Cooldown decremented but no damage dealt */
     assert(target.hp == 100);
@@ -415,6 +465,7 @@ static void test_resolve_respects_cooldown(void) {
 }
 
 static void test_resolve_kills_at_zero_hp(void) {
+    GameState gs = make_game_state();
     Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
     attacker.attack = 150;  /* overkill */
     attacker.attackSpeed = 1.0f;
@@ -424,7 +475,7 @@ static void test_resolve_kills_at_zero_hp(void) {
     target.hp = 100;
     target.maxHP = 100;
 
-    combat_resolve(&attacker, &target, 0.016f);
+    combat_resolve(&attacker, &target, &gs, 0.016f);
 
     assert(target.hp == 0);
     assert(target.alive == false);
@@ -432,6 +483,7 @@ static void test_resolve_kills_at_zero_hp(void) {
 }
 
 static void test_resolve_skips_dead_target(void) {
+    GameState gs = make_game_state();
     Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
     attacker.attackCooldown = 0.0f;
 
@@ -439,7 +491,7 @@ static void test_resolve_skips_dead_target(void) {
     target.alive = false;
     target.hp = 0;
 
-    combat_resolve(&attacker, &target, 0.016f);
+    combat_resolve(&attacker, &target, &gs, 0.016f);
 
     /* Cooldown should not have been set (no attack happened) */
     assert(attacker.attackCooldown == 0.0f);
@@ -504,6 +556,7 @@ static void test_canonical_distance_direct(void) {
 /* ---- combat_apply_hit tests ---- */
 
 static void test_apply_hit_deals_damage(void) {
+    GameState gs = make_game_state();
     Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
     attacker.attack = 25;
 
@@ -511,13 +564,14 @@ static void test_apply_hit_deals_damage(void) {
     target.hp = 100;
     target.maxHP = 100;
 
-    combat_apply_hit(&attacker, &target);
+    combat_apply_hit(&attacker, &target, &gs);
 
     assert(target.hp == 75);
     assert(target.alive == true);
 }
 
 static void test_apply_hit_kills(void) {
+    GameState gs = make_game_state();
     Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
     attacker.attack = 150;
 
@@ -525,7 +579,7 @@ static void test_apply_hit_kills(void) {
     target.hp = 100;
     target.maxHP = 100;
 
-    combat_apply_hit(&attacker, &target);
+    combat_apply_hit(&attacker, &target, &gs);
 
     assert(target.hp == 0);
     assert(target.alive == false);
@@ -533,6 +587,7 @@ static void test_apply_hit_kills(void) {
 }
 
 static void test_apply_hit_skips_dead(void) {
+    GameState gs = make_game_state();
     Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
     attacker.attack = 25;
 
@@ -540,17 +595,138 @@ static void test_apply_hit_skips_dead(void) {
     target.hp = 0;
     target.alive = false;
 
-    combat_apply_hit(&attacker, &target);
+    combat_apply_hit(&attacker, &target, &gs);
 
     /* Dead target should not take further damage */
     assert(target.hp == 0);
 }
 
 static void test_apply_hit_null_safety(void) {
+    GameState gs = make_game_state();
     Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
     /* Should not crash */
-    combat_apply_hit(NULL, &attacker);
-    combat_apply_hit(&attacker, NULL);
+    combat_apply_hit(NULL, &attacker, &gs);
+    combat_apply_hit(&attacker, NULL, &gs);
+}
+
+/* ---- Win-latch path tests ---- */
+
+static void test_apply_hit_kills_p1_base_latches_p2_win(void) {
+    GameState gs = make_game_state();
+    Entity base0 = make_entity(0, ENTITY_BUILDING, (Vector2){540, 1600});
+    base0.hp = 10;
+    base0.maxHP = 5000;
+    gs.players[0].base = (void *)&base0;
+
+    Entity attacker = make_entity(1, ENTITY_TROOP, (Vector2){540, 1590});
+    attacker.attack = 100;
+
+    combat_apply_hit(&attacker, &base0, &gs);
+
+    assert(gs.gameOver == true);
+    assert(gs.winnerID == 1);
+}
+
+static void test_resolve_kills_p2_base_latches_p1_win(void) {
+    GameState gs = make_game_state();
+    Entity base1 = make_entity(1, ENTITY_BUILDING, (Vector2){540, 300});
+    base1.hp = 10;
+    base1.maxHP = 5000;
+    gs.players[1].base = (void *)&base1;
+
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 310});
+    attacker.attack = 100;
+    attacker.attackSpeed = 1.0f;
+    attacker.attackCooldown = 0.0f;
+
+    combat_resolve(&attacker, &base1, &gs, 0.016f);
+
+    assert(gs.gameOver == true);
+    assert(gs.winnerID == 0);
+}
+
+static void test_killing_non_base_building_no_match_end(void) {
+    GameState gs = make_game_state();
+    Entity building = make_entity(1, ENTITY_BUILDING, (Vector2){540, 500});
+    building.hp = 10;
+    building.maxHP = 100;
+    /* Not assigned as anyone's base */
+
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 510});
+    attacker.attack = 100;
+
+    combat_apply_hit(&attacker, &building, &gs);
+
+    assert(building.hp == 0);
+    assert(building.alive == false);
+    assert(gs.gameOver == false);
+    assert(gs.winnerID == -1);
+}
+
+static void test_latch_holds_after_second_base_kill(void) {
+    GameState gs = make_game_state();
+    Entity base0 = make_entity(0, ENTITY_BUILDING, (Vector2){540, 1600});
+    base0.hp = 10;
+    base0.maxHP = 5000;
+    gs.players[0].base = (void *)&base0;
+
+    Entity base1 = make_entity(1, ENTITY_BUILDING, (Vector2){540, 300});
+    base1.hp = 10;
+    base1.maxHP = 5000;
+    gs.players[1].base = (void *)&base1;
+
+    Entity attacker0 = make_entity(1, ENTITY_TROOP, (Vector2){540, 1590});
+    attacker0.attack = 100;
+
+    Entity attacker1 = make_entity(0, ENTITY_TROOP, (Vector2){540, 310});
+    attacker1.attack = 100;
+
+    /* First kill latches */
+    combat_apply_hit(&attacker0, &base0, &gs);
+    assert(gs.gameOver == true);
+    assert(gs.winnerID == 1);
+
+    /* Second kill must not flip */
+    combat_apply_hit(&attacker1, &base1, &gs);
+    assert(gs.winnerID == 1);
+}
+
+static void test_building_take_damage_null_safety(void) {
+    GameState gs = make_game_state();
+
+    building_take_damage(NULL, 10, &gs);
+
+    assert(gs.gameOver == false);
+    assert(gs.winnerID == -1);
+}
+
+static void test_building_take_damage_kills_p1_base_latches_p2_win(void) {
+    GameState gs = make_game_state();
+    Entity base0 = make_entity(0, ENTITY_BUILDING, (Vector2){540, 1600});
+    base0.hp = 10;
+    base0.maxHP = 5000;
+    gs.players[0].base = (void *)&base0;
+
+    building_take_damage(&base0, 100, &gs);
+
+    assert(base0.hp == 0);
+    assert(base0.alive == false);
+    assert(gs.gameOver == true);
+    assert(gs.winnerID == 1);
+}
+
+static void test_building_take_damage_kills_non_base_no_match_end(void) {
+    GameState gs = make_game_state();
+    Entity building = make_entity(1, ENTITY_BUILDING, (Vector2){540, 500});
+    building.hp = 10;
+    building.maxHP = 100;
+
+    building_take_damage(&building, 100, &gs);
+
+    assert(building.hp == 0);
+    assert(building.alive == false);
+    assert(gs.gameOver == false);
+    assert(gs.winnerID == -1);
 }
 
 /* ---- Main ---- */
@@ -579,6 +755,13 @@ int main(void) {
     RUN_TEST(test_apply_hit_kills);
     RUN_TEST(test_apply_hit_skips_dead);
     RUN_TEST(test_apply_hit_null_safety);
+    RUN_TEST(test_apply_hit_kills_p1_base_latches_p2_win);
+    RUN_TEST(test_resolve_kills_p2_base_latches_p1_win);
+    RUN_TEST(test_killing_non_base_building_no_match_end);
+    RUN_TEST(test_latch_holds_after_second_base_kill);
+    RUN_TEST(test_building_take_damage_null_safety);
+    RUN_TEST(test_building_take_damage_kills_p1_base_latches_p2_win);
+    RUN_TEST(test_building_take_damage_kills_non_base_no_match_end);
 
     printf("\nAll %d tests passed!\n", tests_passed);
     return 0;

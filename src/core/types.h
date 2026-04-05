@@ -135,6 +135,10 @@ struct GameState {
 
     // NFC hardware (two Arduinos, one per player)
     NFCReader nfc;
+
+    // Match result (latched on first lethal base hit, or defensive draw fallback)
+    bool gameOver;
+    int winnerID;   // -1 = unset or draw if gameOver=true, 0 = P1, 1 = P2
 };
 
 #endif //NFC_CARDGAME_TYPES_H

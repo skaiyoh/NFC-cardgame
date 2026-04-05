@@ -113,6 +113,11 @@ add_executable(test_debug_events
 target_link_libraries(test_debug_events ${MATH_LIB})
 add_test(NAME debug_events COMMAND test_debug_events)
 
+add_executable(test_win_condition
+    tests/test_win_condition.c)
+target_link_libraries(test_win_condition ${MATH_LIB})
+add_test(NAME win_condition COMMAND test_win_condition)
+
 # --- Database init (convenience target) ---
 add_custom_target(init-db
     COMMAND sqlite3 ${CMAKE_SOURCE_DIR}/cardgame.db < ${CMAKE_SOURCE_DIR}/sqlite/schema.sql

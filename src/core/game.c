@@ -7,6 +7,7 @@
 #include "battlefield.h"
 #include "debug_events.h"
 #include "../logic/card_effects.h"
+#include "../logic/win_condition.h"
 #include "../rendering/viewport.h"
 #include "../rendering/debug_overlay.h"
 #include "../rendering/ui.h"
@@ -75,6 +76,10 @@ bool game_init(GameState *g) {
         }
     }
 
+    // Match result state
+    g->gameOver = false;
+    g->winnerID = -1;
+
     // P2 viewport render target (flipped vertically for across-the-table perspective)
     g->p2RT = LoadRenderTexture(g->halfWidth, SCREEN_HEIGHT);
 
@@ -124,14 +129,15 @@ static void game_handle_nfc_events(GameState *g) {
     }
 }
 
-static void game_handle_test_input(GameState *g) {
-    // Toggle debug overlays
+static void game_handle_debug_input(void) {
     if (IsKeyPressed(KEY_F1)) s_showLaneDebug = !s_showLaneDebug;
     if (IsKeyPressed(KEY_F2)) s_debugFlags.attackBars   = !s_debugFlags.attackBars;
     if (IsKeyPressed(KEY_F3)) s_debugFlags.targetLines  = !s_debugFlags.targetLines;
     if (IsKeyPressed(KEY_F4)) s_debugFlags.eventFlashes = !s_debugFlags.eventFlashes;
     if (IsKeyPressed(KEY_F5)) s_debugFlags.rangeCirlces = !s_debugFlags.rangeCirlces;
+}
 
+static void game_handle_spawn_input(GameState *g) {
     // Player 1: key 1
     if (IsKeyPressed(KEY_ONE)) game_test_play_knight(g, 0, 0);
     if (IsKeyPressed(KEY_TWO)) game_test_play_knight(g, 0, 1);
@@ -146,8 +152,18 @@ static void game_handle_test_input(GameState *g) {
 void game_update(GameState *g) {
     float deltaTime = fminf(GetFrameTime(), 1.0f / 20.0f);
 
+    // Debug toggles always active (even after gameOver)
+    game_handle_debug_input();
+
+    // Freeze gameplay once match result is latched
+    // (debug event timers still decay so hit flashes fade naturally)
+    if (g->gameOver) {
+        debug_events_tick(deltaTime);
+        return;
+    }
+
     game_handle_nfc_events(g);
-    game_handle_test_input(g);
+    game_handle_spawn_input(g);
 
     // Update both players (energy regen, slot cooldowns)
     player_update(&g->players[0], deltaTime);
@@ -157,9 +173,13 @@ void game_update(GameState *g) {
     Battlefield *bf = &g->battlefield;
     for (int i = 0; i < bf->entityCount; i++) {
         entity_update(bf->entities[i], g, deltaTime);
+        if (g->gameOver) break;  // Win latched mid-loop — stop processing
     }
 
-    // Sweep dead/removed entities (iterate backward for safe removal)
+    // Defensive fallback: catch base deaths from non-combat paths
+    win_check(g);
+
+    // Sweep dead/removed entities (runs once on the trigger frame, then frozen)
     for (int i = bf->entityCount - 1; i >= 0; i--) {
         if (bf->entities[i]->markedForRemoval) {
             Entity *dead = bf->entities[i];
@@ -201,10 +221,6 @@ void game_render(GameState *g) {
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
     game_draw_canonical_entities(bf);
     debug_overlay_draw(bf, g, s_debugFlags);
-    DrawText("PLAYER 1",
-             (int)(bf->territories[SIDE_BOTTOM].bounds.x + 40),
-             (int)(bf->territories[SIDE_BOTTOM].bounds.y + 40),
-             40, DARKGREEN);
     viewport_end();
 
     // --- Player 2 viewport (SIDE_TOP) — render to texture, then flip ---
@@ -245,9 +261,22 @@ void game_render(GameState *g) {
     }
 
     // HUD — screen space, drawn after all viewports
+    ui_draw_viewport_label("PLAYER 1", 0, false, DARKGREEN);
     ui_draw_viewport_label("PLAYER 2", SCREEN_WIDTH / 2, true, MAROON);
     ui_draw_energy_bar(&g->players[0], 0, SCREEN_WIDTH / 2);
     ui_draw_energy_bar(&g->players[1], 960, SCREEN_WIDTH / 2);
+
+    // Match result overlay
+    if (g->gameOver) {
+        for (int i = 0; i < 2; i++) {
+            const bool drawnMatch = (g->winnerID < 0);
+            const bool playerWon = (g->winnerID == g->players[i].id);
+            const char *text = drawnMatch ? "DRAW" : (playerWon ? "VICTORY" : "DEFEAT");
+            Color color = drawnMatch ? LIGHTGRAY : (playerWon ? GOLD : RED);
+            float rotation = (i == 0) ? 90.0f : 270.0f;
+            ui_draw_match_result(&g->players[i], text, rotation, color);
+        }
+    }
 
     EndDrawing();
 }

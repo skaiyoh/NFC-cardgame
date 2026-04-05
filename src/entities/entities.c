@@ -178,7 +178,7 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
                 e->hitFlashTimer = 0.15f;
                 // Re-validate target at hit moment
                 if (target->alive) {
-                    combat_apply_hit(e, target);
+                    combat_apply_hit(e, target, gs);
                 }
             }
 

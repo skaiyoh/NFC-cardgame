@@ -16,13 +16,15 @@ Entity *combat_find_target(Entity *attacker, GameState *gs);
 
 // Apply one attack from attacker to target (respects cooldown).
 // Legacy: used before clip-driven attacks. Retained for non-clip entities.
-void combat_resolve(Entity *attacker, Entity *target, float deltaTime);
+void combat_resolve(Entity *attacker, Entity *target, GameState *gs, float deltaTime);
 
 // Apply one hit from attacker to target (no cooldown check, immediate damage).
 // Called by the animation hit-sync system when the attack clip crosses its hit marker.
-void combat_apply_hit(Entity *attacker, Entity *target);
+// Checks for base kill and latches win condition if applicable.
+void combat_apply_hit(Entity *attacker, Entity *target, GameState *gs);
 
-// Apply damage to an entity; transitions to ESTATE_DEAD if hp <= 0
-void entity_take_damage(Entity *entity, int damage);
+// Apply damage to an entity; transitions to ESTATE_DEAD if hp <= 0.
+// Returns true if the entity was just killed (was alive, now dead).
+bool entity_take_damage(Entity *entity, int damage);
 
 #endif //NFC_CARDGAME_COMBAT_H

@@ -3,16 +3,61 @@
 //
 
 #include "win_condition.h"
-#include "../core/types.h"
+#include <stdio.h>
 
-// TODO: Win condition system is completely unimplemented — only forward declarations exist.
-// TODO: The game has no end state: bases are never created (building_create_base returns NULL),
-// TODO: so there is nothing to destroy and the match runs forever. Implement:
-// TODO:   win_check()   — called each frame; check if either player's base hp <= 0.
-// TODO:                   If gs->players[i].base == NULL the check is silently skipped.
-// TODO:                   Requires building_create_base to be implemented first.
-// TODO:   win_trigger() — set gs->gameOver = true, gs->winnerID = winnerID, display win screen.
-// TODO: Call win_check() from game_update() each frame after entity updates.
-void win_check(GameState * gs);
+static void win_trigger_draw(GameState *gs) {
+    if (!gs || gs->gameOver) return;
 
-void win_trigger(GameState *gs, int winnerID);
+    gs->gameOver = true;
+    gs->winnerID = -1;
+
+    printf("[WIN] Match drawn!\n");
+}
+
+void win_trigger(GameState *gs, int winnerID) {
+    if (!gs || gs->gameOver) return;
+
+    gs->gameOver = true;
+    gs->winnerID = winnerID;
+
+    printf("[WIN] Player %d wins!\n", winnerID);
+}
+
+void win_latch_from_destroyed_base(GameState *gs, const Entity *destroyedBase) {
+    if (!gs || !destroyedBase || gs->gameOver) return;
+
+    for (int i = 0; i < 2; i++) {
+        if (gs->players[i].base == destroyedBase) {
+            win_trigger(gs, 1 - i);
+            return;
+        }
+    }
+}
+
+void win_check(GameState *gs) {
+    if (!gs || gs->gameOver) return;
+
+    int deadBaseCount = 0;
+    int deadBaseOwner = -1;
+
+    for (int i = 0; i < 2; i++) {
+        Entity *base = gs->players[i].base;
+        if (!base) continue;
+
+        if (!base->alive || base->hp <= 0) {
+            deadBaseCount++;
+            deadBaseOwner = i;
+        }
+    }
+
+    if (deadBaseCount == 1) {
+        printf("[WIN] WARNING: primary latch bypassed, fallback caught dead base for player %d\n", deadBaseOwner);
+        win_trigger(gs, 1 - deadBaseOwner);
+        return;
+    }
+
+    if (deadBaseCount > 1) {
+        printf("[WIN] WARNING: primary latch bypassed, fallback found both player bases dead\n");
+        win_trigger_draw(gs);
+    }
+}
