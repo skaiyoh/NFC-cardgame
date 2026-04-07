@@ -20,13 +20,14 @@
 static int s_nextEntityID = 1;
 
 // Orient entity's animation facing toward a target position.
-static void entity_face_toward(Entity *e, Vector2 targetPos) {
+static void entity_face_toward(Entity *e, const Battlefield *bf, Vector2 targetPos) {
     float dx = targetPos.x - e->position.x;
     float dy = targetPos.y - e->position.y;
     Vector2 diff = { dx, dy };
-    BattleSide side = bf_side_for_player(e->ownerID);
-    pathfind_apply_direction_for_side(&e->anim, diff, side);
-    e->spriteRotationDegrees = pathfind_sprite_rotation_for_side(e->anim.dir, side);
+    pathfind_commit_presentation(e, bf);
+    pathfind_apply_direction_for_side(&e->anim, diff, e->presentationSide);
+    e->spriteRotationDegrees = pathfind_sprite_rotation_for_side(e->anim.dir,
+                                                                 e->presentationSide);
 }
 
 Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
@@ -46,6 +47,7 @@ Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
     // TODO: entity types that don't override this may inadvertently inherit the wrong scale.
     e->spriteScale = 2.0f;
     e->spriteRotationDegrees = 0.0f;
+    e->presentationSide = SIDE_BOTTOM;
 
     e->spriteType = SPRITE_TYPE_COUNT; // sentinel: no sprite type assigned yet
 
@@ -141,7 +143,7 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
                 if (target && combat_in_range(e, target, gs)) {
                     e->attackTargetId = target->id;
                     entity_set_state(e, ESTATE_ATTACKING);
-                    entity_face_toward(e, target->position);
+                    entity_face_toward(e, &gs->battlefield, target->position);
                 }
             }
             break;
@@ -155,7 +157,7 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
             if (target && combat_in_range(e, target, gs)) {
                 e->attackTargetId = target->id;
                 entity_set_state(e, ESTATE_ATTACKING);
-                entity_face_toward(e, target->position);
+                entity_face_toward(e, &gs->battlefield, target->position);
             }
             break;
         }
@@ -198,7 +200,7 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
                 Entity *nextTarget = combat_find_target(e, gs);
                 if (nextTarget && combat_in_range(e, nextTarget, gs)) {
                     e->attackTargetId = nextTarget->id;
-                    entity_face_toward(e, nextTarget->position);
+                    entity_face_toward(e, &gs->battlefield, nextTarget->position);
                     entity_restart_clip(e);
                 } else {
                     e->attackTargetId = -1;
@@ -220,7 +222,11 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
         }
     }
 
-    anim_state_update(&e->anim, deltaTime);
+    AnimPlaybackEvent evt = anim_state_update(&e->anim, deltaTime);
+    if (e->state == ESTATE_WALKING && evt.loopedThisTick) {
+        pathfind_commit_presentation(e, &gs->battlefield);
+        pathfind_update_walk_facing(e, &gs->battlefield);
+    }
 }
 
 void entity_draw(const Entity *e) {

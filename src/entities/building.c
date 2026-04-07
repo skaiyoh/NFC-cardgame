@@ -26,6 +26,7 @@ Entity *building_create_base(Player *owner, Vector2 position, const SpriteAtlas 
 
     // Ownership / lane
     e->ownerID = owner->id;
+    e->presentationSide = owner->side;
     e->lane = 1;
     e->waypointIndex = 0;
 

@@ -116,6 +116,7 @@ struct Entity {
     int spriteType; // SpriteType enum, but int to avoid pulling in sprite_renderer.h
     float spriteScale;
     float spriteRotationDegrees;
+    BattleSide presentationSide;
     int ownerID;
     int lane;
     int waypointIndex;

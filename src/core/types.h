@@ -74,6 +74,7 @@ struct Entity {
     SpriteType spriteType;
     float spriteScale;
     float spriteRotationDegrees;
+    BattleSide presentationSide;
 
     // Ownership
     int ownerID; // Player index (0 or 1)

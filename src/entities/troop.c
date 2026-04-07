@@ -98,6 +98,7 @@ Entity *troop_spawn(Player *owner, const TroopData *data, Vector2 position,
 
     // Ownership
     e->ownerID = owner->id;
+    e->presentationSide = owner->side;
 
     // Sprite
     e->spriteType = data->spriteType;
