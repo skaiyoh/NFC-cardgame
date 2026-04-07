@@ -20,6 +20,7 @@
 #define VECTOR2_DEFINED
 #endif
 #include "battlefield_math.h"
+#include "ore.h"
 
 // Forward declarations
 typedef struct Entity Entity;
@@ -51,6 +52,9 @@ typedef struct Battlefield {
 
     // Canonical slot spawn anchors: slotSpawnAnchors[side][slot]
     CanonicalPos slotSpawnAnchors[2][NUM_CARD_SLOTS];
+
+    // Ore resource nodes (battlefield-owned, not Entity instances)
+    OreField oreField;
 
     // Authoritative entity registry (per D-11)
     Entity *entities[MAX_ENTITIES * 2];  // room for both sides

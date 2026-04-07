@@ -37,6 +37,17 @@
 #define TILE_COUNT         32
 #define MAX_DETAIL_DEFS    64
 
+/* Ore config (required by ore.h included from battlefield.h) */
+#define ORE_GRID_CELL_SIZE_PX        64.0f
+#define ORE_GRID_COLS                16
+#define ORE_GRID_ROWS                15
+#define ORE_EDGE_MARGIN_CELLS        1
+#define ORE_LANE_CLEARANCE_CELLS     1.0f
+#define ORE_BASE_CLEARANCE_CELLS     2.0f
+#define ORE_SPAWN_CLEARANCE_CELLS    1.5f
+#define ORE_NODE_CLEARANCE_CELLS     1.5f
+#define ORE_MATCH_COUNT_PER_SIDE     8
+
 /* ---- Minimal type stubs ---- */
 #define VECTOR2_DEFINED
 typedef struct { float x; float y; } Vector2;

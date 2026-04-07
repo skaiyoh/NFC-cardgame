@@ -5,11 +5,13 @@
 #include "game.h"
 #include "config.h"
 #include "battlefield.h"
+#include "ore.h"
 #include "debug_events.h"
 #include "../logic/card_effects.h"
 #include "../logic/win_condition.h"
 #include "../rendering/viewport.h"
 #include "../rendering/debug_overlay.h"
+#include "../rendering/ore_renderer.h"
 #include "../rendering/ui.h"
 #include "../systems/player.h"
 #include "../entities/entities.h"
@@ -24,6 +26,10 @@ static DebugOverlayFlags s_debugFlags = {0};
 
 bool game_init(GameState *g) {
     srand((unsigned int) time(NULL));
+    // Derive ore seed before bf_init: tilemap creation reseeds global rand(),
+    // so generating this afterward would lock ore placement to deterministic values.
+    uint32_t oreSeed = ((uint32_t)rand() << 16) ^ (uint32_t)rand();
+    if (oreSeed == 0) oreSeed = 1;
 
     const char *db_path = getenv("DB_PATH");
     if (!db_path) db_path = "cardgame.db";
@@ -58,6 +64,12 @@ bool game_init(GameState *g) {
     bf_init(&g->battlefield, g->biomeDefs,
             BIOME_GRASS, BIOME_GRASS,  // bottom/top biome (matches current setup)
             tileSize, 42, 99);         // seeds match current hardcoded values
+
+    // Initialize ore resource nodes (dedicated RNG, after bf_init generates waypoints)
+    ore_init(&g->battlefield, oreSeed);
+
+    // Load ore texture
+    g->oreTexture = ore_renderer_load();
 
     // Initialize character sprite atlas
     sprite_atlas_init(&g->spriteAtlas);
@@ -219,6 +231,8 @@ void game_render(GameState *g) {
     viewport_begin(&g->players[0]);
     viewport_draw_battlefield_tilemap(bf, SIDE_BOTTOM);
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
+    ore_renderer_draw(&bf->oreField, SIDE_BOTTOM, g->oreTexture);
+    ore_renderer_draw(&bf->oreField, SIDE_TOP, g->oreTexture);
     game_draw_canonical_entities(bf);
     debug_overlay_draw(bf, g, s_debugFlags);
     viewport_end();
@@ -236,6 +250,8 @@ void game_render(GameState *g) {
     BeginMode2D(p2CamRT);
     viewport_draw_battlefield_tilemap(bf, SIDE_BOTTOM);
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
+    ore_renderer_draw(&bf->oreField, SIDE_BOTTOM, g->oreTexture);
+    ore_renderer_draw(&bf->oreField, SIDE_TOP, g->oreTexture);
     game_draw_canonical_entities(bf);
     debug_overlay_draw(bf, g, s_debugFlags);
     EndMode2D();
@@ -298,6 +314,9 @@ void game_cleanup(GameState *g) {
     }
     g->players[0].base = NULL;
     g->players[1].base = NULL;
+
+    // Unload ore texture
+    UnloadTexture(g->oreTexture);
 
     // Cleanup Battlefield (must be before biome_free_all since tilemaps reference biome textures)
     bf_cleanup(&g->battlefield);

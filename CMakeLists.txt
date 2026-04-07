@@ -24,7 +24,7 @@ if(APPLE)
 endif()
 
 # --- Source file groups ---
-set(SRC_CORE       src/core/game.c src/core/battlefield.c src/core/battlefield_math.c src/core/debug_events.c)
+set(SRC_CORE       src/core/game.c src/core/battlefield.c src/core/battlefield_math.c src/core/debug_events.c src/core/ore.c)
 set(SRC_DATA       src/data/db.c src/data/cards.c)
 set(SRC_RENDERING  src/rendering/card_renderer.c
                    src/rendering/tilemap_renderer.c
@@ -32,7 +32,8 @@ set(SRC_RENDERING  src/rendering/card_renderer.c
                    src/rendering/sprite_renderer.c
                    src/rendering/biome.c
                    src/rendering/ui.c
-                   src/rendering/debug_overlay.c)
+                   src/rendering/debug_overlay.c
+                   src/rendering/ore_renderer.c)
 set(SRC_ENTITIES   src/entities/entities.c
                    src/entities/entity_animation.c
                    src/entities/troop.c
@@ -117,6 +118,11 @@ add_executable(test_win_condition
     tests/test_win_condition.c)
 target_link_libraries(test_win_condition ${MATH_LIB})
 add_test(NAME win_condition COMMAND test_win_condition)
+
+add_executable(test_ore
+    tests/test_ore.c)
+target_link_libraries(test_ore ${MATH_LIB})
+add_test(NAME ore COMMAND test_ore)
 
 # --- Database init (convenience target) ---
 add_custom_target(init-db

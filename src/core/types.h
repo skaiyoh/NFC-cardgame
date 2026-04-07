@@ -125,6 +125,9 @@ struct GameState {
     // Character sprites (shared by all entities)
     SpriteAtlas spriteAtlas;
 
+    // Ore node texture (shared by ore_renderer)
+    Texture2D oreTexture;
+
     // Screen layout
     int halfWidth; // Half screen width for split screen
 
