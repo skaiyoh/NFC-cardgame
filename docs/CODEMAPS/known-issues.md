@@ -1,7 +1,7 @@
 # Known Issues
 
 All items below were verified from current source or current database state on
-2026-04-04.
+2026-04-08.
 
 ## High-Signal Gameplay Gaps
 
@@ -35,6 +35,15 @@ All items below were verified from current source or current database state on
   extra behavior beyond calling the common spawn helper.
 - `TARGET_SPECIFIC_TYPE` is parsed from card JSON, but combat targeting still
   falls back to nearest-target behavior.
+
+## Verified Runtime Bugs
+
+- Base idle timing changes do not apply on first spawn.
+  - `entity_create()` initializes every entity with a generic `0.5s` idle clip.
+  - `building_create_base()` assigns `SPRITE_TYPE_BASE` but does not
+    reinitialize the animation state from `anim_spec_get()`.
+  - Result: edits to base idle timing in `entity_animation.c` are ignored until
+    the base later transitions through another animation state.
 
 ## Code Risks Already Called Out In Source
 
