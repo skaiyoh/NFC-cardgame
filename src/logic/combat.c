@@ -92,7 +92,7 @@ bool entity_take_damage(Entity *entity, int damage) {
 }
 
 // Handle post-kill consequences for any entity type.
-// Currently handles farmer ore transfer; extend for future unit roles.
+// Currently handles farmer sustenance transfer; extend for future unit roles.
 static void combat_on_kill(Entity *victim, GameState *gs) {
     if (victim->unitRole == UNIT_ROLE_FARMER) {
         farmer_on_death(victim, gs);

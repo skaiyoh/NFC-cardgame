@@ -37,7 +37,7 @@
 #define LANE_WAYPOINT_COUNT  8
 #define NUM_CARD_SLOTS 3
 #define MAX_ENTITIES 64
-#define ORE_MATCH_COUNT_PER_SIDE 8
+#define SUSTENANCE_MATCH_COUNT_PER_SIDE 8
 
 /* ---- Minimal type stubs ---- */
 typedef struct { float x; float y; } Vector2;
@@ -50,7 +50,7 @@ typedef enum { TARGET_NEAREST, TARGET_BUILDING, TARGET_SPECIFIC_TYPE } Targeting
 typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
 typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
 typedef enum { UNIT_ROLE_COMBAT, UNIT_ROLE_FARMER } UnitRole;
-typedef enum { FARMER_SEEKING, FARMER_WALKING_TO_ORE, FARMER_MINING, FARMER_RETURNING, FARMER_DEPOSITING } FarmerState;
+typedef enum { FARMER_SEEKING, FARMER_WALKING_TO_SUSTENANCE, FARMER_GATHERING, FARMER_RETURNING, FARMER_DEPOSITING } FarmerState;
 typedef enum {
     SPRITE_TYPE_KNIGHT,
     SPRITE_TYPE_HEALER,
@@ -123,8 +123,8 @@ struct Entity {
     float hitFlashTimer;
     UnitRole unitRole;
     FarmerState farmerState;
-    int claimedOreNodeId;
-    int carriedOreValue;
+    int claimedSustenanceNodeId;
+    int carriedSustenanceValue;
     float workTimer;
     bool alive;
     bool markedForRemoval;
@@ -144,7 +144,7 @@ struct Player {
     float maxEnergy;
     float energyRegenRate;
     void *base; // Entity *base (void * to avoid pulling in full Entity for stub)
-    int oreCollected;
+    int sustenanceCollected;
 };
 
 float bf_distance(CanonicalPos a, CanonicalPos b) {
@@ -166,7 +166,7 @@ typedef struct { int fds[2]; } NFCReader_stub;
  * Must have entities array and entityCount to match battlefield.h layout. */
 typedef struct { int dummy; } Territory_stub;
 
-/* OreNode/OreField stubs -- must match ore.h struct sizes for correct layout */
+/* SustenanceNode/SustenanceField stubs -- must match sustenance.h struct sizes for correct layout */
 typedef struct {
     int id;
     BattleSide side;
@@ -175,16 +175,16 @@ typedef struct {
     CanonicalPos worldPos;
     bool active;
     int claimedByEntityId;
-    int oreType;
+    int sustenanceType;
     int value;
     int durability;
     int maxDurability;
-} OreNode_stub;
+} SustenanceNode_stub;
 
 typedef struct {
-    OreNode_stub nodes[2][ORE_MATCH_COUNT_PER_SIDE];
+    SustenanceNode_stub nodes[2][SUSTENANCE_MATCH_COUNT_PER_SIDE];
     uint32_t rngState;
-} OreField_stub;
+} SustenanceField_stub;
 
 typedef struct Battlefield {
     float boardWidth, boardHeight, seamY;
@@ -193,8 +193,8 @@ typedef struct Battlefield {
     char _waypoints_pad[2 * 3 * LANE_WAYPOINT_COUNT * sizeof(CanonicalPos)];
     /* Slot spawn anchors -- not accessed by combat */
     char _spawn_pad[2 * NUM_CARD_SLOTS * sizeof(CanonicalPos)];
-    /* Ore field -- not accessed by combat but must be present for layout */
-    OreField_stub oreField;
+    /* Sustenance field -- not accessed by combat but must be present for layout */
+    SustenanceField_stub sustenanceField;
     /* Entity registry -- used by combat_find_target */
     Entity *entities[MAX_ENTITIES * 2];
     int entityCount;

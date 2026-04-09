@@ -115,8 +115,8 @@ Entity *troop_spawn(Player *owner, const TroopData *data, Vector2 position,
         e->attackSpeed = 0.0f;
         e->attackRange = 0.0f;
         e->farmerState = FARMER_SEEKING;
-        e->claimedOreNodeId = -1;
-        e->carriedOreValue = 0;
+        e->claimedSustenanceNodeId = -1;
+        e->carriedSustenanceValue = 0;
         e->workTimer = 0.0f;
         e->lane = -1;
         e->waypointIndex = -1;

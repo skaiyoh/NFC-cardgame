@@ -149,38 +149,38 @@ static void draw_event_flashes(void) {
     }
 }
 
-// --- Ore placement diagnostics overlay (F7) ---
+// --- Sustenance placement diagnostics overlay (F7) ---
 
-static Color ore_reason_color(OreCellReason reason) {
+static Color sustenance_reason_color(SustenanceCellReason reason) {
     switch (reason) {
-        case ORE_CELL_VALID:          return Fade(GREEN,    0.15f);
-        case ORE_CELL_EDGE_BLOCKED:   return Fade(DARKGRAY, 0.15f);
-        case ORE_CELL_LANE_BLOCKED:   return Fade(RED,      0.20f);
-        case ORE_CELL_BASE_BLOCKED:   return Fade(ORANGE,   0.20f);
-        case ORE_CELL_SPAWN_BLOCKED:  return Fade(YELLOW,   0.20f);
-        case ORE_CELL_NODE_BLOCKED:   return Fade(SKYBLUE,  0.20f);
+        case SUSTENANCE_CELL_VALID:          return Fade(GREEN,    0.15f);
+        case SUSTENANCE_CELL_EDGE_BLOCKED:   return Fade(DARKGRAY, 0.15f);
+        case SUSTENANCE_CELL_LANE_BLOCKED:   return Fade(RED,      0.20f);
+        case SUSTENANCE_CELL_BASE_BLOCKED:   return Fade(ORANGE,   0.20f);
+        case SUSTENANCE_CELL_SPAWN_BLOCKED:  return Fade(YELLOW,   0.20f);
+        case SUSTENANCE_CELL_NODE_BLOCKED:   return Fade(SKYBLUE,  0.20f);
         default:                      return Fade(WHITE,    0.10f);
     }
 }
 
-static void draw_ore_placement(const Battlefield *bf) {
-    float halfCell = ORE_GRID_CELL_SIZE_PX * 0.5f;
+static void draw_sustenance_placement(const Battlefield *bf) {
+    float halfCell = SUSTENANCE_GRID_CELL_SIZE_PX * 0.5f;
 
     // --- Cell grid for both sides ---
     for (int s = 0; s < 2; s++) {
         BattleSide side = (BattleSide)s;
-        for (int r = 0; r < ORE_GRID_ROWS; r++) {
-            for (int c = 0; c < ORE_GRID_COLS; c++) {
-                OreCellDebugInfo info = ore_debug_classify_cell(bf, side, r, c);
+        for (int r = 0; r < SUSTENANCE_GRID_ROWS; r++) {
+            for (int c = 0; c < SUSTENANCE_GRID_COLS; c++) {
+                SustenanceCellDebugInfo info = sustenance_debug_classify_cell(bf, side, r, c);
                 Rectangle cell = {
                     info.centerX - halfCell,
                     info.centerY - halfCell,
-                    ORE_GRID_CELL_SIZE_PX,
-                    ORE_GRID_CELL_SIZE_PX
+                    SUSTENANCE_GRID_CELL_SIZE_PX,
+                    SUSTENANCE_GRID_CELL_SIZE_PX
                 };
 
                 // Fill by classification reason
-                DrawRectangleRec(cell, ore_reason_color(info.reason));
+                DrawRectangleRec(cell, sustenance_reason_color(info.reason));
                 // Faint cell outline
                 DrawRectangleLinesEx(cell, 1.0f, Fade(LIGHTGRAY, 0.3f));
             }
@@ -196,7 +196,7 @@ static void draw_ore_placement(const Battlefield *bf) {
             for (int wp = 0; wp < LANE_WAYPOINT_COUNT - 1; wp++) {
                 CanonicalPos wpA = bf_waypoint(bf, (BattleSide)ls, lane, wp);
                 CanonicalPos wpB = bf_waypoint(bf, (BattleSide)ls, lane, wp + 1);
-                float thickness = ORE_LANE_CLEARANCE_CELLS * ORE_GRID_CELL_SIZE_PX * 2.0f;
+                float thickness = SUSTENANCE_LANE_CLEARANCE_CELLS * SUSTENANCE_GRID_CELL_SIZE_PX * 2.0f;
                 DrawLineEx(wpA.v, wpB.v, thickness, Fade(RED, 0.10f));
             }
         }
@@ -207,34 +207,34 @@ static void draw_ore_placement(const Battlefield *bf) {
         BattleSide side = (BattleSide)s;
         // Base anchor clearance circle
         CanonicalPos baseAnchor = bf_base_anchor(bf, side);
-        float baseRadius = ORE_BASE_CLEARANCE_CELLS * ORE_GRID_CELL_SIZE_PX;
+        float baseRadius = SUSTENANCE_BASE_CLEARANCE_CELLS * SUSTENANCE_GRID_CELL_SIZE_PX;
         DrawCircleLinesV(baseAnchor.v, baseRadius, Fade(ORANGE, 0.4f));
 
         // Spawn anchor clearance circles
         for (int slot = 0; slot < NUM_CARD_SLOTS; slot++) {
             CanonicalPos spawnAnchor = bf_spawn_pos(bf, side, slot);
-            float spawnRadius = ORE_SPAWN_CLEARANCE_CELLS * ORE_GRID_CELL_SIZE_PX;
+            float spawnRadius = SUSTENANCE_SPAWN_CLEARANCE_CELLS * SUSTENANCE_GRID_CELL_SIZE_PX;
             DrawCircleLinesV(spawnAnchor.v, spawnRadius, Fade(YELLOW, 0.4f));
         }
     }
 }
 
-// --- Ore node overlay (F6) ---
+// --- Sustenance node overlay (F6) ---
 
-static void draw_ore_nodes(const Battlefield *bf) {
-    const OreField *field = &bf->oreField;
-    float halfCell = ORE_GRID_CELL_SIZE_PX * 0.5f;
+static void draw_sustenance_nodes(const Battlefield *bf) {
+    const SustenanceField *field = &bf->sustenanceField;
+    float halfCell = SUSTENANCE_GRID_CELL_SIZE_PX * 0.5f;
 
     for (int s = 0; s < 2; s++) {
-        for (int i = 0; i < ORE_MATCH_COUNT_PER_SIDE; i++) {
-            const OreNode *n = &field->nodes[s][i];
+        for (int i = 0; i < SUSTENANCE_MATCH_COUNT_PER_SIDE; i++) {
+            const SustenanceNode *n = &field->nodes[s][i];
             if (!n->active) continue;
 
             Rectangle cell = {
                 n->worldPos.v.x - halfCell,
                 n->worldPos.v.y - halfCell,
-                ORE_GRID_CELL_SIZE_PX,
-                ORE_GRID_CELL_SIZE_PX
+                SUSTENANCE_GRID_CELL_SIZE_PX,
+                SUSTENANCE_GRID_CELL_SIZE_PX
             };
 
             // Determine state color
@@ -291,8 +291,8 @@ void debug_overlay_draw(const Battlefield *bf, const GameState *gs,
         if (flags.targetLines)  draw_target_line(e, bf, gs);
     }
 
-    if (flags.orePlacement)  draw_ore_placement(bf);
-    if (flags.oreNodes)      draw_ore_nodes(bf);
+    if (flags.sustenancePlacement)  draw_sustenance_placement(bf);
+    if (flags.sustenanceNodes)      draw_sustenance_nodes(bf);
     if (flags.eventFlashes)  draw_event_flashes();
     if (flags.rangeCirlces)  draw_range_circles(bf);
 }
