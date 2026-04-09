@@ -268,7 +268,7 @@ void game_render(GameState *g) {
         (int)g->players[0].screenArea.width,
         (int)g->players[0].screenArea.height
     );
-    status_bars_draw_screen(g, g->players[0].camera, 90.0f);
+    status_bars_draw_screen(g, g->players[0].camera, 90.0f, 90.0f);
     EndScissorMode();
 
     // --- Player 2 viewport (SIDE_TOP) — render to texture, then flip ---
@@ -290,7 +290,7 @@ void game_render(GameState *g) {
     game_draw_canonical_entities(bf);
     debug_overlay_draw(bf, g, s_debugFlags);
     EndMode2D();
-    status_bars_draw_screen(g, p2CamRT, 90.0f);
+    status_bars_draw_screen(g, p2CamRT, 90.0f, 270.0f);
     EndTextureMode();
 
     // Composite P2 RT to right half of screen, flipped vertically.
