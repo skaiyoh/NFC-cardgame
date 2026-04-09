@@ -87,5 +87,5 @@ After world-space drawing:
 
 | Tool | Purpose | Notes |
 |------|---------|-------|
-| `card_preview` | interactive card visual editor | can import JSON from a file and print JSON back to stdout |
+| `card_preview` | interactive card visual editor | can import JSON from a file, print JSON to stdout, and export layered PSD files |
 | `biome_preview` | biome authoring and preview tool | supports built-in biome import, save/load, and export |
