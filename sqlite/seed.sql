@@ -40,7 +40,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
     "attack":      28,
     "attackSpeed": 0.75,
     "attackRange": 50.0,
-    "moveSpeed":   38.0,
+    "moveSpeed":   58.0,
     "targeting":   "nearest",
     "targetType":  null
   }'

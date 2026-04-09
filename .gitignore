@@ -13,3 +13,6 @@ test_animation
 test_debug_events
 test_ore
 test_win_condition
+test_spawn_fx
+test_status_bars
+test_sustenance

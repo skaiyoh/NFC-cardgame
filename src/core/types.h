@@ -152,6 +152,7 @@ struct GameState {
 
     // Sustenance node texture (shared by sustenance_renderer)
     Texture2D sustenanceTexture;
+    Texture2D statusBarsTexture;
 
     // Screen layout
     int halfWidth; // Half screen width for split screen

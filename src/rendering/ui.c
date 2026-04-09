@@ -3,7 +3,6 @@
 //
 
 #include "ui.h"
-#include "../core/config.h"
 #include <stdio.h>
 
 static int ui_normalize_rotation(float rotation) {
@@ -40,72 +39,12 @@ static Vector2 ui_text_position_from_bounds(Vector2 boundsTopLeft,
     }
 }
 
-// Draws an energy bar in screen space for one player.
-// screenX: left edge of player's viewport (0 for P1, 960 for P2)
-// viewportWidth: 960
-void ui_draw_energy_bar(Player *p, int screenX, int viewportWidth) {
-    float ratio = (p->maxEnergy > 0.0f) ? (p->energy / p->maxEnergy) : 0.0f;
-
-    int barW = ENERGY_BAR_WIDTH;
-    int barH = ENERGY_BAR_HEIGHT;
-    int x = screenX + (viewportWidth - barW) / 2;
-    int y = SCREEN_HEIGHT - ENERGY_BAR_Y_OFFSET - barH;
-
-    DrawRectangle(x, y, barW, barH, DARKGRAY);
-    DrawRectangle(x, y, (int) (barW * ratio), barH, GOLD);
-    DrawRectangleLines(x, y, barW, barH, WHITE);
-
-    char label[32];
-    snprintf(label, sizeof(label), "%.0f / %.0f", p->energy, p->maxEnergy);
-    int textW = MeasureText(label, 14);
-    DrawText(label, x + (barW - textW) / 2, y + 3, 14, WHITE);
-}
-
-void ui_draw_viewport_label(const char *label, Rectangle viewport,
-                            UICorner corner, float rotation, Color color) {
+void ui_draw_sustenance_counter(const Player *p, Rectangle viewport,
+                         float rotation, Color color) {
     Font font = GetFontDefault();
     const int fontSize = 40;
     const float spacing = 2.0f;
     const float padding = 40.0f;
-    Vector2 textSize = MeasureTextEx(font, label, (float)fontSize, spacing);
-    Vector2 boundsSize = ui_rotated_text_bounds(textSize, rotation);
-    Vector2 boundsTopLeft = { viewport.x + padding, viewport.y + padding };
-
-    switch (corner) {
-        case UI_CORNER_TOP_RIGHT:
-            boundsTopLeft.x = viewport.x + viewport.width - padding - boundsSize.x;
-            break;
-        case UI_CORNER_BOTTOM_LEFT:
-            boundsTopLeft.y = viewport.y + viewport.height - padding - boundsSize.y;
-            break;
-        case UI_CORNER_BOTTOM_RIGHT:
-            boundsTopLeft.x = viewport.x + viewport.width - padding - boundsSize.x;
-            boundsTopLeft.y = viewport.y + viewport.height - padding - boundsSize.y;
-            break;
-        case UI_CORNER_TOP_LEFT:
-        default:
-            break;
-    }
-
-    DrawTextPro(font, label,
-                ui_text_position_from_bounds(boundsTopLeft, textSize, rotation),
-                (Vector2){ 0.0f, 0.0f },
-                rotation, (float)fontSize, spacing, color);
-}
-
-void ui_draw_sustenance_counter(const Player *p, Rectangle viewport,
-                         float rotation, Color color) {
-    Font font = GetFontDefault();
-    const int fontSize = 24;
-    const float spacing = 1.0f;
-    const float padding = 40.0f;
-
-    // Measure the player label above so we can position below it
-    const int labelFontSize = 40;
-    const float labelSpacing = 2.0f;
-    const char *playerLabel = (p->id == 0) ? "PLAYER 1" : "PLAYER 2";
-    Vector2 labelTextSize = MeasureTextEx(font, playerLabel, (float)labelFontSize, labelSpacing);
-    Vector2 labelBoundsSize = ui_rotated_text_bounds(labelTextSize, rotation);
 
     char label[32];
     snprintf(label, sizeof(label), "SUSTENANCE: %d", p->sustenanceCollected);
@@ -113,22 +52,19 @@ void ui_draw_sustenance_counter(const Player *p, Rectangle viewport,
     Vector2 textSize = MeasureTextEx(font, label, (float)fontSize, spacing);
     Vector2 boundsSize = ui_rotated_text_bounds(textSize, rotation);
 
-    // Position below the player label in the same corner.
-    // For rotated text, "below" is along the screen y-axis.
-    const float gap = 8.0f;
     Vector2 boundsTopLeft;
     int rot = ui_normalize_rotation(rotation);
     if (rot == 90) {
-        // P1: top-right corner — label starts at y=padding, sustenance goes below it
+        // P1: top-right corner
         boundsTopLeft = (Vector2){
             viewport.x + viewport.width - padding - boundsSize.x,
-            viewport.y + padding + labelBoundsSize.y + gap
+            viewport.y + padding
         };
     } else {
-        // P2: bottom-left corner — label ends at y=height-padding, sustenance goes above it
+        // P2: bottom-left corner
         boundsTopLeft = (Vector2){
             viewport.x + padding,
-            viewport.y + viewport.height - padding - labelBoundsSize.y - gap - boundsSize.y
+            viewport.y + viewport.height - padding - boundsSize.y
         };
     }
 

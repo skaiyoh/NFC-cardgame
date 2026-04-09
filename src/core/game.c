@@ -14,6 +14,7 @@
 #include "../rendering/debug_overlay.h"
 #include "../rendering/sustenance_renderer.h"
 #include "../rendering/spawn_fx.h"
+#include "../rendering/status_bars.h"
 #include "../rendering/ui.h"
 #include "../systems/player.h"
 #include "../entities/entities.h"
@@ -72,6 +73,7 @@ bool game_init(GameState *g) {
 
     // Load sustenance texture
     g->sustenanceTexture = sustenance_renderer_load();
+    g->statusBarsTexture = status_bars_load();
 
     // Initialize character sprite atlas
     sprite_atlas_init(&g->spriteAtlas);
@@ -260,6 +262,14 @@ void game_render(GameState *g) {
     game_draw_canonical_entities(bf);
     debug_overlay_draw(bf, g, s_debugFlags);
     viewport_end();
+    BeginScissorMode(
+        (int)g->players[0].screenArea.x,
+        (int)g->players[0].screenArea.y,
+        (int)g->players[0].screenArea.width,
+        (int)g->players[0].screenArea.height
+    );
+    status_bars_draw_screen(g, g->players[0].camera, 90.0f, 90.0f);
+    EndScissorMode();
 
     // --- Player 2 viewport (SIDE_TOP) — render to texture, then flip ---
     // P2 uses rot=+90 (same as P1) for correct seam placement.
@@ -280,6 +290,7 @@ void game_render(GameState *g) {
     game_draw_canonical_entities(bf);
     debug_overlay_draw(bf, g, s_debugFlags);
     EndMode2D();
+    status_bars_draw_screen(g, p2CamRT, 90.0f, 270.0f);
     EndTextureMode();
 
     // Composite P2 RT to right half of screen, flipped vertically.
@@ -302,14 +313,8 @@ void game_render(GameState *g) {
     }
 
     // HUD — screen space, drawn after all viewports
-    ui_draw_viewport_label("PLAYER 1", g->players[0].screenArea,
-                           UI_CORNER_TOP_RIGHT, 90.0f, DARKGREEN);
-    ui_draw_viewport_label("PLAYER 2", g->players[1].screenArea,
-                           UI_CORNER_BOTTOM_LEFT, 270.0f, MAROON);
     ui_draw_sustenance_counter(&g->players[0], g->players[0].screenArea, 90.0f, DARKGREEN);
     ui_draw_sustenance_counter(&g->players[1], g->players[1].screenArea, 270.0f, MAROON);
-    ui_draw_energy_bar(&g->players[0], 0, SCREEN_WIDTH / 2);
-    ui_draw_energy_bar(&g->players[1], 960, SCREEN_WIDTH / 2);
 
     // Match result overlay
     if (g->gameOver) {
@@ -344,6 +349,7 @@ void game_cleanup(GameState *g) {
 
     // Unload sustenance texture
     UnloadTexture(g->sustenanceTexture);
+    status_bars_unload(g->statusBarsTexture);
 
     spawn_fx_cleanup(&g->spawnFx);
     // Cleanup Battlefield (must be before biome_free_all since tilemaps reference biome textures)

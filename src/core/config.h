@@ -15,6 +15,7 @@
 #define UNDEAD_TILESET_PATH "src/assets/environment/Undead-Tileset-Top-Down-Pixel-Art/Tiled_files/Ground_rocks.png"
 #define UNDEAD_DETAIL_PATH  "src/assets/environment/Undead-Tileset-Top-Down-Pixel-Art/Tiled_files/details.png"
 #define FX_SMOKE_PATH       "src/assets/fx/smoke.png"
+#define STATUS_BARS_PATH    "src/assets/environment/Objects/health_energy_bars.png"
 
 // Character sprites
 #define CHAR_BASE_PATH      "src/assets/characters/Base/"
@@ -29,12 +30,6 @@
 #define DEFAULT_TILE_SCALE 2.0f
 #define DEFAULT_TILE_SIZE  32.0f
 #define DEFAULT_CARD_SCALE 2.5f
-
-// Energy bar HUD
-#define ENERGY_BAR_WIDTH    200
-#define ENERGY_BAR_HEIGHT    20
-#define ENERGY_BAR_MARGIN    16
-#define ENERGY_BAR_Y_OFFSET  40
 
 // Base geometry
 #define BASE_SPAWN_GAP 32.0f
