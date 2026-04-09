@@ -137,7 +137,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
   'Farmer',
   2,
   'farmer',
-  'A hardworking farmer who gathers ore from the battlefield and returns it to base.',
+  'A hardworking farmer who gathers sustenance from the battlefield and returns it to base.',
   '{
     "visual": {
       "border_color":       "green",

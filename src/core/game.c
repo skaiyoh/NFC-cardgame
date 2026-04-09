@@ -5,14 +5,15 @@
 #include "game.h"
 #include "config.h"
 #include "battlefield.h"
-#include "ore.h"
+#include "sustenance.h"
 #include "debug_events.h"
 #include "../logic/card_effects.h"
 #include "../logic/farmer.h"
 #include "../logic/win_condition.h"
 #include "../rendering/viewport.h"
 #include "../rendering/debug_overlay.h"
-#include "../rendering/ore_renderer.h"
+#include "../rendering/sustenance_renderer.h"
+#include "../rendering/spawn_fx.h"
 #include "../rendering/ui.h"
 #include "../systems/player.h"
 #include "../entities/entities.h"
@@ -27,10 +28,10 @@ static DebugOverlayFlags s_debugFlags = {0};
 
 bool game_init(GameState *g) {
     srand((unsigned int) time(NULL));
-    // Derive ore seed before bf_init: tilemap creation reseeds global rand(),
-    // so generating this afterward would lock ore placement to deterministic values.
-    uint32_t oreSeed = ((uint32_t)rand() << 16) ^ (uint32_t)rand();
-    if (oreSeed == 0) oreSeed = 1;
+    // Derive sustenance seed before bf_init: tilemap creation reseeds global rand(),
+    // so generating this afterward would lock sustenance placement to deterministic values.
+    uint32_t sustenanceSeed = ((uint32_t)rand() << 16) ^ (uint32_t)rand();
+    if (sustenanceSeed == 0) sustenanceSeed = 1;
 
     const char *db_path = getenv("DB_PATH");
     if (!db_path) db_path = "cardgame.db";
@@ -66,14 +67,15 @@ bool game_init(GameState *g) {
             BIOME_GRASS, BIOME_GRASS,  // bottom/top biome (matches current setup)
             tileSize, 42, 99);         // seeds match current hardcoded values
 
-    // Initialize ore resource nodes (dedicated RNG, after bf_init generates waypoints)
-    ore_init(&g->battlefield, oreSeed);
+    // Initialize sustenance resource nodes (dedicated RNG, after bf_init generates waypoints)
+    sustenance_init(&g->battlefield, sustenanceSeed);
 
-    // Load ore texture
-    g->oreTexture = ore_renderer_load();
+    // Load sustenance texture
+    g->sustenanceTexture = sustenance_renderer_load();
 
     // Initialize character sprite atlas
     sprite_atlas_init(&g->spriteAtlas);
+    spawn_fx_init(&g->spawnFx);
 
     // Initialize split-screen viewports and players
     viewport_init_split_screen(g);
@@ -148,8 +150,8 @@ static void game_handle_debug_input(void) {
     if (IsKeyPressed(KEY_F3)) s_debugFlags.targetLines  = !s_debugFlags.targetLines;
     if (IsKeyPressed(KEY_F4)) s_debugFlags.eventFlashes = !s_debugFlags.eventFlashes;
     if (IsKeyPressed(KEY_F5)) s_debugFlags.rangeCirlces = !s_debugFlags.rangeCirlces;
-    if (IsKeyPressed(KEY_F6)) s_debugFlags.oreNodes     = !s_debugFlags.oreNodes;
-    if (IsKeyPressed(KEY_F7)) s_debugFlags.orePlacement  = !s_debugFlags.orePlacement;
+    if (IsKeyPressed(KEY_F6)) s_debugFlags.sustenanceNodes     = !s_debugFlags.sustenanceNodes;
+    if (IsKeyPressed(KEY_F7)) s_debugFlags.sustenancePlacement  = !s_debugFlags.sustenancePlacement;
 }
 
 static void game_test_play_farmer(GameState *g, int playerIndex, int slotIndex) {
@@ -177,6 +179,7 @@ static void game_handle_spawn_input(GameState *g) {
 
 void game_update(GameState *g) {
     float deltaTime = fminf(GetFrameTime(), 1.0f / 20.0f);
+    spawn_fx_update(&g->spawnFx, deltaTime);
 
     // Debug toggles always active (even after gameOver)
     game_handle_debug_input();
@@ -210,7 +213,7 @@ void game_update(GameState *g) {
         if (bf->entities[i]->markedForRemoval) {
             Entity *dead = bf->entities[i];
 
-            // Farmer death fallback: release claims / award ore.
+            // Farmer death fallback: release claims / award sustenance.
             // farmer_on_death is idempotent — safe if already called from combat.
             if (dead->unitRole == UNIT_ROLE_FARMER) {
                 farmer_on_death(dead, g);
@@ -251,8 +254,9 @@ void game_render(GameState *g) {
     viewport_begin(&g->players[0]);
     viewport_draw_battlefield_tilemap(bf, SIDE_BOTTOM);
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
-    ore_renderer_draw(&bf->oreField, SIDE_BOTTOM, g->oreTexture);
-    ore_renderer_draw(&bf->oreField, SIDE_TOP, g->oreTexture);
+    sustenance_renderer_draw(&bf->sustenanceField, SIDE_BOTTOM, g->sustenanceTexture, 0.0f);
+    sustenance_renderer_draw(&bf->sustenanceField, SIDE_TOP, g->sustenanceTexture, 0.0f);
+    spawn_fx_draw(&g->spawnFx, 180.0f);
     game_draw_canonical_entities(bf);
     debug_overlay_draw(bf, g, s_debugFlags);
     viewport_end();
@@ -270,8 +274,9 @@ void game_render(GameState *g) {
     BeginMode2D(p2CamRT);
     viewport_draw_battlefield_tilemap(bf, SIDE_BOTTOM);
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
-    ore_renderer_draw(&bf->oreField, SIDE_BOTTOM, g->oreTexture);
-    ore_renderer_draw(&bf->oreField, SIDE_TOP, g->oreTexture);
+    sustenance_renderer_draw(&bf->sustenanceField, SIDE_BOTTOM, g->sustenanceTexture, 180.0f);
+    sustenance_renderer_draw(&bf->sustenanceField, SIDE_TOP, g->sustenanceTexture, 180.0f);
+    spawn_fx_draw(&g->spawnFx, 0.0f);
     game_draw_canonical_entities(bf);
     debug_overlay_draw(bf, g, s_debugFlags);
     EndMode2D();
@@ -301,8 +306,8 @@ void game_render(GameState *g) {
                            UI_CORNER_TOP_RIGHT, 90.0f, DARKGREEN);
     ui_draw_viewport_label("PLAYER 2", g->players[1].screenArea,
                            UI_CORNER_BOTTOM_LEFT, 270.0f, MAROON);
-    ui_draw_ore_counter(&g->players[0], g->players[0].screenArea, 90.0f, DARKGREEN);
-    ui_draw_ore_counter(&g->players[1], g->players[1].screenArea, 270.0f, MAROON);
+    ui_draw_sustenance_counter(&g->players[0], g->players[0].screenArea, 90.0f, DARKGREEN);
+    ui_draw_sustenance_counter(&g->players[1], g->players[1].screenArea, 270.0f, MAROON);
     ui_draw_energy_bar(&g->players[0], 0, SCREEN_WIDTH / 2);
     ui_draw_energy_bar(&g->players[1], 960, SCREEN_WIDTH / 2);
 
@@ -337,9 +342,10 @@ void game_cleanup(GameState *g) {
     g->players[0].base = NULL;
     g->players[1].base = NULL;
 
-    // Unload ore texture
-    UnloadTexture(g->oreTexture);
+    // Unload sustenance texture
+    UnloadTexture(g->sustenanceTexture);
 
+    spawn_fx_cleanup(&g->spawnFx);
     // Cleanup Battlefield (must be before biome_free_all since tilemaps reference biome textures)
     bf_cleanup(&g->battlefield);
 

@@ -121,6 +121,9 @@ tail -f ~/NFC-cardgame/game.log
 
 ### Card Preview (`tools/card_preview.c`)
 Standalone Raylib app for editing and previewing card visuals. No database required.
+Press `E` to print the current visual JSON, `Ctrl+E` to export a layered `.psd`,
+or run `./card_preview template.json --export-only --export-psd out.psd` for a
+non-interactive export.
 
 ### Biome Preview (`tools/biome_preview.c`)
 Interactive tool for defining biome tile blocks and previewing tilemap rendering.

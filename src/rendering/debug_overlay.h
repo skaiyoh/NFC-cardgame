@@ -14,8 +14,8 @@ typedef struct {
     bool targetLines;   // F3: attacker → target lock lines
     bool eventFlashes;  // F4: state/hit/death event rings
     bool rangeCirlces;  // F5: attack range circles
-    bool oreNodes;      // F6: ore node state markers + claim lines
-    bool orePlacement;  // F7: placement-diagnostics grid
+    bool sustenanceNodes;      // F6: sustenance node state markers + claim lines
+    bool sustenancePlacement;  // F7: placement-diagnostics grid
 } DebugOverlayFlags;
 
 // Draw all enabled debug layers.

@@ -12,6 +12,7 @@
 #include "../rendering/card_renderer.h"
 #include "../rendering/tilemap_renderer.h"
 #include "../rendering/sprite_renderer.h"
+#include "../rendering/spawn_fx.h"
 #include "../rendering/biome.h"
 #include "../hardware/nfc_reader.h"
 #include "battlefield.h"
@@ -41,8 +42,8 @@ typedef enum { UNIT_ROLE_COMBAT, UNIT_ROLE_FARMER } UnitRole;
 // Farmer behavior phases
 typedef enum {
     FARMER_SEEKING,
-    FARMER_WALKING_TO_ORE,
-    FARMER_MINING,
+    FARMER_WALKING_TO_SUSTENANCE,
+    FARMER_GATHERING,
     FARMER_RETURNING,
     FARMER_DEPOSITING
 } FarmerState;
@@ -87,9 +88,9 @@ struct Entity {
     // Unit role (farmer vs combat)
     UnitRole unitRole;
     FarmerState farmerState;
-    int claimedOreNodeId;       // ore node ID this farmer is targeting, -1 if none
-    int carriedOreValue;        // ore value being carried back to base
-    float workTimer;            // elapsed time in current work cycle (mining/depositing)
+    int claimedSustenanceNodeId;       // sustenance node ID this farmer is targeting, -1 if none
+    int carriedSustenanceValue;        // sustenance value being carried back to base
+    float workTimer;            // elapsed time in current work cycle (gathering/depositing)
 
     // Flags
     bool alive;
@@ -125,8 +126,8 @@ struct Player {
     // NULL if destroyed or not yet spawned.
     Entity *base;
 
-    // Ore scoring (incremented on deposit or carrying-farmer death)
-    int oreCollected;
+    // Sustenance scoring (incremented on deposit or carrying-farmer death)
+    int sustenanceCollected;
 };
 
 // Game state
@@ -147,9 +148,10 @@ struct GameState {
 
     // Character sprites (shared by all entities)
     SpriteAtlas spriteAtlas;
+    SpawnFxSystem spawnFx;
 
-    // Ore node texture (shared by ore_renderer)
-    Texture2D oreTexture;
+    // Sustenance node texture (shared by sustenance_renderer)
+    Texture2D sustenanceTexture;
 
     // Screen layout
     int halfWidth; // Half screen width for split screen

@@ -54,8 +54,8 @@ Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
     // Default to combat role; farmer overrides in troop_spawn
     e->unitRole = UNIT_ROLE_COMBAT;
     e->farmerState = FARMER_SEEKING;
-    e->claimedOreNodeId = -1;
-    e->carriedOreValue = 0;
+    e->claimedSustenanceNodeId = -1;
+    e->carriedSustenanceValue = 0;
     e->workTimer = 0.0f;
 
     anim_state_init(&e->anim, ANIM_IDLE, DIR_UP, 0.5f, false);

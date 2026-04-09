@@ -13,7 +13,7 @@ void player_init(Player *p, int id, BattleSide side,
                  const Battlefield *bf) {
     memset(p, 0, sizeof(Player));
     p->id = id;
-    p->oreCollected = 0;
+    p->sustenanceCollected = 0;
     p->side = side;
     p->screenArea = screenArea;
     p->cameraRotation = cameraRotation;

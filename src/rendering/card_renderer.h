@@ -45,6 +45,13 @@ typedef struct {
 } CardLayerOffsets;
 
 typedef struct {
+    const char *name;
+    Rectangle source;
+    Rectangle bounds;
+    bool visible;
+} CardLayerExportInfo;
+
+typedef struct {
     CardColor border_color;
     bool show_border;
     BGStyle bg_style;
@@ -90,6 +97,8 @@ typedef struct {
 
 void card_atlas_init(CardAtlas *atlas);
 
+void card_atlas_init_layout(CardAtlas *atlas);
+
 void card_atlas_free(CardAtlas *atlas);
 
 void card_draw(const CardAtlas *atlas, const CardVisual *visual, Vector2 pos, float scale);
@@ -106,6 +115,9 @@ CardVisual card_visual_default(void);
 CardVisual card_visual_from_json(const char *json_data);
 
 void card_visual_print_json(const CardVisual *visual);
+
+bool card_layer_export_info(const CardAtlas *atlas, const CardVisual *visual,
+                            int layerIndex, CardLayerExportInfo *out);
 
 const char *card_color_name(CardColor c);
 

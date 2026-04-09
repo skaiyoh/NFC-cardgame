@@ -93,7 +93,7 @@ void ui_draw_viewport_label(const char *label, Rectangle viewport,
                 rotation, (float)fontSize, spacing, color);
 }
 
-void ui_draw_ore_counter(const Player *p, Rectangle viewport,
+void ui_draw_sustenance_counter(const Player *p, Rectangle viewport,
                          float rotation, Color color) {
     Font font = GetFontDefault();
     const int fontSize = 24;
@@ -108,7 +108,7 @@ void ui_draw_ore_counter(const Player *p, Rectangle viewport,
     Vector2 labelBoundsSize = ui_rotated_text_bounds(labelTextSize, rotation);
 
     char label[32];
-    snprintf(label, sizeof(label), "ORE: %d", p->oreCollected);
+    snprintf(label, sizeof(label), "SUSTENANCE: %d", p->sustenanceCollected);
 
     Vector2 textSize = MeasureTextEx(font, label, (float)fontSize, spacing);
     Vector2 boundsSize = ui_rotated_text_bounds(textSize, rotation);
@@ -119,13 +119,13 @@ void ui_draw_ore_counter(const Player *p, Rectangle viewport,
     Vector2 boundsTopLeft;
     int rot = ui_normalize_rotation(rotation);
     if (rot == 90) {
-        // P1: top-right corner — label starts at y=padding, ore goes below it
+        // P1: top-right corner — label starts at y=padding, sustenance goes below it
         boundsTopLeft = (Vector2){
             viewport.x + viewport.width - padding - boundsSize.x,
             viewport.y + padding + labelBoundsSize.y + gap
         };
     } else {
-        // P2: bottom-left corner — label ends at y=height-padding, ore goes above it
+        // P2: bottom-left corner — label ends at y=height-padding, sustenance goes above it
         boundsTopLeft = (Vector2){
             viewport.x + padding,
             viewport.y + viewport.height - padding - labelBoundsSize.y - gap - boundsSize.y

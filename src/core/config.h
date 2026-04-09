@@ -14,6 +14,7 @@
 #define GRASS_TILESET_PATH  "src/assets/environment/Pixel Art Top Down - Basic v1.2.3/Texture/TX Tileset Grass.png"
 #define UNDEAD_TILESET_PATH "src/assets/environment/Undead-Tileset-Top-Down-Pixel-Art/Tiled_files/Ground_rocks.png"
 #define UNDEAD_DETAIL_PATH  "src/assets/environment/Undead-Tileset-Top-Down-Pixel-Art/Tiled_files/details.png"
+#define FX_SMOKE_PATH       "src/assets/fx/smoke.png"
 
 // Character sprites
 #define CHAR_BASE_PATH      "src/assets/characters/Base/"
@@ -56,21 +57,21 @@
 #define BOARD_HEIGHT  1920
 #define SEAM_Y        960
 
-// Ore resource nodes
-#define ORE_GRID_CELL_SIZE_PX        64.0f
-#define ORE_GRID_COLS                16
-#define ORE_GRID_ROWS                15
-#define ORE_EDGE_MARGIN_CELLS        1
-#define ORE_LANE_CLEARANCE_CELLS     1.0f
-#define ORE_BASE_CLEARANCE_CELLS     2.0f
-#define ORE_SPAWN_CLEARANCE_CELLS    1.5f
-#define ORE_NODE_CLEARANCE_CELLS     1.5f
-#define ORE_MATCH_COUNT_PER_SIDE     8
+// Sustenance resource nodes
+#define SUSTENANCE_GRID_CELL_SIZE_PX        64.0f
+#define SUSTENANCE_GRID_COLS                16
+#define SUSTENANCE_GRID_ROWS                15
+#define SUSTENANCE_EDGE_MARGIN_CELLS        1
+#define SUSTENANCE_LANE_CLEARANCE_CELLS     1.0f
+#define SUSTENANCE_BASE_CLEARANCE_CELLS     2.0f
+#define SUSTENANCE_SPAWN_CLEARANCE_CELLS    1.5f
+#define SUSTENANCE_NODE_CLEARANCE_CELLS     1.5f
+#define SUSTENANCE_MATCH_COUNT_PER_SIDE     8
 
 // Farmer tuning
-#define FARMER_ORE_INTERACT_RADIUS   40.0f
+#define FARMER_SUSTENANCE_INTERACT_RADIUS   40.0f
 #define FARMER_BASE_DEPOSIT_RADIUS   60.0f
-#define FARMER_DEFAULT_ORE_VALUE     1
-#define FARMER_DEFAULT_ORE_DURABILITY 1
+#define FARMER_DEFAULT_SUSTENANCE_VALUE     1
+#define FARMER_DEFAULT_SUSTENANCE_DURABILITY 1
 
 #endif //NFC_CARDGAME_CONFIG_H

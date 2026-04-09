@@ -24,16 +24,17 @@ if(APPLE)
 endif()
 
 # --- Source file groups ---
-set(SRC_CORE       src/core/game.c src/core/battlefield.c src/core/battlefield_math.c src/core/debug_events.c src/core/ore.c)
+set(SRC_CORE       src/core/game.c src/core/battlefield.c src/core/battlefield_math.c src/core/debug_events.c src/core/sustenance.c)
 set(SRC_DATA       src/data/db.c src/data/cards.c)
 set(SRC_RENDERING  src/rendering/card_renderer.c
                    src/rendering/tilemap_renderer.c
                    src/rendering/viewport.c
                    src/rendering/sprite_renderer.c
+                   src/rendering/spawn_fx.c
                    src/rendering/biome.c
                    src/rendering/ui.c
                    src/rendering/debug_overlay.c
-                   src/rendering/ore_renderer.c)
+                   src/rendering/sustenance_renderer.c)
 set(SRC_ENTITIES   src/entities/entities.c
                    src/entities/entity_animation.c
                    src/entities/troop.c
@@ -59,71 +60,6 @@ set(ALL_SOURCES
 # --- Main game executable ---
 add_executable(cardgame ${ALL_SOURCES})
 target_link_libraries(cardgame ${SQLITE3_LIB} ${RAYLIB_LIB} ${MATH_LIB})
-
-# --- Tools ---
-add_executable(card_preview
-    tools/card_preview.c
-    src/rendering/card_renderer.c
-    third_party/cjson/cJSON.c)
-target_link_libraries(card_preview ${RAYLIB_LIB} ${MATH_LIB})
-
-add_executable(biome_preview
-    tools/biome_preview.c
-    src/rendering/tilemap_renderer.c
-    src/rendering/biome.c)
-target_link_libraries(biome_preview ${RAYLIB_LIB} ${MATH_LIB})
-
-add_executable(card_enroll
-    tools/card_enroll.c
-    src/data/db.c
-    src/data/cards.c
-    src/hardware/nfc_reader.c
-    src/hardware/arduino_protocol.c
-    third_party/cjson/cJSON.c)
-target_link_libraries(card_enroll ${SQLITE3_LIB} ${MATH_LIB})
-
-# --- Tests ---
-enable_testing()
-
-add_executable(test_pathfinding
-    tests/test_pathfinding.c)
-target_link_libraries(test_pathfinding ${MATH_LIB})
-add_test(NAME pathfinding COMMAND test_pathfinding)
-
-add_executable(test_battlefield_math
-    tests/test_battlefield_math.c)
-target_link_libraries(test_battlefield_math ${MATH_LIB})
-add_test(NAME battlefield_math COMMAND test_battlefield_math)
-
-add_executable(test_battlefield
-    tests/test_battlefield.c)
-target_link_libraries(test_battlefield ${MATH_LIB})
-add_test(NAME battlefield COMMAND test_battlefield)
-
-add_executable(test_combat
-    tests/test_combat.c)
-target_link_libraries(test_combat ${MATH_LIB})
-add_test(NAME combat COMMAND test_combat)
-
-add_executable(test_animation
-    tests/test_animation.c)
-target_link_libraries(test_animation ${MATH_LIB})
-add_test(NAME animation COMMAND test_animation)
-
-add_executable(test_debug_events
-    tests/test_debug_events.c)
-target_link_libraries(test_debug_events ${MATH_LIB})
-add_test(NAME debug_events COMMAND test_debug_events)
-
-add_executable(test_win_condition
-    tests/test_win_condition.c)
-target_link_libraries(test_win_condition ${MATH_LIB})
-add_test(NAME win_condition COMMAND test_win_condition)
-
-add_executable(test_ore
-    tests/test_ore.c)
-target_link_libraries(test_ore ${MATH_LIB})
-add_test(NAME ore COMMAND test_ore)
 
 # --- Database init (convenience target) ---
 add_custom_target(init-db

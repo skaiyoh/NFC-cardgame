@@ -22,6 +22,12 @@ static const char *ic_names[IC_COUNT] = {
     "black", "brown", "white", "yellow"
 };
 
+static const char *layer_names[CARD_LAYER_COUNT] = {
+    "Background", "Description", "Border", "Banner",
+    "InnerCorner", "Corner", "Container",
+    "Socket", "Gem", "EnergyTop", "EnergyBot"
+};
+
 const char *card_color_name(CardColor c) {
     return (c >= 0 && c < CLR_COUNT) ? clr_names[c] : "unknown";
 }
@@ -217,11 +223,15 @@ static void init_rects(CardAtlas *atlas) {
 // TODO: missing, Raylib returns a 1x1 white fallback texture and the printf below reports "0x0"
 // TODO: (or "1x1"). All card draws will then produce white rectangles with no error logged.
 // TODO: Check atlas->sheet.id > 1 (or IsTextureValid) and abort with an error message if it fails.
-void card_atlas_init(CardAtlas *atlas) {
+void card_atlas_init_layout(CardAtlas *atlas) {
     memset(atlas, 0, sizeof(CardAtlas));
+    init_rects(atlas);
+}
+
+void card_atlas_init(CardAtlas *atlas) {
+    card_atlas_init_layout(atlas);
     atlas->sheet = LoadTexture(CARD_SHEET_PATH);
     SetTextureFilter(atlas->sheet, TEXTURE_FILTER_POINT);
-    init_rects(atlas);
     printf("Card atlas loaded (sheet %dx%d)\n", atlas->sheet.width, atlas->sheet.height);
 }
 
@@ -281,6 +291,62 @@ static void get_base_positions(float *ox, float *oy) {
     oy[10] = oy[6] + (14 - 12) / 2.0f;
 }
 
+static bool get_layer_source_and_visibility(const CardAtlas *atlas, const CardVisual *visual,
+                                            int layerIndex, Rectangle *src, bool *visible) {
+    if (!atlas || !visual || !src || !visible) return false;
+
+    switch (layerIndex) {
+        case 0:
+            *src = atlas->bgs[visual->bg_style];
+            *visible = visual->show_bg;
+            return true;
+        case 1:
+            *src = atlas->descriptions[visual->description_style];
+            *visible = visual->show_description;
+            return true;
+        case 2:
+            *src = atlas->borders[visual->border_color];
+            *visible = visual->show_border;
+            return true;
+        case 3:
+            *src = atlas->banners[visual->banner_color];
+            *visible = visual->show_banner;
+            return true;
+        case 4:
+            *src = atlas->inner_corners[visual->innercorner_style];
+            *visible = visual->show_innercorner;
+            return true;
+        case 5:
+            *src = atlas->corners[visual->corner_color];
+            *visible = visual->show_corner;
+            return true;
+        case 6:
+            *src = atlas->containers[visual->container_color][visual->container_variant];
+            *visible = visual->show_container;
+            return true;
+        case 7:
+            *src = atlas->sockets[visual->socket_color];
+            *visible = visual->show_socket;
+            return true;
+        case 8:
+            *src = atlas->gems[visual->gem_color];
+            *visible = visual->show_gem;
+            return true;
+        case 9:
+            *src = atlas->energy_top[visual->energy_top_color];
+            *visible = visual->show_energy_top;
+            return true;
+        case 10:
+            *src = atlas->energy_bot[visual->energy_bot_color];
+            *visible = visual->show_energy_bot;
+            return true;
+        default:
+            *src = EMPTY;
+            *visible = false;
+            return false;
+    }
+}
+
 CardLayerOffsets card_layer_offsets_default(void) {
     CardLayerOffsets o = {0};
     return o;
@@ -303,29 +369,13 @@ void card_draw_ex(const CardAtlas *atlas, const CardVisual *visual,
         }
     }
 
-    if (visual->show_bg)
-        draw_layer(s, atlas->bgs[visual->bg_style], pos, ox[0], oy[0], scale);
-    if (visual->show_description)
-        draw_layer(s, atlas->descriptions[visual->description_style], pos, ox[1], oy[1], scale);
-    if (visual->show_border)
-        draw_layer(s, atlas->borders[visual->border_color], pos, ox[2], oy[2], scale);
-    if (visual->show_banner)
-        draw_layer(s, atlas->banners[visual->banner_color], pos, ox[3], oy[3], scale);
-    if (visual->show_innercorner)
-        draw_layer(s, atlas->inner_corners[visual->innercorner_style], pos, ox[4], oy[4], scale);
-    if (visual->show_corner)
-        draw_layer(s, atlas->corners[visual->corner_color], pos, ox[5], oy[5], scale);
-    if (visual->show_container)
-        draw_layer(s, atlas->containers[visual->container_color][visual->container_variant],
-                   pos, ox[6], oy[6], scale);
-    if (visual->show_socket)
-        draw_layer(s, atlas->sockets[visual->socket_color], pos, ox[7], oy[7], scale);
-    if (visual->show_gem)
-        draw_layer(s, atlas->gems[visual->gem_color], pos, ox[8], oy[8], scale);
-    if (visual->show_energy_top)
-        draw_layer(s, atlas->energy_top[visual->energy_top_color], pos, ox[9], oy[9], scale);
-    if (visual->show_energy_bot)
-        draw_layer(s, atlas->energy_bot[visual->energy_bot_color], pos, ox[10], oy[10], scale);
+    for (int i = 0; i < CARD_LAYER_COUNT; i++) {
+        Rectangle src = EMPTY;
+        bool visible = false;
+        if (get_layer_source_and_visibility(atlas, visual, i, &src, &visible) && visible) {
+            draw_layer(s, src, pos, ox[i], oy[i], scale);
+        }
+    }
 }
 
 void card_draw(const CardAtlas *atlas, const CardVisual *visual,
@@ -564,4 +614,26 @@ void card_visual_print_json(const CardVisual *visual) {
         }
     }
     printf("}\n}\n");
+}
+
+bool card_layer_export_info(const CardAtlas *atlas, const CardVisual *visual,
+                            int layerIndex, CardLayerExportInfo *out) {
+    if (!atlas || !visual || !out || layerIndex < 0 || layerIndex >= CARD_LAYER_COUNT) return false;
+
+    Rectangle src = EMPTY;
+    bool visible = false;
+    if (!get_layer_source_and_visibility(atlas, visual, layerIndex, &src, &visible)) return false;
+
+    float ox[CARD_LAYER_COUNT], oy[CARD_LAYER_COUNT];
+    get_base_positions(ox, oy);
+    ox[layerIndex] += visual->offsets.x[layerIndex];
+    oy[layerIndex] += visual->offsets.y[layerIndex];
+
+    *out = (CardLayerExportInfo){
+        .name = layer_names[layerIndex],
+        .source = src,
+        .bounds = (Rectangle){ ox[layerIndex], oy[layerIndex], src.width, src.height },
+        .visible = visible,
+    };
+    return true;
 }
