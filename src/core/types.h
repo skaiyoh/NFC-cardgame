@@ -12,6 +12,7 @@
 #include "../rendering/card_renderer.h"
 #include "../rendering/tilemap_renderer.h"
 #include "../rendering/sprite_renderer.h"
+#include "../rendering/spawn_fx.h"
 #include "../rendering/biome.h"
 #include "../hardware/nfc_reader.h"
 #include "battlefield.h"
@@ -147,6 +148,7 @@ struct GameState {
 
     // Character sprites (shared by all entities)
     SpriteAtlas spriteAtlas;
+    SpawnFxSystem spawnFx;
 
     // Ore node texture (shared by ore_renderer)
     Texture2D oreTexture;

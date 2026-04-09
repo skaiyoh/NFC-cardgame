@@ -13,6 +13,7 @@
 #include "../rendering/viewport.h"
 #include "../rendering/debug_overlay.h"
 #include "../rendering/ore_renderer.h"
+#include "../rendering/spawn_fx.h"
 #include "../rendering/ui.h"
 #include "../systems/player.h"
 #include "../entities/entities.h"
@@ -74,6 +75,7 @@ bool game_init(GameState *g) {
 
     // Initialize character sprite atlas
     sprite_atlas_init(&g->spriteAtlas);
+    spawn_fx_init(&g->spawnFx);
 
     // Initialize split-screen viewports and players
     viewport_init_split_screen(g);
@@ -177,6 +179,7 @@ static void game_handle_spawn_input(GameState *g) {
 
 void game_update(GameState *g) {
     float deltaTime = fminf(GetFrameTime(), 1.0f / 20.0f);
+    spawn_fx_update(&g->spawnFx, deltaTime);
 
     // Debug toggles always active (even after gameOver)
     game_handle_debug_input();
@@ -253,6 +256,7 @@ void game_render(GameState *g) {
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
     ore_renderer_draw(&bf->oreField, SIDE_BOTTOM, g->oreTexture);
     ore_renderer_draw(&bf->oreField, SIDE_TOP, g->oreTexture);
+    spawn_fx_draw(&g->spawnFx, 180.0f);
     game_draw_canonical_entities(bf);
     debug_overlay_draw(bf, g, s_debugFlags);
     viewport_end();
@@ -272,6 +276,7 @@ void game_render(GameState *g) {
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
     ore_renderer_draw(&bf->oreField, SIDE_BOTTOM, g->oreTexture);
     ore_renderer_draw(&bf->oreField, SIDE_TOP, g->oreTexture);
+    spawn_fx_draw(&g->spawnFx, 0.0f);
     game_draw_canonical_entities(bf);
     debug_overlay_draw(bf, g, s_debugFlags);
     EndMode2D();
@@ -340,6 +345,7 @@ void game_cleanup(GameState *g) {
     // Unload ore texture
     UnloadTexture(g->oreTexture);
 
+    spawn_fx_cleanup(&g->spawnFx);
     // Cleanup Battlefield (must be before biome_free_all since tilemaps reference biome textures)
     bf_cleanup(&g->battlefield);
 

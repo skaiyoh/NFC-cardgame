@@ -3,6 +3,15 @@
 //
 
 #include "spawn.h"
+#include "../core/battlefield.h"
+#include "../rendering/spawn_fx.h"
 
-// Spawn logic currently lives in card_effects.c / player.c.
-// TODO: Consolidate troop and building spawn logic here.
+void spawn_register_entity(GameState *state, Entity *entity, SpawnFxKind fx) {
+    if (!state || !entity) return;
+
+    if (fx == SPAWN_FX_SMOKE) {
+        spawn_fx_emit_smoke(&state->spawnFx, entity->position, entity->spriteScale);
+    }
+
+    bf_add_entity(&state->battlefield, entity);
+}

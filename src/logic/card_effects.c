@@ -7,6 +7,7 @@
 #include "../entities/entities.h"
 #include "../systems/player.h"
 #include "../systems/energy.h"
+#include "../systems/spawn.h"
 #include "../core/battlefield.h"
 #include "../core/config.h"
 #include "cJSON.h"
@@ -92,7 +93,7 @@ static void spawn_troop_from_card(const Card *card, GameState *state, int player
             e->lane = canonicalLane;  // canonical lane index (per D-07)
             e->waypointIndex = 1; // Skip waypoint[0] (== spawn pos) to avoid zero-distance pause
         }
-        bf_add_entity(&state->battlefield, e);
+        spawn_register_entity(state, e, SPAWN_FX_SMOKE);
     }
 }
 

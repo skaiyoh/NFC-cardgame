@@ -30,6 +30,7 @@ set(SRC_RENDERING  src/rendering/card_renderer.c
                    src/rendering/tilemap_renderer.c
                    src/rendering/viewport.c
                    src/rendering/sprite_renderer.c
+                   src/rendering/spawn_fx.c
                    src/rendering/biome.c
                    src/rendering/ui.c
                    src/rendering/debug_overlay.c
@@ -115,6 +116,11 @@ add_executable(test_debug_events
     tests/test_debug_events.c)
 target_link_libraries(test_debug_events ${MATH_LIB})
 add_test(NAME debug_events COMMAND test_debug_events)
+
+add_executable(test_spawn_fx
+    tests/test_spawn_fx.c)
+target_link_libraries(test_spawn_fx ${MATH_LIB})
+add_test(NAME spawn_fx COMMAND test_spawn_fx)
 
 add_executable(test_win_condition
     tests/test_win_condition.c)

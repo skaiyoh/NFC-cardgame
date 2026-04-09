@@ -14,6 +14,7 @@
 #define GRASS_TILESET_PATH  "src/assets/environment/Pixel Art Top Down - Basic v1.2.3/Texture/TX Tileset Grass.png"
 #define UNDEAD_TILESET_PATH "src/assets/environment/Undead-Tileset-Top-Down-Pixel-Art/Tiled_files/Ground_rocks.png"
 #define UNDEAD_DETAIL_PATH  "src/assets/environment/Undead-Tileset-Top-Down-Pixel-Art/Tiled_files/details.png"
+#define FX_SMOKE_PATH       "src/assets/fx/smoke.png"
 
 // Character sprites
 #define CHAR_BASE_PATH      "src/assets/characters/Base/"
