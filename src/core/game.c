@@ -96,8 +96,9 @@ bool game_init(GameState *g) {
     g->sustenanceTexture = sustenance_renderer_load();
     g->statusBarsTexture = status_bars_load();
 
-    // Load placeholder hand-bar card texture (shared by both players)
+    // Load shared hand-bar textures (generic placeholder + knight sheet)
     g->handPlaceholderTexture = hand_ui_load_placeholder();
+    g->handKnightSheetTexture = hand_ui_load_knight_sheet();
 
     // Initialize character sprite atlas
     sprite_atlas_init(&g->spriteAtlas);
@@ -353,8 +354,8 @@ void game_render(GameState *g) {
 
     // Hand bars — drawn last so they always cover the outer strip, regardless
     // of any earlier draws that may have bled past the battlefield scissor.
-    hand_ui_draw(&g->players[0], g->handPlaceholderTexture);
-    hand_ui_draw(&g->players[1], g->handPlaceholderTexture);
+    hand_ui_draw(&g->players[0], g->handPlaceholderTexture, g->handKnightSheetTexture);
+    hand_ui_draw(&g->players[1], g->handPlaceholderTexture, g->handKnightSheetTexture);
 
     // Match result overlay
     if (g->gameOver) {
@@ -391,6 +392,7 @@ void game_cleanup(GameState *g) {
     UnloadTexture(g->sustenanceTexture);
     status_bars_unload(g->statusBarsTexture);
     hand_ui_unload_placeholder(g->handPlaceholderTexture);
+    hand_ui_unload_placeholder(g->handKnightSheetTexture);
 
     spawn_fx_cleanup(&g->spawnFx);
     // Cleanup Battlefield (must be before biome_free_all since tilemaps reference biome textures)

@@ -42,4 +42,6 @@ bool player_hand_slot_is_occupied(const Player *p, int handIndex);
 
 int player_hand_occupied_count(const Player *p);
 
+void player_hand_restart_animation_for_card(Player *p, const Card *card);
+
 #endif //NFC_CARDGAME_PLAYER_H

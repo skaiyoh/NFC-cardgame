@@ -8,6 +8,10 @@
 #include <string.h>
 #include <stdio.h>
 
+static float player_hand_animation_duration(void) {
+    return HAND_CARD_KNIGHT_FRAME_TIME * (float)(HAND_CARD_KNIGHT_FRAME_COUNT + 1);
+}
+
 void player_init(Player *p, int id, BattleSide side,
                  Rectangle screenArea, Rectangle battlefieldArea, Rectangle handArea,
                  float cameraRotation, const Battlefield *bf) {
@@ -66,6 +70,17 @@ void player_update(Player *p, float deltaTime) {
             }
         }
     }
+
+    const float animationDuration = player_hand_animation_duration();
+    for (int i = 0; i < HAND_MAX_CARDS; i++) {
+        if (!p->handCardAnimating[i]) continue;
+
+        p->handCardAnimElapsed[i] += deltaTime;
+        if (p->handCardAnimElapsed[i] >= animationDuration) {
+            p->handCardAnimElapsed[i] = animationDuration;
+            p->handCardAnimating[i] = false;
+        }
+    }
 }
 
 void player_cleanup(Player *p) {
@@ -92,6 +107,8 @@ void player_hand_set_card(Player *p, int handIndex, Card *card) {
         return;
     }
     p->handCards[handIndex] = card;
+    p->handCardAnimating[handIndex] = false;
+    p->handCardAnimElapsed[handIndex] = 0.0f;
 }
 
 void player_hand_clear_card(Player *p, int handIndex) {
@@ -117,4 +134,16 @@ int player_hand_occupied_count(const Player *p) {
         if (player_hand_slot_is_occupied(p, i)) count++;
     }
     return count;
+}
+
+void player_hand_restart_animation_for_card(Player *p, const Card *card) {
+    if (!p || !card) return;
+
+    for (int i = 0; i < HAND_MAX_CARDS; i++) {
+        if (p->handCards[i] != card) continue;
+
+        p->handCardAnimating[i] = true;
+        p->handCardAnimElapsed[i] = 0.0f;
+        return;
+    }
 }

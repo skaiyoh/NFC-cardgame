@@ -94,6 +94,7 @@ static void spawn_troop_from_card(const Card *card, GameState *state, int player
             e->waypointIndex = 1; // Skip waypoint[0] (== spawn pos) to avoid zero-distance pause
         }
         spawn_register_entity(state, e, SPAWN_FX_SMOKE);
+        player_hand_restart_animation_for_card(player, card);
     }
 }
 

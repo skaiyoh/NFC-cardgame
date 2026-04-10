@@ -121,6 +121,8 @@ struct Player {
 
     // Visible hand contents, independent from the three NFC/lane slots.
     Card *handCards[HAND_MAX_CARDS];
+    bool handCardAnimating[HAND_MAX_CARDS];
+    float handCardAnimElapsed[HAND_MAX_CARDS];
 
     // Energy system
     float energy;
@@ -161,6 +163,7 @@ struct GameState {
 
     // Placeholder hand-bar card texture (shared by hand_ui)
     Texture2D handPlaceholderTexture;
+    Texture2D handKnightSheetTexture;
 
     // Screen layout
     int halfWidth; // Half screen width for split screen
