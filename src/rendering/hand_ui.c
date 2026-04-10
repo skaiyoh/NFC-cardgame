@@ -10,15 +10,10 @@
 // than the tilemap so the hand strip reads as non-playfield chrome.
 static const Color HAND_BAR_BG = { 20, 20, 24, 255 };
 
-static int hand_ui_occupied_count(const Player *p) {
-    if (!p) return 0;
-
-    int count = 0;
-    for (int i = 0; i < HAND_MAX_CARDS; i++) {
-        if (p->handCards[i]) count++;
-    }
-    return count;
-}
+// Shared hand occupancy helpers live in player.c; declare only the two
+// renderer-facing entry points here to keep hand_ui tests lightweight.
+bool player_hand_slot_is_occupied(const Player *p, int handIndex);
+int player_hand_occupied_count(const Player *p);
 
 Texture2D hand_ui_load_placeholder(void) {
     Texture2D t = LoadTexture(HAND_CARD_PLACEHOLDER_PATH);
@@ -88,7 +83,7 @@ void hand_ui_draw(const Player *p, Texture2D placeholder) {
     //    still reserves the space so layout assumptions hold.
     if (placeholder.id == 0) return;
 
-    const int visibleCardCount = hand_ui_occupied_count(p);
+    const int visibleCardCount = player_hand_occupied_count(p);
     if (visibleCardCount <= 0) return;
 
     const float rotation = hand_ui_card_rotation(p->side);
@@ -98,7 +93,7 @@ void hand_ui_draw(const Player *p, Texture2D placeholder) {
 
     int visibleIndex = 0;
     for (int i = 0; i < HAND_MAX_CARDS; i++) {
-        if (!p->handCards[i]) continue;
+        if (!player_hand_slot_is_occupied(p, i)) continue;
 
         Vector2 center = hand_ui_card_center_for_index(p->handArea, visibleCardCount, visibleIndex);
 

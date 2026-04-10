@@ -78,6 +78,23 @@ typedef struct Player {
     void *handCards[HAND_MAX_CARDS];
 } Player;
 
+static bool player_hand_slot_is_occupied(const Player *p, int handIndex) {
+    if (!p || handIndex < 0 || handIndex >= HAND_MAX_CARDS) {
+        return false;
+    }
+    return p->handCards[handIndex] != NULL;
+}
+
+static int player_hand_occupied_count(const Player *p) {
+    if (!p) return 0;
+
+    int count = 0;
+    for (int i = 0; i < HAND_MAX_CARDS; i++) {
+        if (player_hand_slot_is_occupied(p, i)) count++;
+    }
+    return count;
+}
+
 /* ---- Skip hand_ui.h include chain by providing the declarations ourselves ---- */
 #define NFC_CARDGAME_HAND_UI_H
 Texture2D hand_ui_load_placeholder(void);
@@ -94,6 +111,15 @@ static bool approx_eq(float a, float b, float eps) {
     return fabsf(a - b) < eps;
 }
 
+static float expected_center_y(Rectangle handArea, int visibleCardCount, int visibleIndex) {
+    const float stride = (float)HAND_CARD_WIDTH + (float)HAND_CARD_GAP;
+    const float runLength = (float)visibleCardCount * (float)HAND_CARD_WIDTH
+                          + (float)(visibleCardCount - 1) * (float)HAND_CARD_GAP;
+    const float startY = handArea.y + (handArea.height - runLength) * 0.5f
+                       + (float)HAND_CARD_WIDTH * 0.5f;
+    return startY + (float)visibleIndex * stride;
+}
+
 static void reset_draw_capture(void) {
     g_draw_texture_calls = 0;
     for (int i = 0; i < HAND_MAX_CARDS; i++) {
@@ -102,12 +128,12 @@ static void reset_draw_capture(void) {
     }
 }
 
-/* ---- Test: center X matches handArea midline for common hand sizes ---- */
+/* ---- Test: center X matches handArea midline for hand sizes 1..HAND_MAX_CARDS ---- */
 static void test_center_x_matches_handarea_midline(void) {
     Rectangle p1Hand = { 0.0f, 0.0f, 180.0f, 1080.0f };
     Rectangle p2Hand = { 1740.0f, 0.0f, 180.0f, 1080.0f };
 
-    for (int count = 1; count <= 3; count++) {
+    for (int count = 1; count <= HAND_MAX_CARDS; count++) {
         for (int i = 0; i < count; i++) {
             Vector2 p1 = hand_ui_card_center_for_index(p1Hand, count, i);
             Vector2 p2 = hand_ui_card_center_for_index(p2Hand, count, i);
@@ -118,25 +144,29 @@ static void test_center_x_matches_handarea_midline(void) {
     printf("  PASS: test_center_x_matches_handarea_midline\n");
 }
 
-/* ---- Test: visible cards remain ordered top-to-bottom ---- */
+/* ---- Test: visible cards remain ordered top-to-bottom for hand sizes 1..HAND_MAX_CARDS ---- */
 static void test_cards_monotonic_y(void) {
     Rectangle hand = { 0.0f, 0.0f, 180.0f, 1080.0f };
-    for (int i = 1; i < 3; i++) {
-        Vector2 prev = hand_ui_card_center_for_index(hand, 3, i - 1);
-        Vector2 curr = hand_ui_card_center_for_index(hand, 3, i);
-        assert(curr.y > prev.y);
+    for (int count = 2; count <= HAND_MAX_CARDS; count++) {
+        for (int i = 1; i < count; i++) {
+            Vector2 prev = hand_ui_card_center_for_index(hand, count, i - 1);
+            Vector2 curr = hand_ui_card_center_for_index(hand, count, i);
+            assert(curr.y > prev.y);
+        }
     }
     printf("  PASS: test_cards_monotonic_y\n");
 }
 
-/* ---- Test: centers are evenly spaced by stride ---- */
+/* ---- Test: centers are evenly spaced by stride for hand sizes 1..HAND_MAX_CARDS ---- */
 static void test_even_stride(void) {
     Rectangle hand = { 0.0f, 0.0f, 180.0f, 1080.0f };
     const float stride = (float)HAND_CARD_WIDTH + (float)HAND_CARD_GAP;
-    for (int i = 1; i < 3; i++) {
-        Vector2 prev = hand_ui_card_center_for_index(hand, 3, i - 1);
-        Vector2 curr = hand_ui_card_center_for_index(hand, 3, i);
-        assert(approx_eq(curr.y - prev.y, stride, 0.01f));
+    for (int count = 2; count <= HAND_MAX_CARDS; count++) {
+        for (int i = 1; i < count; i++) {
+            Vector2 prev = hand_ui_card_center_for_index(hand, count, i - 1);
+            Vector2 curr = hand_ui_card_center_for_index(hand, count, i);
+            assert(approx_eq(curr.y - prev.y, stride, 0.01f));
+        }
     }
     printf("  PASS: test_even_stride\n");
 }
@@ -169,22 +199,55 @@ static void test_three_card_run_centered_in_handarea(void) {
     printf("  PASS: test_three_card_run_centered_in_handarea\n");
 }
 
+/* ---- Test: every hand size stays vertically centered inside handArea ---- */
+static void test_all_run_sizes_centered_in_handarea(void) {
+    Rectangle hand = { 0.0f, 0.0f, 180.0f, 1080.0f };
+
+    for (int count = 1; count <= HAND_MAX_CARDS; count++) {
+        Vector2 first = hand_ui_card_center_for_index(hand, count, 0);
+        Vector2 last = hand_ui_card_center_for_index(hand, count, count - 1);
+
+        const float halfCardWidth = (float)HAND_CARD_WIDTH * 0.5f;
+        const float topEdge = first.y - halfCardWidth;
+        const float bottomEdge = last.y + halfCardWidth;
+        const float topSlack = topEdge - hand.y;
+        const float bottomSlack = (hand.y + hand.height) - bottomEdge;
+
+        assert(approx_eq(topSlack, bottomSlack, 0.01f));
+        assert(topSlack >= 0.0f);
+    }
+
+    printf("  PASS: test_all_run_sizes_centered_in_handarea\n");
+}
+
 /* ---- Test: expected absolute values for P1 {0,0,180,1080} ---- */
 static void test_expected_absolute_positions_p1(void) {
     Rectangle p1Hand = { 0.0f, 0.0f, 180.0f, 1080.0f };
 
-    Vector2 one = hand_ui_card_center_for_index(p1Hand, 1, 0);
-    assert(approx_eq(one.x, 90.0f, 0.01f));
-    assert(approx_eq(one.y, 540.0f, 0.01f));
-
-    Vector2 three0 = hand_ui_card_center_for_index(p1Hand, 3, 0);
-    Vector2 three1 = hand_ui_card_center_for_index(p1Hand, 3, 1);
-    Vector2 three2 = hand_ui_card_center_for_index(p1Hand, 3, 2);
-    assert(approx_eq(three0.y, 408.0f, 0.01f));
-    assert(approx_eq(three1.y, 540.0f, 0.01f));
-    assert(approx_eq(three2.y, 672.0f, 0.01f));
+    for (int count = 1; count <= HAND_MAX_CARDS; count++) {
+        for (int i = 0; i < count; i++) {
+            Vector2 c = hand_ui_card_center_for_index(p1Hand, count, i);
+            assert(approx_eq(c.x, 90.0f, 0.01f));
+            assert(approx_eq(c.y, expected_center_y(p1Hand, count, i), 0.01f));
+        }
+    }
 
     printf("  PASS: test_expected_absolute_positions_p1\n");
+}
+
+/* ---- Test: expected absolute values for P2 {1740,0,180,1080} ---- */
+static void test_expected_absolute_positions_p2(void) {
+    Rectangle p2Hand = { 1740.0f, 0.0f, 180.0f, 1080.0f };
+
+    for (int count = 1; count <= HAND_MAX_CARDS; count++) {
+        for (int i = 0; i < count; i++) {
+            Vector2 c = hand_ui_card_center_for_index(p2Hand, count, i);
+            assert(approx_eq(c.x, 1830.0f, 0.01f));
+            assert(approx_eq(c.y, expected_center_y(p2Hand, count, i), 0.01f));
+        }
+    }
+
+    printf("  PASS: test_expected_absolute_positions_p2\n");
 }
 
 /* ---- Test: empty hand emits no draw calls ---- */
@@ -238,9 +301,11 @@ int main(void) {
     test_even_stride();
     test_one_card_centered_in_handarea();
     test_three_card_run_centered_in_handarea();
+    test_all_run_sizes_centered_in_handarea();
     test_expected_absolute_positions_p1();
+    test_expected_absolute_positions_p2();
     test_empty_hand_draws_nothing();
     test_sparse_hand_compacts_draw_positions();
-    printf("\nAll 8 tests passed!\n");
+    printf("\nAll 10 tests passed!\n");
     return 0;
 }

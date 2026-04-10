@@ -38,6 +38,8 @@ void player_hand_clear_card(Player *p, int handIndex);
 
 Card *player_hand_get_card(const Player *p, int handIndex);
 
+bool player_hand_slot_is_occupied(const Player *p, int handIndex);
+
 int player_hand_occupied_count(const Player *p);
 
 #endif //NFC_CARDGAME_PLAYER_H

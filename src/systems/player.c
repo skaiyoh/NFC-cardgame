@@ -105,12 +105,16 @@ Card *player_hand_get_card(const Player *p, int handIndex) {
     return p->handCards[handIndex];
 }
 
+bool player_hand_slot_is_occupied(const Player *p, int handIndex) {
+    return player_hand_get_card(p, handIndex) != NULL;
+}
+
 int player_hand_occupied_count(const Player *p) {
     if (!p) return 0;
 
     int count = 0;
     for (int i = 0; i < HAND_MAX_CARDS; i++) {
-        if (p->handCards[i]) count++;
+        if (player_hand_slot_is_occupied(p, i)) count++;
     }
     return count;
 }
