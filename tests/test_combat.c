@@ -32,12 +32,26 @@
 #define NFC_CARDGAME_DEBUG_EVENTS_H
 #define NFC_CARDGAME_WIN_CONDTION_H
 #define NFC_CARDGAME_FARMER_H
+#define NFC_CARDGAME_ASSAULT_SLOTS_H
+#define NFC_CARDGAME_DEPOSIT_SLOTS_H
 
 /* ---- Config defines (must match src/core/config.h) ---- */
 #define LANE_WAYPOINT_COUNT  8
 #define NUM_CARD_SLOTS 3
 #define MAX_ENTITIES 64
 #define SUSTENANCE_MATCH_COUNT_PER_SIDE 8
+#define BASE_NAV_RADIUS 56.0f
+#define DEFAULT_MELEE_BODY_RADIUS 14.0f
+#define BASE_ASSAULT_PRIMARY_SLOT_COUNT 8
+#define BASE_ASSAULT_QUEUE_SLOT_COUNT   8
+#define BASE_ASSAULT_SLOT_GAP 2.0f
+#define BASE_ASSAULT_QUEUE_RADIAL_OFFSET 22.0f
+#define PATHFIND_CONTACT_GAP 2.0f
+#define COMBAT_BUILDING_MELEE_INSET 30.0f
+#define COMBAT_MELEE_GOAL_SLACK_MAX 8.0f
+#define COMBAT_PERIMETER_TANGENT_SCALE 0.65f
+#define BASE_DEPOSIT_PRIMARY_SLOT_COUNT 4
+#define BASE_DEPOSIT_QUEUE_SLOT_COUNT   6
 
 /* ---- Minimal type stubs ---- */
 typedef struct { float x; float y; } Vector2;
@@ -96,6 +110,55 @@ typedef struct GameState GameState;
 typedef enum { SIDE_BOTTOM, SIDE_TOP } BattleSide;
 typedef struct { Vector2 v; } CanonicalPos;
 
+/* ---- Deposit slot type stubs (mirrors src/core/types.h) ---- */
+typedef enum {
+    NAV_PROFILE_LANE = 0,
+    NAV_PROFILE_ASSAULT,
+    NAV_PROFILE_FREE_GOAL,
+    NAV_PROFILE_STATIC
+} UnitNavProfile;
+
+typedef enum {
+    ASSAULT_SLOT_NONE = 0,
+    ASSAULT_SLOT_PRIMARY,
+    ASSAULT_SLOT_QUEUE
+} AssaultSlotKind;
+
+typedef enum {
+    COMBAT_ENGAGEMENT_NONE = 0,
+    COMBAT_ENGAGEMENT_ASSAULT_SLOT,
+    COMBAT_ENGAGEMENT_PERIMETER,
+    COMBAT_ENGAGEMENT_DIRECT
+} CombatEngagementType;
+
+typedef enum {
+    DEPOSIT_SLOT_NONE = 0,
+    DEPOSIT_SLOT_PRIMARY,
+    DEPOSIT_SLOT_QUEUE
+} DepositSlotKind;
+
+typedef struct {
+    Vector2 worldPos;
+    int     claimedByEntityId;
+} DepositSlot;
+
+typedef struct {
+    Vector2 worldPos;
+    int     claimedByEntityId;
+} AssaultSlot;
+
+typedef struct {
+    DepositSlot primary[BASE_DEPOSIT_PRIMARY_SLOT_COUNT];
+    DepositSlot queue  [BASE_DEPOSIT_QUEUE_SLOT_COUNT];
+    bool initialized;
+} DepositSlotRing;
+
+typedef struct {
+    AssaultSlot primary[BASE_ASSAULT_PRIMARY_SLOT_COUNT];
+    AssaultSlot queue  [BASE_ASSAULT_QUEUE_SLOT_COUNT];
+    bool initialized;
+} AssaultSlotRing;
+
 struct Entity {
     int id;
     EntityType type;
@@ -131,8 +194,19 @@ struct Entity {
     bool markedForRemoval;
     int healAmount;
     float bodyRadius;
+    float navRadius;
+    UnitNavProfile navProfile;
     int movementTargetId;
     int ticksSinceProgress;
+    int lastSteerSideSign;
+    CombatEngagementType engagementType;
+    int reservedAssaultTargetId;
+    int reservedAssaultSlotIndex;
+    AssaultSlotKind reservedAssaultSlotKind;
+    int reservedDepositSlotIndex;
+    DepositSlotKind reservedDepositSlotKind;
+    DepositSlotRing depositSlots;
+    AssaultSlotRing assaultSlots;
 };
 
 /* Player stub -- lean struct matching Plan 11-05 types.h */
@@ -264,6 +338,11 @@ void farmer_on_death(Entity *farmer, GameState *gs) {
     (void)farmer; (void)gs;
 }
 
+void assault_slots_build_for_base(Entity *base);
+void assault_slots_release_for_entity(Entity *base, int entityId);
+Vector2 assault_slots_get_position(const Entity *base, AssaultSlotKind kind,
+                                   int slotIndex);
+
 /* ---- Include combat.c directly ---- */
 #include "../src/logic/combat.c"
 
@@ -279,6 +358,36 @@ const CharacterSprite *sprite_atlas_get(const SpriteAtlas *atlas, SpriteType typ
     (void)atlas;
     (void)type;
     return NULL;
+}
+
+/* ---- Deposit slot stub (building.c calls this on base creation) ---- */
+void deposit_slots_build_for_base(Entity *base) {
+    if (!base) return;
+    base->depositSlots.initialized = true;
+}
+
+void assault_slots_build_for_base(Entity *base) {
+    if (!base) return;
+    base->assaultSlots.initialized = true;
+}
+
+void assault_slots_release_for_entity(Entity *base, int entityId) {
+    (void)base;
+    (void)entityId;
+}
+
+Vector2 assault_slots_get_position(const Entity *base, AssaultSlotKind kind,
+                                   int slotIndex) {
+    if (!base) return (Vector2){0.0f, 0.0f};
+    if (kind == ASSAULT_SLOT_PRIMARY &&
+        slotIndex >= 0 && slotIndex < BASE_ASSAULT_PRIMARY_SLOT_COUNT) {
+        return base->assaultSlots.primary[slotIndex].worldPos;
+    }
+    if (kind == ASSAULT_SLOT_QUEUE &&
+        slotIndex >= 0 && slotIndex < BASE_ASSAULT_QUEUE_SLOT_COUNT) {
+        return base->assaultSlots.queue[slotIndex].worldPos;
+    }
+    return base->position;
 }
 
 /* ---- Include building.c directly ---- */
@@ -307,6 +416,9 @@ static Entity make_entity(int ownerID, EntityType type, Vector2 pos) {
     e.alive = true;
     e.markedForRemoval = false;
     e.attackCooldown = 0.0f;
+    e.bodyRadius = 14.0f;
+    e.navRadius = 14.0f;
+    e.navProfile = NAV_PROFILE_LANE;
     anim_state_init(&e.anim, ANIM_WALK, DIR_DOWN, 0.8f, false);
     return e;
 }
@@ -366,18 +478,17 @@ static void test_in_range_same_space(void) {
 
 static void test_in_range_cross_space(void) {
     GameState gs = make_game_state();
-    /* In canonical space, P1 entity near seam (y~960) and P2 entity near seam (y~960)
-     * are close together -- no coordinate mapping needed */
+    /* Canonical-space melee checks still work across the seam because combat
+     * no longer remaps coordinates per player. */
     Entity a = make_entity(0, ENTITY_TROOP, (Vector2){540, 970});
-    a.attackRange = 100.0f;
+    a.attackRange = 50.0f;
 
     Entity b = make_entity(1, ENTITY_TROOP, (Vector2){540, 950});
 
-    /* dist = |970 - 950| = 20 <= 100 */
     assert(combat_in_range(&a, &b, &gs) == true);
 
-    a.attackRange = 10.0f;
-    assert(combat_in_range(&a, &b, &gs) == false);  /* dist=20 > 10 */
+    b.position = (Vector2){540, 890};
+    assert(combat_in_range(&a, &b, &gs) == false);
 }
 
 static void test_in_range_null_safety(void) {
@@ -385,6 +496,72 @@ static void test_in_range_null_safety(void) {
     Entity a = make_entity(0, ENTITY_TROOP, (Vector2){100, 1200});
     assert(combat_in_range(NULL, &a, &gs) == false);
     assert(combat_in_range(&a, NULL, &gs) == false);
+}
+
+/* Static-target attacks now require primary-slot admission. Queue holders and
+ * unreserved attackers may approach the base, but they cannot swing yet. */
+static void test_in_range_requires_primary_assault_slot(void) {
+    GameState gs = make_game_state();
+
+    Entity knight = make_entity(0, ENTITY_TROOP, (Vector2){540, 1568});
+    knight.attackRange = 50.0f;
+    knight.bodyRadius = 14.0f;
+
+    Entity base = make_entity(1, ENTITY_BUILDING, (Vector2){540, 1616});
+    base.id = 2;
+    base.bodyRadius = 16.0f;
+    base.navRadius = 56.0f;
+    base.navProfile = NAV_PROFILE_STATIC;
+
+    assert(combat_in_range(&knight, &base, &gs) == false);
+
+    knight.reservedAssaultTargetId = 2;
+    knight.reservedAssaultSlotKind = ASSAULT_SLOT_QUEUE;
+    knight.reservedAssaultSlotIndex = 0;
+    base.assaultSlots.queue[0].worldPos = (Vector2){540.0f, 1552.0f};
+    assert(combat_in_range(&knight, &base, &gs) == false);
+}
+
+/* Primary-slot holders attack from a shared base-contact cloud instead of a
+ * single exact slot point. */
+static void test_in_range_primary_assault_uses_base_contact_zone(void) {
+    GameState gs = make_game_state();
+
+    Entity knight = make_entity(0, ENTITY_TROOP, (Vector2){540, 1568});
+    knight.attackRange = 50.0f;
+    knight.bodyRadius = 14.0f;
+    knight.reservedAssaultTargetId = 2;
+    knight.reservedAssaultSlotKind = ASSAULT_SLOT_PRIMARY;
+    knight.reservedAssaultSlotIndex = 0;
+
+    Entity base = make_entity(1, ENTITY_BUILDING, (Vector2){540, 1616});
+    base.id = 2;
+    base.bodyRadius = 16.0f;
+    base.navRadius = 56.0f;
+    base.navProfile = NAV_PROFILE_STATIC;
+    base.assaultSlots.primary[0].worldPos = (Vector2){480.0f, 1574.0f};
+
+    assert(combat_in_range(&knight, &base, &gs) == true);
+
+    knight.position = (Vector2){540, 1540};
+    assert(combat_in_range(&knight, &base, &gs) == false);
+}
+
+/* Troop-vs-troop melee uses near-contact geometry plus a small authored
+ * slack, not raw center-distance-to-target-range. */
+static void test_in_range_unit_vs_unit_uses_contact_geometry(void) {
+    GameState gs = make_game_state();
+    Entity a = make_entity(0, ENTITY_TROOP, (Vector2){100, 1200});
+    Entity b = make_entity(0, ENTITY_TROOP, (Vector2){150, 1200});
+    a.attackRange = 40.0f;
+    a.bodyRadius = 14.0f;
+    b.bodyRadius = 14.0f;
+    b.navRadius = 14.0f; /* matches bodyRadius -> zero slack */
+
+    assert(combat_in_range(&a, &b, &gs) == false);
+
+    b.position = (Vector2){138, 1200};
+    assert(combat_in_range(&a, &b, &gs) == true);
 }
 
 static void test_find_target_nearest(void) {
@@ -1134,6 +1311,9 @@ int main(void) {
     RUN_TEST(test_in_range_same_space);
     RUN_TEST(test_in_range_cross_space);
     RUN_TEST(test_in_range_null_safety);
+    RUN_TEST(test_in_range_requires_primary_assault_slot);
+    RUN_TEST(test_in_range_primary_assault_uses_base_contact_zone);
+    RUN_TEST(test_in_range_unit_vs_unit_uses_contact_geometry);
     RUN_TEST(test_find_target_nearest);
     RUN_TEST(test_find_target_skips_dead);
     RUN_TEST(test_find_target_skips_marked);

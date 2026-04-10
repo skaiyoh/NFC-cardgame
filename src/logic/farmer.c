@@ -5,6 +5,7 @@
 //
 
 #include "farmer.h"
+#include "deposit_slots.h"
 #include "pathfinding.h"
 #include "../core/battlefield.h"
 #include "../core/sustenance.h"
@@ -15,6 +16,19 @@
 
 static float farmer_sprite_rotation(const Entity *e) {
     return (bf_side_for_player(e->ownerID) == SIDE_TOP) ? 180.0f : 0.0f;
+}
+
+static float farmer_base_contact_radius(const Entity *farmer, const Entity *base) {
+    if (!farmer || !base) return 0.0f;
+    float baseNavRadius = (base->navRadius > 0.0f) ? base->navRadius : base->bodyRadius;
+    return baseNavRadius + farmer->bodyRadius + BASE_DEPOSIT_SLOT_GAP;
+}
+
+static float farmer_base_wait_radius(const Entity *farmer, const Entity *base) {
+    return farmer_base_contact_radius(farmer, base) +
+           BASE_DEPOSIT_QUEUE_RADIAL_OFFSET +
+           farmer->bodyRadius +
+           PATHFIND_CONTACT_GAP;
 }
 
 // Move a farmer toward `target`, stopping when within `radius`. Delegates
@@ -35,6 +49,7 @@ static bool farmer_move_with_steering(Entity *e, GameState *gs, Vector2 target,
 static void farmer_seek(Entity *e, GameState *gs) {
     Battlefield *bf = &gs->battlefield;
     BattleSide side = bf_side_for_player(e->ownerID);
+    e->movementTargetId = -1;
 
     SustenanceNode *node = sustenance_find_nearest_available(bf, side, e->position);
     if (!node) {
@@ -54,6 +69,7 @@ static void farmer_seek(Entity *e, GameState *gs) {
 
 static void farmer_walk_to_sustenance(Entity *e, GameState *gs, float deltaTime) {
     Battlefield *bf = &gs->battlefield;
+    e->movementTargetId = -1;
     SustenanceNode *node = sustenance_get_node(bf, e->claimedSustenanceNodeId);
 
     // Claimed node became invalid — release and re-seek
@@ -87,6 +103,7 @@ static void farmer_walk_to_sustenance(Entity *e, GameState *gs, float deltaTime)
 static void farmer_gather(Entity *e, GameState *gs, float deltaTime) {
     (void)deltaTime;
     Battlefield *bf = &gs->battlefield;
+    e->movementTargetId = -1;
     SustenanceNode *node = sustenance_get_node(bf, e->claimedSustenanceNodeId);
 
     // Node invalidated while gathering
@@ -120,15 +137,62 @@ static void farmer_gather(Entity *e, GameState *gs, float deltaTime) {
 static void farmer_return(Entity *e, GameState *gs, float deltaTime) {
     Entity *base = gs->players[e->ownerID].base;
     if (!base) {
-        // Base destroyed — idle
+        // Base destroyed — drop any stale reservation fields and idle.
+        // The ring itself died with the base entity, no release to make.
+        e->reservedDepositSlotIndex = -1;
+        e->reservedDepositSlotKind = DEPOSIT_SLOT_NONE;
+        e->movementTargetId = -1;
         entity_set_state(e, ESTATE_IDLE);
         return;
     }
 
-    bool arrived = farmer_move_with_steering(e, gs, base->position,
-                                              FARMER_BASE_DEPOSIT_RADIUS,
-                                              deltaTime);
-    if (arrived) {
+    // Treat the home base as the farmer's current static target while
+    // returning so local steering can use the smaller contact shell instead
+    // of the full authored nav footprint.
+    e->movementTargetId = base->id;
+
+    // Promote a queue reservation the moment a primary slot opens up. This is
+    // the only hand-off path; id-sorted update order ensures concurrent queue
+    // farmers compete deterministically.
+    if (e->reservedDepositSlotKind == DEPOSIT_SLOT_QUEUE) {
+        int newIdx = -1;
+        if (deposit_slots_try_promote(base, e->id,
+                                      e->reservedDepositSlotIndex, &newIdx)) {
+            e->reservedDepositSlotIndex = newIdx;
+            e->reservedDepositSlotKind = DEPOSIT_SLOT_PRIMARY;
+        }
+    }
+
+    // First-time reservation attempt from the farmer's current position.
+    if (e->reservedDepositSlotKind == DEPOSIT_SLOT_NONE) {
+        int idx = -1;
+        DepositSlotKind kind = deposit_slots_reserve_for(base, e->id, e->position, &idx);
+        if (kind == DEPOSIT_SLOT_NONE) {
+            // All deposit tickets are taken. Stage outside the queue ring and
+            // retry next tick instead of walking aimlessly at the base pivot.
+            farmer_move_with_steering(e, gs, base->position,
+                                      farmer_base_wait_radius(e, base), deltaTime);
+            return;
+        }
+        e->reservedDepositSlotIndex = idx;
+        e->reservedDepositSlotKind = kind;
+    }
+
+    Vector2 target = base->position;
+    float arriveRadius = farmer_base_contact_radius(e, base);
+
+    if (e->reservedDepositSlotKind == DEPOSIT_SLOT_QUEUE) {
+        target = deposit_slots_get_position(base,
+                                            e->reservedDepositSlotKind,
+                                            e->reservedDepositSlotIndex);
+        arriveRadius = FARMER_QUEUE_WAIT_PROXIMITY;
+    }
+
+    bool arrived = farmer_move_with_steering(e, gs, target, arriveRadius, deltaTime);
+
+    // Only a primary-slot arrival promotes to DEPOSITING. Queue-slot arrivals
+    // park the farmer and keep retrying try_promote each tick.
+    if (arrived && e->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY) {
         SpriteDirection dir = e->anim.dir;
         bool flipH = e->anim.flipH;
         e->farmerState = FARMER_DEPOSITING;
@@ -137,12 +201,18 @@ static void farmer_return(Entity *e, GameState *gs, float deltaTime) {
         // Preserve the return-facing when switching into the placeholder work clip.
         e->anim.dir = dir;
         e->anim.flipH = flipH;
-        printf("[FARMER] Entity %d reached base, depositing\n", e->id);
+        printf("[FARMER] Entity %d reached deposit slot %d, depositing\n",
+               e->id, e->reservedDepositSlotIndex);
     }
 }
 
 static void farmer_deposit(Entity *e, GameState *gs, float deltaTime) {
     (void)deltaTime;
+    Entity *base = gs->players[e->ownerID].base;
+    if (base) {
+        e->movementTargetId = base->id;
+    }
+
     // Wait for one-shot attack clip to finish
     if (!e->anim.finished) return;
 
@@ -151,7 +221,18 @@ static void farmer_deposit(Entity *e, GameState *gs, float deltaTime) {
     printf("[FARMER] Entity %d deposited %d sustenance (player %d total: %d)\n",
            e->id, e->carriedSustenanceValue, e->ownerID,
            gs->players[e->ownerID].sustenanceCollected);
+
+    // Release the primary deposit slot so the next waiting farmer can promote.
+    base = gs->players[e->ownerID].base;
+    if (base && e->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY) {
+        deposit_slots_release(base, DEPOSIT_SLOT_PRIMARY,
+                              e->reservedDepositSlotIndex, e->id);
+    }
+    e->reservedDepositSlotIndex = -1;
+    e->reservedDepositSlotKind = DEPOSIT_SLOT_NONE;
+
     e->carriedSustenanceValue = 0;
+    e->movementTargetId = -1;
     e->farmerState = FARMER_SEEKING;
     entity_set_state(e, ESTATE_IDLE);
 }
@@ -203,4 +284,14 @@ void farmer_on_death(Entity *farmer, GameState *gs) {
     // Release any sustenance claim
     sustenance_release_claims_for_entity(bf, farmer->id);
     farmer->claimedSustenanceNodeId = -1;
+
+    // Release any deposit slot reservation held by this farmer. The owning
+    // base may be NULL if it was destroyed on the same frame -- the ring died
+    // with the base entity, so skipping the call is safe.
+    Entity *base = gs->players[farmer->ownerID].base;
+    if (base) {
+        deposit_slots_release_for_entity(base, farmer->id);
+    }
+    farmer->reservedDepositSlotIndex = -1;
+    farmer->reservedDepositSlotKind = DEPOSIT_SLOT_NONE;
 }

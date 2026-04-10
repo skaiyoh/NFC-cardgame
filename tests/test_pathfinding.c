@@ -21,6 +21,7 @@
 /* ---- Prevent pathfinding.c's includes from pulling in heavy headers ---- */
 #define NFC_CARDGAME_TYPES_H
 #define NFC_CARDGAME_PATHFINDING_H
+#define NFC_CARDGAME_COMBAT_H
 #define NFC_CARDGAME_PLAYER_H
 #define NFC_CARDGAME_ENTITIES_H
 #define NFC_CARDGAME_BATTLEFIELD_H
@@ -36,6 +37,10 @@
 #define BOARD_WIDTH  1080
 #define BOARD_HEIGHT 1920
 #define SEAM_Y       960
+#define BASE_NAV_RADIUS 56.0f
+#define BASE_DEPOSIT_SLOT_GAP 4.0f
+#define BASE_ASSAULT_QUEUE_RADIAL_OFFSET 22.0f
+#define COMBAT_MELEE_GOAL_SLACK_MAX 8.0f
 
 /* ---- Local steering constants (must mirror src/core/config.h) ---- */
 #define PATHFIND_AGGRO_RADIUS             192.0f
@@ -51,6 +56,15 @@
 #define PATHFIND_LANE_DRIFT_MAX_RATIO     0.65f
 #define PATHFIND_LANE_LOOKAHEAD_DISTANCE  48.0f
 #define PATHFIND_PURSUIT_REAR_TOLERANCE   32.0f
+#define PATHFIND_ASSAULT_JAM_RELIEF_TICKS 3
+#define PATHFIND_ASSAULT_LATERAL_TOLERANCE_RATIO 1.0f
+#define PATHFIND_ALLY_SOFT_OVERLAP_RATIO  0.12f
+#define PATHFIND_ALLY_SOFT_OVERLAP_MAX    6.0f
+#define PATHFIND_ASSAULT_ALLY_SOFT_OVERLAP_RATIO 0.20f
+#define PATHFIND_ASSAULT_ALLY_SOFT_OVERLAP_MAX   8.0f
+#define PATHFIND_ASSAULT_SAME_TARGET_SOFT_OVERLAP_BONUS 2.0f
+#define PATHFIND_ASSAULT_SAME_TARGET_SOFT_OVERLAP_MAX   10.0f
+#define PATHFIND_FREE_MOVER_LATERAL_TOLERANCE_RATIO 1.5f
 
 /* ---- Minimal type stubs ---- */
 typedef struct { float x; float y; } Vector2;
@@ -85,6 +99,27 @@ typedef struct {
 typedef struct { void *texture; int frameWidth; int frameHeight; int frameCount; void *visibleBounds; } SpriteSheet;
 typedef struct { SpriteSheet anims[ANIM_COUNT]; } CharacterSprite;
 
+/* Nav profile enum (mirrors src/core/types.h). LANE=0 is the safe default
+ * for memset-zero entities, preserving legacy test behavior. */
+typedef enum {
+    NAV_PROFILE_LANE = 0,
+    NAV_PROFILE_ASSAULT,
+    NAV_PROFILE_FREE_GOAL,
+    NAV_PROFILE_STATIC
+} UnitNavProfile;
+
+typedef enum {
+    ASSAULT_SLOT_NONE = 0,
+    ASSAULT_SLOT_PRIMARY,
+    ASSAULT_SLOT_QUEUE
+} AssaultSlotKind;
+
+typedef enum {
+    DEPOSIT_SLOT_NONE = 0,
+    DEPOSIT_SLOT_PRIMARY,
+    DEPOSIT_SLOT_QUEUE
+} DepositSlotKind;
+
 typedef struct Entity Entity;
 
 struct Entity {
@@ -117,8 +152,16 @@ struct Entity {
     bool markedForRemoval;
     int healAmount;
     float bodyRadius;
+    float navRadius;  /* 0 => pathfind_nav_radius falls back to bodyRadius */
+    UnitNavProfile navProfile;  /* LANE by default (from memset) */
     int movementTargetId;
     int ticksSinceProgress;
+    int lastSteerSideSign;
+    int reservedAssaultTargetId;
+    int reservedAssaultSlotIndex;
+    AssaultSlotKind reservedAssaultSlotKind;
+    int reservedDepositSlotIndex;
+    DepositSlotKind reservedDepositSlotKind;
 };
 
 /* ---- Battlefield stub (minimal for pathfinding) ---- */
@@ -189,6 +232,71 @@ const SpriteSheet *sprite_sheet_get(const CharacterSprite *cs, AnimationType ani
 
 void entity_set_state(Entity *e, EntityState newState) {
     if (e) e->state = newState;
+}
+
+float combat_target_contact_radius(const Entity *target);
+float combat_melee_reach_distance(const Entity *attacker, const Entity *target);
+
+bool combat_engagement_goal(const Entity *attacker, const Entity *target,
+                            const Battlefield *bf, Vector2 *outGoal,
+                            float *outStopRadius) {
+    (void)bf;
+    if (!attacker || !target || !outGoal || !outStopRadius) return false;
+    if (target->type == ENTITY_BUILDING || target->navProfile == NAV_PROFILE_STATIC) {
+        if (attacker->reservedAssaultTargetId == target->id &&
+            attacker->reservedAssaultSlotKind == ASSAULT_SLOT_PRIMARY) {
+            *outGoal = target->position;
+            *outStopRadius = combat_target_contact_radius(target) +
+                             attacker->bodyRadius +
+                             PATHFIND_CONTACT_GAP +
+                             combat_melee_reach_distance(attacker, target);
+            return true;
+        }
+
+        Vector2 radial = {
+            attacker->position.x - target->position.x,
+            attacker->position.y - target->position.y
+        };
+        float len = sqrtf(radial.x * radial.x + radial.y * radial.y);
+        if (len <= 0.001f) radial = (Vector2){ 0.0f, -1.0f };
+        else radial = (Vector2){ radial.x / len, radial.y / len };
+
+        float radius = combat_target_contact_radius(target) +
+                       attacker->bodyRadius +
+                       PATHFIND_CONTACT_GAP +
+                       BASE_ASSAULT_QUEUE_RADIAL_OFFSET;
+        *outGoal = (Vector2){
+            target->position.x + radial.x * radius,
+            target->position.y + radial.y * radius
+        };
+        *outStopRadius = attacker->bodyRadius;
+        return true;
+    }
+    *outGoal = target->position;
+    *outStopRadius = attacker->bodyRadius + target->bodyRadius + PATHFIND_CONTACT_GAP;
+    return true;
+}
+
+float combat_target_contact_radius(const Entity *target) {
+    if (!target) return 0.0f;
+    if (target->type == ENTITY_BUILDING || target->navProfile == NAV_PROFILE_STATIC) {
+        float navR = (target->navRadius > 0.0f) ? target->navRadius : target->bodyRadius;
+        float combatRadius = navR - 30.0f;
+        return (combatRadius > target->bodyRadius) ? combatRadius : target->bodyRadius;
+    }
+    return (target->navRadius > 0.0f) ? target->navRadius : target->bodyRadius;
+}
+
+float combat_melee_reach_distance(const Entity *attacker, const Entity *target) {
+    if (!attacker || !target) return 0.0f;
+
+    float contactDistance = combat_target_contact_radius(target) +
+                            attacker->bodyRadius +
+                            PATHFIND_CONTACT_GAP;
+    float slack = attacker->attackRange - contactDistance;
+    if (slack < 0.0f) slack = 0.0f;
+    if (slack > COMBAT_MELEE_GOAL_SLACK_MAX) slack = COMBAT_MELEE_GOAL_SLACK_MAX;
+    return slack;
 }
 
 /* ---- Forward declarations for functions in pathfinding.c ---- */
@@ -273,6 +381,7 @@ static Entity make_test_entity(int lane, int waypointIndex, float moveSpeed) {
     e.ownerID = 0;  // SIDE_BOTTOM
     e.type = ENTITY_TROOP;
     e.bodyRadius = 14.0f;
+    e.attackRange = 50.0f;
     e.movementTargetId = -1;
     e.ticksSinceProgress = 0;
     return e;
@@ -1165,6 +1274,368 @@ static void test_unit_sidesteps_around_offset_blocker(void) {
     assert(advanced || currentToWp2 < wp1ToWp2 - 10.0f);
 }
 
+/* ---- Escape from existing overlap ---- */
+
+/* A LANE entity spawned inside a large blocker's contact shell (e.g. a
+ * knight spawning just in front of its own base after the base nav radius
+ * grew in Phase 1) must be able to step outward. Pre-Phase-3 this case
+ * deadlocked because every candidate was "overlapping" and therefore
+ * illegal, even the forward step that strictly reduced overlap. */
+static void test_escape_from_spawn_inside_contact_shell(void) {
+    Battlefield bf = make_test_battlefield();
+
+    /* Large stationary blocker -- mimic an inflated base nav shell. */
+    Entity blocker = make_test_entity(1, 1, 0.0f);
+    blocker.position = (Vector2){ 500.0f, 1650.0f };
+    blocker.bodyRadius = 14.0f;
+    blocker.navRadius = 56.0f;
+    blocker.ownerID = 0;
+
+    /* Knight spawned 32 px in front of the blocker center -- inside the
+     * shell (14 + 56 + 2 = 72). Forward direction is -Y toward the goal. */
+    Entity knight = make_test_entity(1, 1, 60.0f);
+    knight.position = (Vector2){ 500.0f, 1618.0f };
+    knight.bodyRadius = 14.0f;
+
+    bf_test_register(&bf, &knight);
+    bf_test_register(&bf, &blocker);
+
+    /* Pre-check: knight overlaps blocker at spawn. */
+    float dxBefore = knight.position.x - blocker.position.x;
+    float dyBefore = knight.position.y - blocker.position.y;
+    float distBefore = sqrtf(dxBefore * dxBefore + dyBefore * dyBefore);
+    float shell = 14.0f + 56.0f + PATHFIND_CONTACT_GAP;
+    assert(distBefore < shell);
+
+    /* Run simulation. After enough ticks, knight must escape past the
+     * contact shell -- 72 - 32 = 40 px to cover at step 1/frame, so
+     * 240 frames is a generous upper bound. */
+    Vector2 goal = { 500.0f, 200.0f };
+    for (int i = 0; i < 240; i++) {
+        pathfind_move_toward_goal(&knight, goal, 5.0f, &bf, 1.0f / 60.0f);
+    }
+
+    float dxAfter = knight.position.x - blocker.position.x;
+    float dyAfter = knight.position.y - blocker.position.y;
+    float distAfter = sqrtf(dxAfter * dxAfter + dyAfter * dyAfter);
+
+    /* Knight must now be outside the contact shell, having escaped outward. */
+    assert(distAfter >= shell - 0.001f);
+}
+
+/* Phase 2: free-mover steering (farmer navProfile = FREE_GOAL) */
+
+/* Free mover with a blocker close enough to break every forward candidate
+ * at normal step size still makes progress via the relaxed lateral tolerance
+ * and jam relief. The unit must not move INTO a new overlap with the blocker. */
+static void test_free_mover_sidesteps_close_blocker(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity unit = make_test_entity(1, 1, 60.0f);
+    unit.navProfile = NAV_PROFILE_FREE_GOAL;
+    unit.position = (Vector2){ 500.0f, 500.0f };
+    unit.bodyRadius = 14.0f;
+    unit.ticksSinceProgress = PATHFIND_JAM_RELIEF_TICKS + 1;
+
+    /* Blocker just at the edge of the contact shell (30 px = 14+14+2) so
+     * the unit starts non-overlapping, but any forward step at dt=0.1
+     * (step=6) would overlap. Pure side steps clear the shell. */
+    Entity blocker = make_test_entity(1, 1, 0.0f);
+    blocker.position = (Vector2){ 500.0f, 470.0f };
+    blocker.bodyRadius = 14.0f;
+
+    bf_test_register(&bf, &unit);
+    bf_test_register(&bf, &blocker);
+
+    Vector2 before = unit.position;
+    Vector2 goal = { 500.0f, 200.0f };
+    pathfind_move_toward_goal(&unit, goal, 5.0f, &bf, 0.1f);
+
+    /* Free mover stepped sideways -- normal march picked the side candidate
+     * under the relaxed lateral tolerance. */
+    bool moved = (unit.position.x != before.x) || (unit.position.y != before.y);
+    assert(moved);
+
+    /* Post-step must be outside the contact shell (move must not enter
+     * a fresh overlap). */
+    float dxb = unit.position.x - blocker.position.x;
+    float dyb = unit.position.y - blocker.position.y;
+    float distb = sqrtf(dxb * dxb + dyb * dyb);
+    float shell = unit.bodyRadius + blocker.bodyRadius + PATHFIND_CONTACT_GAP;
+    assert(distb >= shell - 0.001f);
+}
+
+/* Regression: lane troops routed through pathfind_move_toward_goal (no jam
+ * relief, no corridor enforcement) must still get the pre-Phase-2 strict
+ * monotone-progress behavior. A LANE entity with a blocker squarely ahead
+ * does not move -- exactly the body_radius_bounds_reject test's premise,
+ * but demonstrated with a far goal so the step cap isn't the limiter. */
+static void test_lane_mover_through_move_toward_goal_unchanged(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity unit = make_test_entity(1, 1, 60.0f);
+    unit.navProfile = NAV_PROFILE_LANE;
+    unit.position = (Vector2){ 500.0f, 500.0f };
+    unit.bodyRadius = 14.0f;
+    unit.ticksSinceProgress = PATHFIND_JAM_RELIEF_TICKS + 1;
+
+    Entity blocker = make_test_entity(1, 1, 0.0f);
+    blocker.position = (Vector2){ 500.0f, 480.0f };
+    blocker.bodyRadius = 14.0f;
+
+    bf_test_register(&bf, &unit);
+    bf_test_register(&bf, &blocker);
+
+    Vector2 before = unit.position;
+    Vector2 goal = { 500.0f, 200.0f };
+    pathfind_move_toward_goal(&unit, goal, 5.0f, &bf, 0.1f);
+
+    /* LANE profile through move_toward_goal: no jam relief (allowJamRelief
+     * is false from the caller), no tangential tolerance. Unit stays put. */
+    assert(unit.position.x == before.x);
+    assert(unit.position.y == before.y);
+}
+
+/* Free mover near the board edge cannot phase off-board. The bounds check
+ * uses nav radius (== body radius when navRadius is zero). */
+static void test_free_mover_respects_board_bounds(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity unit = make_test_entity(1, 1, 300.0f);
+    unit.navProfile = NAV_PROFILE_FREE_GOAL;
+    unit.position = (Vector2){ 30.0f, 30.0f };
+    unit.bodyRadius = 30.0f;
+
+    bf_test_register(&bf, &unit);
+
+    Vector2 before = unit.position;
+    pathfind_move_toward_goal(&unit, (Vector2){ 0.0f, 0.0f }, 0.0f,
+                              &bf, 1.0f / 60.0f);
+
+    /* Unit cannot move: forward of (0,0) would clip the -x/-y edges. The
+     * relaxed tangential tolerance does not permit leaving the board. */
+    assert(unit.position.x == before.x);
+    assert(unit.position.y == before.y);
+}
+
+/* Free mover completes a trip past an offset blocker without stalling. The
+ * blocker is placed so normal soft/hard candidates route around it; this
+ * is the common case where slot-targeting alone would be enough. */
+static void test_free_mover_reaches_goal_past_offset_blocker(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity unit = make_test_entity(1, 1, 120.0f);
+    unit.navProfile = NAV_PROFILE_FREE_GOAL;
+    unit.position = (Vector2){ 500.0f, 700.0f };
+    unit.bodyRadius = 14.0f;
+
+    /* Blocker slightly off the straight line between unit and goal. */
+    Entity blocker = make_test_entity(1, 1, 0.0f);
+    blocker.position = (Vector2){ 515.0f, 620.0f };
+    blocker.bodyRadius = 14.0f;
+
+    bf_test_register(&bf, &unit);
+    bf_test_register(&bf, &blocker);
+
+    Vector2 goal = { 500.0f, 500.0f };
+    bool arrived = false;
+    for (int i = 0; i < 400; i++) {
+        arrived = pathfind_move_toward_goal(&unit, goal, 6.0f, &bf, 0.1f);
+        if (arrived) break;
+
+        /* Never allowed to overlap the blocker mid-traversal. */
+        float dxb = unit.position.x - blocker.position.x;
+        float dyb = unit.position.y - blocker.position.y;
+        float distb = sqrtf(dxb * dxb + dyb * dyb);
+        float shell = unit.bodyRadius + blocker.bodyRadius + PATHFIND_CONTACT_GAP;
+        assert(distb >= shell - 0.001f);
+    }
+
+    assert(arrived);
+}
+
+static void test_assault_soft_overlap_is_capped_for_moving_allies(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity unit = make_test_entity(1, 2, 60.0f);
+    unit.navProfile = NAV_PROFILE_ASSAULT;
+    unit.position = (Vector2){ 500.0f, 500.0f };
+    unit.bodyRadius = 14.0f;
+
+    Entity ally = make_test_entity(1, 2, 60.0f);
+    ally.navProfile = NAV_PROFILE_ASSAULT;
+    ally.position = (Vector2){ 500.0f, 469.0f };
+    ally.bodyRadius = 14.0f;
+
+    Entity target = make_test_entity(1, 1, 0.0f);
+    target.id = 999;
+    target.position = (Vector2){ 500.0f, 220.0f };
+    target.ownerID = 1;
+
+    unit.movementTargetId = target.id;
+    ally.movementTargetId = target.id;
+
+    bf_test_register(&bf, &unit);
+    bf_test_register(&bf, &ally);
+    bf_test_register(&bf, &target);
+
+    Vector2 before = unit.position;
+    bool walking = pathfind_step_entity(&unit, &bf, 0.1f);
+
+    assert(walking == true);
+    assert(unit.position.y < before.y);
+
+    float dx = unit.position.x - ally.position.x;
+    float dy = unit.position.y - ally.position.y;
+    float dist = sqrtf(dx * dx + dy * dy);
+    float shell = unit.bodyRadius + ally.bodyRadius + PATHFIND_CONTACT_GAP;
+    float baseAllowance = fminf(PATHFIND_ALLY_SOFT_OVERLAP_MAX,
+                                (unit.bodyRadius + ally.bodyRadius) *
+                                PATHFIND_ALLY_SOFT_OVERLAP_RATIO);
+    float allowance = fminf(PATHFIND_ASSAULT_SAME_TARGET_SOFT_OVERLAP_MAX,
+                            fminf(PATHFIND_ASSAULT_ALLY_SOFT_OVERLAP_MAX,
+                                  (unit.bodyRadius + ally.bodyRadius) *
+                                  PATHFIND_ASSAULT_ALLY_SOFT_OVERLAP_RATIO) +
+                            PATHFIND_ASSAULT_SAME_TARGET_SOFT_OVERLAP_BONUS);
+
+    assert(dist < shell);
+    assert(dist < shell - baseAllowance - 0.1f);
+    assert(dist >= shell - allowance - 0.001f);
+}
+
+static void test_assault_target_allows_entry_inside_static_nav_shell(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity attacker = make_test_entity(1, 2, 120.0f);
+    attacker.navProfile = NAV_PROFILE_ASSAULT;
+    attacker.position = (Vector2){ 540.0f, 1500.0f };
+    attacker.bodyRadius = 14.0f;
+
+    Entity base = make_test_entity(1, 1, 0.0f);
+    base.id = 777;
+    base.type = ENTITY_BUILDING;
+    base.navProfile = NAV_PROFILE_STATIC;
+    base.position = (Vector2){ 540.0f, 1616.0f };
+    base.bodyRadius = 16.0f;
+    base.navRadius = 56.0f;
+    base.ownerID = 1;
+
+    attacker.movementTargetId = base.id;
+    attacker.reservedAssaultTargetId = base.id;
+    attacker.reservedAssaultSlotKind = ASSAULT_SLOT_PRIMARY;
+
+    bf_test_register(&bf, &attacker);
+    bf_test_register(&bf, &base);
+
+    for (int i = 0; i < 180; i++) {
+        pathfind_step_entity(&attacker, &bf, 1.0f / 60.0f);
+    }
+
+    float dx = attacker.position.x - base.position.x;
+    float dy = attacker.position.y - base.position.y;
+    float dist = sqrtf(dx * dx + dy * dy);
+    float navShell = attacker.bodyRadius + base.navRadius + PATHFIND_CONTACT_GAP;
+    float combatShell = attacker.bodyRadius +
+                        combat_target_contact_radius(&base) +
+                        PATHFIND_CONTACT_GAP +
+                        combat_melee_reach_distance(&attacker, &base);
+
+    assert(dist < navShell - 1.0f);
+    assert(dist >= combatShell - 2.0f);
+}
+
+static void test_primary_assault_contact_cloud_allows_overlap(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity attacker = make_test_entity(1, 2, 200.0f);
+    attacker.navProfile = NAV_PROFILE_ASSAULT;
+    attacker.position = (Vector2){ 540.0f, 1538.0f };
+    attacker.bodyRadius = 14.0f;
+
+    Entity ally = make_test_entity(1, 2, 0.0f);
+    ally.navProfile = NAV_PROFILE_ASSAULT;
+    ally.position = (Vector2){ 540.0f, 1568.0f };
+    ally.bodyRadius = 14.0f;
+
+    Entity base = make_test_entity(1, 1, 0.0f);
+    base.id = 888;
+    base.type = ENTITY_BUILDING;
+    base.navProfile = NAV_PROFILE_STATIC;
+    base.position = (Vector2){ 540.0f, 1616.0f };
+    base.bodyRadius = 16.0f;
+    base.navRadius = BASE_NAV_RADIUS;
+    base.ownerID = 1;
+
+    attacker.movementTargetId = base.id;
+    attacker.reservedAssaultTargetId = base.id;
+    attacker.reservedAssaultSlotKind = ASSAULT_SLOT_PRIMARY;
+    ally.movementTargetId = base.id;
+    ally.reservedAssaultTargetId = base.id;
+    ally.reservedAssaultSlotKind = ASSAULT_SLOT_PRIMARY;
+
+    bf_test_register(&bf, &attacker);
+    bf_test_register(&bf, &ally);
+    bf_test_register(&bf, &base);
+
+    pathfind_move_toward_goal(&attacker, base.position,
+                              combat_target_contact_radius(&base) +
+                              attacker.bodyRadius +
+                              PATHFIND_CONTACT_GAP +
+                              combat_melee_reach_distance(&attacker, &base),
+                              &bf, 0.1f);
+
+    float dx = attacker.position.x - ally.position.x;
+    float dy = attacker.position.y - ally.position.y;
+    float dist = sqrtf(dx * dx + dy * dy);
+    float shell = attacker.bodyRadius + ally.bodyRadius + PATHFIND_CONTACT_GAP;
+
+    assert(attacker.position.y > 1550.0f);
+    assert(dist < shell - 1.0f);
+}
+
+static void test_primary_deposit_contact_cloud_allows_overlap(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity farmer = make_test_entity(-1, -1, 200.0f);
+    farmer.navProfile = NAV_PROFILE_FREE_GOAL;
+    farmer.position = (Vector2){ 540.0f, 1520.0f };
+    farmer.bodyRadius = 14.0f;
+
+    Entity ally = make_test_entity(-1, -1, 0.0f);
+    ally.navProfile = NAV_PROFILE_FREE_GOAL;
+    ally.position = (Vector2){ 540.0f, 1550.0f };
+    ally.bodyRadius = 14.0f;
+
+    Entity base = make_test_entity(1, 1, 0.0f);
+    base.id = 889;
+    base.type = ENTITY_BUILDING;
+    base.navProfile = NAV_PROFILE_STATIC;
+    base.position = (Vector2){ 540.0f, 1616.0f };
+    base.bodyRadius = 16.0f;
+    base.navRadius = BASE_NAV_RADIUS;
+
+    farmer.movementTargetId = base.id;
+    farmer.reservedDepositSlotKind = DEPOSIT_SLOT_PRIMARY;
+    ally.movementTargetId = base.id;
+    ally.reservedDepositSlotKind = DEPOSIT_SLOT_PRIMARY;
+
+    bf_test_register(&bf, &farmer);
+    bf_test_register(&bf, &ally);
+    bf_test_register(&bf, &base);
+
+    pathfind_move_toward_goal(&farmer, base.position,
+                              base.navRadius + farmer.bodyRadius + BASE_DEPOSIT_SLOT_GAP,
+                              &bf, 0.1f);
+
+    float dx = farmer.position.x - ally.position.x;
+    float dy = farmer.position.y - ally.position.y;
+    float dist = sqrtf(dx * dx + dy * dy);
+    float shell = farmer.bodyRadius + ally.bodyRadius + PATHFIND_CONTACT_GAP;
+
+    assert(farmer.position.y > 1535.0f);
+    assert(dist < shell - 1.0f);
+}
+
 /* ---- CORE-01 bonus: Invalid lane produces IDLE ---- */
 static void test_invalid_lane_idles(void) {
     Battlefield bf = make_test_battlefield();
@@ -1238,7 +1709,25 @@ int main(void) {
     test_body_radius_bounds_reject_edge_clipping_candidate();
     printf("  PASS: test_body_radius_bounds_reject_edge_clipping_candidate\n");
     test_unit_sidesteps_around_offset_blocker();  printf("  PASS: test_unit_sidesteps_around_offset_blocker\n");
+    test_escape_from_spawn_inside_contact_shell();
+    printf("  PASS: test_escape_from_spawn_inside_contact_shell\n");
+    test_free_mover_sidesteps_close_blocker();
+    printf("  PASS: test_free_mover_sidesteps_close_blocker\n");
+    test_lane_mover_through_move_toward_goal_unchanged();
+    printf("  PASS: test_lane_mover_through_move_toward_goal_unchanged\n");
+    test_free_mover_respects_board_bounds();
+    printf("  PASS: test_free_mover_respects_board_bounds\n");
+    test_free_mover_reaches_goal_past_offset_blocker();
+    printf("  PASS: test_free_mover_reaches_goal_past_offset_blocker\n");
+    test_assault_soft_overlap_is_capped_for_moving_allies();
+    printf("  PASS: test_assault_soft_overlap_is_capped_for_moving_allies\n");
+    test_assault_target_allows_entry_inside_static_nav_shell();
+    printf("  PASS: test_assault_target_allows_entry_inside_static_nav_shell\n");
+    test_primary_assault_contact_cloud_allows_overlap();
+    printf("  PASS: test_primary_assault_contact_cloud_allows_overlap\n");
+    test_primary_deposit_contact_cloud_allows_overlap();
+    printf("  PASS: test_primary_deposit_contact_cloud_allows_overlap\n");
 
-    printf("\nAll 32 tests passed!\n");
+    printf("\nAll 41 tests passed!\n");
     return 0;
 }
