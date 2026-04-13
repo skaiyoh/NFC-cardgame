@@ -16,13 +16,16 @@
 // Safe to call before the window exists only if raylib is initialized.
 Texture2D hand_ui_load_card_sheet(void);
 
+// Load the shared hand bar background texture once at startup.
+Texture2D hand_ui_load_bar_background(void);
+
 // Unload a shared hand texture. No-op if the texture id is zero.
 void hand_ui_unload_texture(Texture2D texture);
 
 // Draw the hand bar (background fill + one rotated placeholder card per
 // occupied hand entry) inside the player's handArea. Must be called outside
 // any scissor or camera scope (i.e. at screen-space draw time).
-void hand_ui_draw(const Player *p, Texture2D cardSheet);
+void hand_ui_draw(const Player *p, Texture2D handBarTexture, Texture2D cardSheet);
 
 // Pure-math helper: compute the world/screen-space center of the visibleIndex-th
 // card in a run of `visibleCardCount` cards inside `handArea`. The stacking axis

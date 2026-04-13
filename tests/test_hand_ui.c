@@ -43,6 +43,9 @@ static void SetTextureFilter(Texture2D t, int f) { (void)t; (void)f; }
 /* ---- Config stub: only the constants hand_ui.c depends on ---- */
 #define NFC_CARDGAME_CONFIG_H
 #define HAND_UI_DEPTH_PX               180
+#define HAND_BAR_BG_PATH               "src/assets/environment/Objects/card_background_wood.png"
+#define HAND_BAR_BG_WIDTH              1080
+#define HAND_BAR_BG_HEIGHT             180
 #define HAND_MAX_CARDS                 8
 #define HAND_CARD_WIDTH                128
 #define HAND_CARD_HEIGHT               160
@@ -52,18 +55,25 @@ static void SetTextureFilter(Texture2D t, int f) { (void)t; (void)f; }
 #define HAND_CARD_FRAME_COUNT          6
 #define HAND_CARD_FRAME_TIME           0.05f
 #define HAND_CARD_PLAY_LIFT_PEAK_SCALE 1.06f
+#define MAX_CAPTURED_TEXTURE_DRAWS      (HAND_MAX_CARDS + 1)
 
 static int g_draw_texture_calls = 0;
-static Rectangle g_drawn_dst[HAND_MAX_CARDS];
-static Rectangle g_drawn_src[HAND_MAX_CARDS];
-static float g_drawn_rotation[HAND_MAX_CARDS];
-static unsigned int g_drawn_texture_id[HAND_MAX_CARDS];
+static int g_draw_rectangle_calls = 0;
+static Rectangle g_drawn_dst[MAX_CAPTURED_TEXTURE_DRAWS];
+static Rectangle g_drawn_src[MAX_CAPTURED_TEXTURE_DRAWS];
+static float g_drawn_rotation[MAX_CAPTURED_TEXTURE_DRAWS];
+static unsigned int g_drawn_texture_id[MAX_CAPTURED_TEXTURE_DRAWS];
+static Rectangle g_last_drawn_rect;
 
-static void DrawRectangleRec(Rectangle r, Color c) { (void)r; (void)c; }
+static void DrawRectangleRec(Rectangle r, Color c) {
+    (void)c;
+    g_last_drawn_rect = r;
+    g_draw_rectangle_calls++;
+}
 static void DrawTexturePro(Texture2D t, Rectangle src, Rectangle dst,
                            Vector2 origin, float rotation, Color tint) {
     (void)t; (void)src; (void)dst; (void)origin; (void)rotation; (void)tint;
-    if (g_draw_texture_calls < HAND_MAX_CARDS) {
+    if (g_draw_texture_calls < MAX_CAPTURED_TEXTURE_DRAWS) {
         g_drawn_src[g_draw_texture_calls] = src;
         g_drawn_dst[g_draw_texture_calls] = dst;
         g_drawn_rotation[g_draw_texture_calls] = rotation;
@@ -117,8 +127,9 @@ static int player_hand_occupied_count(const Player *p) {
 /* ---- Skip hand_ui.h include chain by providing the declarations ourselves ---- */
 #define NFC_CARDGAME_HAND_UI_H
 Texture2D hand_ui_load_card_sheet(void);
+Texture2D hand_ui_load_bar_background(void);
 void hand_ui_unload_texture(Texture2D texture);
-void hand_ui_draw(const Player *p, Texture2D cardSheet);
+void hand_ui_draw(const Player *p, Texture2D handBarTexture, Texture2D cardSheet);
 Vector2 hand_ui_card_center_for_index(Rectangle handArea, int visibleCardCount, int visibleIndex);
 
 /* ---- Production code under test ---- */
@@ -141,7 +152,9 @@ static float expected_center_y(Rectangle handArea, int visibleCardCount, int vis
 
 static void reset_draw_capture(void) {
     g_draw_texture_calls = 0;
-    for (int i = 0; i < HAND_MAX_CARDS; i++) {
+    g_draw_rectangle_calls = 0;
+    g_last_drawn_rect = (Rectangle){0};
+    for (int i = 0; i < MAX_CAPTURED_TEXTURE_DRAWS; i++) {
         g_drawn_src[i] = (Rectangle){0};
         g_drawn_dst[i] = (Rectangle){0};
         g_drawn_rotation[i] = 0.0f;
@@ -271,18 +284,85 @@ static void test_expected_absolute_positions_p2(void) {
     printf("  PASS: test_expected_absolute_positions_p2\n");
 }
 
-/* ---- Test: empty hand emits no draw calls ---- */
-static void test_empty_hand_draws_nothing(void) {
+/* ---- Test: empty hand emits no texture draws when background is absent ---- */
+static void test_empty_hand_draws_nothing_without_background(void) {
     Player p = {0};
     p.side = SIDE_BOTTOM;
     p.handArea = (Rectangle){ 0.0f, 0.0f, 180.0f, 1080.0f };
     Texture2D cardSheet = { .id = 2, .width = 768, .height = 1280, .mipmaps = 1, .format = 0 };
 
     reset_draw_capture();
-    hand_ui_draw(&p, cardSheet);
+    hand_ui_draw(&p, (Texture2D){0}, cardSheet);
+    assert(g_draw_rectangle_calls == 1);
+    assert(approx_eq(g_last_drawn_rect.width, p.handArea.width, 0.01f));
+    assert(approx_eq(g_last_drawn_rect.height, p.handArea.height, 0.01f));
     assert(g_draw_texture_calls == 0);
 
-    printf("  PASS: test_empty_hand_draws_nothing\n");
+    printf("  PASS: test_empty_hand_draws_nothing_without_background\n");
+}
+
+/* ---- Test: empty hand still draws the wood background when available ---- */
+static void test_empty_hand_draws_background_when_available(void) {
+    Player p = {0};
+    Texture2D handBarTexture = {
+        .id = 7,
+        .width = HAND_BAR_BG_WIDTH,
+        .height = HAND_BAR_BG_HEIGHT,
+        .mipmaps = 1,
+        .format = 0
+    };
+    Texture2D cardSheet = { .id = 2, .width = 768, .height = 1280, .mipmaps = 1, .format = 0 };
+
+    p.side = SIDE_BOTTOM;
+    p.handArea = (Rectangle){ 0.0f, 0.0f, 180.0f, 1080.0f };
+
+    reset_draw_capture();
+    hand_ui_draw(&p, handBarTexture, cardSheet);
+
+    assert(g_draw_rectangle_calls == 1);
+    assert(g_draw_texture_calls == 1);
+    assert(g_drawn_texture_id[0] == handBarTexture.id);
+    assert(approx_eq(g_drawn_src[0].x, 0.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].y, 0.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].width, (float)HAND_BAR_BG_WIDTH, 0.01f));
+    assert(approx_eq(g_drawn_src[0].height, (float)HAND_BAR_BG_HEIGHT, 0.01f));
+    assert(approx_eq(g_drawn_dst[0].x, 90.0f, 0.01f));
+    assert(approx_eq(g_drawn_dst[0].y, 540.0f, 0.01f));
+    assert(approx_eq(g_drawn_dst[0].width, 1080.0f, 0.01f));
+    assert(approx_eq(g_drawn_dst[0].height, 180.0f, 0.01f));
+    assert(approx_eq(g_drawn_rotation[0], 90.0f, 0.01f));
+
+    printf("  PASS: test_empty_hand_draws_background_when_available\n");
+}
+
+/* ---- Test: top-side hand background rotates opposite the bottom side ---- */
+static void test_top_hand_background_uses_mirrored_rotation(void) {
+    Player p = {0};
+    Texture2D handBarTexture = {
+        .id = 7,
+        .width = HAND_BAR_BG_WIDTH,
+        .height = HAND_BAR_BG_HEIGHT,
+        .mipmaps = 1,
+        .format = 0
+    };
+    Texture2D cardSheet = { .id = 2, .width = 768, .height = 1280, .mipmaps = 1, .format = 0 };
+
+    p.side = SIDE_TOP;
+    p.handArea = (Rectangle){ 1740.0f, 0.0f, 180.0f, 1080.0f };
+
+    reset_draw_capture();
+    hand_ui_draw(&p, handBarTexture, cardSheet);
+
+    assert(g_draw_rectangle_calls == 1);
+    assert(g_draw_texture_calls == 1);
+    assert(g_drawn_texture_id[0] == handBarTexture.id);
+    assert(approx_eq(g_drawn_dst[0].x, 1830.0f, 0.01f));
+    assert(approx_eq(g_drawn_dst[0].y, 540.0f, 0.01f));
+    assert(approx_eq(g_drawn_dst[0].width, 1080.0f, 0.01f));
+    assert(approx_eq(g_drawn_dst[0].height, 180.0f, 0.01f));
+    assert(approx_eq(g_drawn_rotation[0], 270.0f, 0.01f));
+
+    printf("  PASS: test_top_hand_background_uses_mirrored_rotation\n");
 }
 
 /* ---- Test: sparse hand compacts visible cards with no gaps ---- */
@@ -298,7 +378,7 @@ static void test_sparse_hand_compacts_draw_positions(void) {
     p.handCards[3] = &cardB;
 
     reset_draw_capture();
-    hand_ui_draw(&p, cardSheet);
+    hand_ui_draw(&p, (Texture2D){0}, cardSheet);
 
     assert(g_draw_texture_calls == 2);
     assert(approx_eq(g_drawn_rotation[0], 270.0f, 0.01f));
@@ -325,7 +405,7 @@ static void test_idle_knight_uses_sheet_row_zero(void) {
     p.handCards[0] = &knight;
 
     reset_draw_capture();
-    hand_ui_draw(&p, cardSheet);
+    hand_ui_draw(&p, (Texture2D){0}, cardSheet);
 
     assert(g_draw_texture_calls == 1);
     assert(g_drawn_texture_id[0] == cardSheet.id);
@@ -348,7 +428,7 @@ static void test_assassin_uses_mapped_sheet_row(void) {
     p.handCards[0] = &assassin;
 
     reset_draw_capture();
-    hand_ui_draw(&p, cardSheet);
+    hand_ui_draw(&p, (Texture2D){0}, cardSheet);
 
     assert(g_draw_texture_calls == 1);
     assert(g_drawn_texture_id[0] == cardSheet.id);
@@ -371,7 +451,7 @@ static void test_bird_uses_mapped_sheet_row(void) {
     p.handCards[0] = &bird;
 
     reset_draw_capture();
-    hand_ui_draw(&p, cardSheet);
+    hand_ui_draw(&p, (Texture2D){0}, cardSheet);
 
     assert(g_draw_texture_calls == 1);
     assert(g_drawn_texture_id[0] == cardSheet.id);
@@ -394,7 +474,7 @@ static void test_fishfing_uses_mapped_sheet_row(void) {
     p.handCards[0] = &fishfing;
 
     reset_draw_capture();
-    hand_ui_draw(&p, cardSheet);
+    hand_ui_draw(&p, (Texture2D){0}, cardSheet);
 
     assert(g_draw_texture_calls == 1);
     assert(g_drawn_texture_id[0] == cardSheet.id);
@@ -417,7 +497,7 @@ static void test_king_uses_mapped_sheet_row(void) {
     p.handCards[0] = &king;
 
     reset_draw_capture();
-    hand_ui_draw(&p, cardSheet);
+    hand_ui_draw(&p, (Texture2D){0}, cardSheet);
 
     assert(g_draw_texture_calls == 1);
     assert(g_drawn_texture_id[0] == cardSheet.id);
@@ -471,7 +551,7 @@ static void test_animating_mapped_card_scales_around_center(void) {
     p.handCardAnimElapsed[0] = peakTime;
 
     reset_draw_capture();
-    hand_ui_draw(&p, cardSheet);
+    hand_ui_draw(&p, (Texture2D){0}, cardSheet);
 
     assert(g_draw_texture_calls == 1);
     assert(g_drawn_texture_id[0] == cardSheet.id);
@@ -501,7 +581,7 @@ static void test_sparse_hand_uses_current_frame_and_mapped_rows(void) {
     p.handCardAnimElapsed[1] = 0.20f;
 
     reset_draw_capture();
-    hand_ui_draw(&p, cardSheet);
+    hand_ui_draw(&p, (Texture2D){0}, cardSheet);
 
     assert(g_draw_texture_calls == 2);
     assert(g_drawn_texture_id[0] == cardSheet.id);
@@ -521,6 +601,46 @@ static void test_sparse_hand_uses_current_frame_and_mapped_rows(void) {
     printf("  PASS: test_sparse_hand_uses_current_frame_and_mapped_rows\n");
 }
 
+/* ---- Test: background draws first and does not shift card placement ---- */
+static void test_background_draws_before_cards_and_preserves_positions(void) {
+    Player p = {0};
+    Card cardA = { .card_id = "ASSASSIN_01", .type = "assassin" };
+    Card cardB = { .card_id = "HEALER_01", .type = "healer" };
+    Texture2D handBarTexture = {
+        .id = 7,
+        .width = HAND_BAR_BG_WIDTH,
+        .height = HAND_BAR_BG_HEIGHT,
+        .mipmaps = 1,
+        .format = 0
+    };
+    Texture2D cardSheet = { .id = 22, .width = 768, .height = 1280, .mipmaps = 1, .format = 0 };
+
+    p.side = SIDE_TOP;
+    p.handArea = (Rectangle){ 1740.0f, 0.0f, 180.0f, 1080.0f };
+    p.handCards[0] = &cardA;
+    p.handCards[3] = &cardB;
+
+    reset_draw_capture();
+    hand_ui_draw(&p, handBarTexture, cardSheet);
+
+    assert(g_draw_rectangle_calls == 1);
+    assert(g_draw_texture_calls == 3);
+    assert(g_drawn_texture_id[0] == handBarTexture.id);
+    assert(g_drawn_texture_id[1] == cardSheet.id);
+    assert(g_drawn_texture_id[2] == cardSheet.id);
+
+    Vector2 expected0 = hand_ui_card_center_for_index(p.handArea, 2, 0);
+    Vector2 expected1 = hand_ui_card_center_for_index(p.handArea, 2, 1);
+    assert(approx_eq(g_drawn_dst[1].x, expected0.x, 0.01f));
+    assert(approx_eq(g_drawn_dst[1].y, expected0.y, 0.01f));
+    assert(approx_eq(g_drawn_dst[2].x, expected1.x, 0.01f));
+    assert(approx_eq(g_drawn_dst[2].y, expected1.y, 0.01f));
+    assert(approx_eq(g_drawn_rotation[1], 270.0f, 0.01f));
+    assert(approx_eq(g_drawn_rotation[2], 270.0f, 0.01f));
+
+    printf("  PASS: test_background_draws_before_cards_and_preserves_positions\n");
+}
+
 /* ---- Test: animated knight scales at center while keeping atlas row 0 ---- */
 static void test_animating_knight_scales_around_center(void) {
     Player p = {0};
@@ -535,7 +655,7 @@ static void test_animating_knight_scales_around_center(void) {
     p.handCardAnimElapsed[0] = peakTime;
 
     reset_draw_capture();
-    hand_ui_draw(&p, cardSheet);
+    hand_ui_draw(&p, (Texture2D){0}, cardSheet);
 
     assert(g_draw_texture_calls == 1);
     assert(g_drawn_texture_id[0] == cardSheet.id);
@@ -551,6 +671,26 @@ static void test_animating_knight_scales_around_center(void) {
     printf("  PASS: test_animating_knight_scales_around_center\n");
 }
 
+/* ---- Test: zero-id background falls back to fill and still renders cards ---- */
+static void test_zero_background_texture_falls_back_to_fill_and_still_draws_cards(void) {
+    Player p = {0};
+    Card knight = { .card_id = "KNIGHT_01", .type = "knight" };
+    Texture2D cardSheet = { .id = 22, .width = 768, .height = 1280, .mipmaps = 1, .format = 0 };
+
+    p.side = SIDE_BOTTOM;
+    p.handArea = (Rectangle){ 0.0f, 0.0f, 180.0f, 1080.0f };
+    p.handCards[0] = &knight;
+
+    reset_draw_capture();
+    hand_ui_draw(&p, (Texture2D){0}, cardSheet);
+
+    assert(g_draw_rectangle_calls == 1);
+    assert(g_draw_texture_calls == 1);
+    assert(g_drawn_texture_id[0] == cardSheet.id);
+
+    printf("  PASS: test_zero_background_texture_falls_back_to_fill_and_still_draws_cards\n");
+}
+
 /* ---- main ---- */
 int main(void) {
     printf("Running hand_ui tests...\n");
@@ -562,7 +702,9 @@ int main(void) {
     test_all_run_sizes_centered_in_handarea();
     test_expected_absolute_positions_p1();
     test_expected_absolute_positions_p2();
-    test_empty_hand_draws_nothing();
+    test_empty_hand_draws_nothing_without_background();
+    test_empty_hand_draws_background_when_available();
+    test_top_hand_background_uses_mirrored_rotation();
     test_sparse_hand_compacts_draw_positions();
     test_idle_knight_uses_sheet_row_zero();
     test_assassin_uses_mapped_sheet_row();
@@ -573,7 +715,9 @@ int main(void) {
     test_play_lift_scale_pulses_then_returns_to_rest();
     test_animating_mapped_card_scales_around_center();
     test_sparse_hand_uses_current_frame_and_mapped_rows();
+    test_background_draws_before_cards_and_preserves_positions();
     test_animating_knight_scales_around_center();
-    printf("\nAll 20 tests passed!\n");
+    test_zero_background_texture_falls_back_to_fill_and_still_draws_cards();
+    printf("\nAll 24 tests passed!\n");
     return 0;
 }

@@ -152,6 +152,9 @@
 
 // Hand UI (outer-edge card strip per player)
 #define HAND_UI_DEPTH_PX               180
+#define HAND_BAR_BG_PATH               "src/assets/environment/Objects/card_background_wood.png"
+#define HAND_BAR_BG_WIDTH              1080
+#define HAND_BAR_BG_HEIGHT             180
 #define HAND_MAX_CARDS                 8
 #define HAND_CARD_WIDTH                128
 #define HAND_CARD_HEIGHT               160

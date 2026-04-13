@@ -45,6 +45,13 @@ Texture2D hand_ui_load_card_sheet(void) {
                                         "hand card sheet");
 }
 
+Texture2D hand_ui_load_bar_background(void) {
+    return hand_ui_load_texture_checked(HAND_BAR_BG_PATH,
+                                        HAND_BAR_BG_WIDTH,
+                                        HAND_BAR_BG_HEIGHT,
+                                        "hand bar background");
+}
+
 void hand_ui_unload_texture(Texture2D texture) {
     if (texture.id != 0) {
         UnloadTexture(texture);
@@ -140,20 +147,37 @@ Vector2 hand_ui_card_center_for_index(Rectangle handArea, int visibleCardCount, 
     return center;
 }
 
-// Rotation per seat so cards read upright to each player.
+// Rotation per seat so hand chrome and cards read upright to each player.
 // P1 sits at the bottom edge (SIDE_BOTTOM), P2 sits at the top (SIDE_TOP).
-static float hand_ui_card_rotation(BattleSide side) {
+static float hand_ui_side_rotation(BattleSide side) {
     return (side == SIDE_BOTTOM) ? 90.0f : 270.0f;
 }
 
-void hand_ui_draw(const Player *p, Texture2D cardSheet) {
+void hand_ui_draw(const Player *p, Texture2D handBarTexture, Texture2D cardSheet) {
     // 1. Opaque background fill for the entire hand-bar strip.
     DrawRectangleRec(p->handArea, HAND_BAR_BG);
+
+    if (handBarTexture.id != 0) {
+        Rectangle srcRect = {
+            0.0f,
+            0.0f,
+            (float)HAND_BAR_BG_WIDTH,
+            (float)HAND_BAR_BG_HEIGHT
+        };
+        Rectangle dstRect = {
+            p->handArea.x + p->handArea.width * 0.5f,
+            p->handArea.y + p->handArea.height * 0.5f,
+            p->handArea.height,
+            p->handArea.width
+        };
+        Vector2 origin = { dstRect.width * 0.5f, dstRect.height * 0.5f };
+        DrawTexturePro(handBarTexture, srcRect, dstRect, origin, hand_ui_side_rotation(p->side), WHITE);
+    }
 
     const int visibleCardCount = player_hand_occupied_count(p);
     if (visibleCardCount <= 0) return;
 
-    const float rotation = hand_ui_card_rotation(p->side);
+    const float rotation = hand_ui_side_rotation(p->side);
 
     int visibleIndex = 0;
     for (int i = 0; i < HAND_MAX_CARDS; i++) {

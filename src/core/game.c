@@ -103,7 +103,8 @@ bool game_init(GameState *g) {
     g->sustenanceTexture = sustenance_renderer_load();
     g->statusBarsTexture = status_bars_load();
 
-    // Load the shared hand card atlas.
+    // Load the shared hand UI textures.
+    g->handBarBackgroundTexture = hand_ui_load_bar_background();
     g->handCardSheetTexture = hand_ui_load_card_sheet();
 
     // Initialize character sprite atlas
@@ -369,8 +370,8 @@ void game_render(GameState *g) {
 
     // Hand bars — drawn last so they always cover the outer strip, regardless
     // of any earlier draws that may have bled past the battlefield scissor.
-    hand_ui_draw(&g->players[0], g->handCardSheetTexture);
-    hand_ui_draw(&g->players[1], g->handCardSheetTexture);
+    hand_ui_draw(&g->players[0], g->handBarBackgroundTexture, g->handCardSheetTexture);
+    hand_ui_draw(&g->players[1], g->handBarBackgroundTexture, g->handCardSheetTexture);
 
     // Match result overlay
     if (g->gameOver) {
@@ -406,6 +407,7 @@ void game_cleanup(GameState *g) {
     // Unload sustenance texture
     UnloadTexture(g->sustenanceTexture);
     status_bars_unload(g->statusBarsTexture);
+    hand_ui_unload_texture(g->handBarBackgroundTexture);
     hand_ui_unload_texture(g->handCardSheetTexture);
 
     spawn_fx_cleanup(&g->spawnFx);

@@ -253,7 +253,8 @@ struct GameState {
     Texture2D sustenanceTexture;
     Texture2D statusBarsTexture;
 
-    // Shared hand card atlas texture (shared by hand_ui)
+    // Shared hand UI textures (shared by hand_ui)
+    Texture2D handBarBackgroundTexture;
     Texture2D handCardSheetTexture;
 
     // Screen layout
