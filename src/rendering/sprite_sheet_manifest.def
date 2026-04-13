@@ -28,9 +28,19 @@ SPRITE_SHEET(brute_hurt,        false, SPRITE_TYPE_BRUTE,   ANIM_HURT,   "src/as
 // Brute currently reuses block art for its authored attack clip.
 SPRITE_SHEET(brute_attack,      false, SPRITE_TYPE_BRUTE,   ANIM_ATTACK, "src/assets/characters/Brute/block.png",       4, 3, true)
 
-SPRITE_SHEET(farmer_walk,       false, SPRITE_TYPE_FARMER,  ANIM_WALK,   "src/assets/characters/Farmer/walk.png",       8, 3, true)
-SPRITE_SHEET(farmer_hurt,       false, SPRITE_TYPE_FARMER,  ANIM_HURT,   "src/assets/characters/Farmer/hurt.png",       4, 3, true)
-SPRITE_SHEET(farmer_attack,     false, SPRITE_TYPE_FARMER,  ANIM_ATTACK, "src/assets/characters/Farmer/pickaxe.png",    6, 3, true)
+// Cheffy (farmer) uses two sprite variants: empty while seeking/gathering,
+// full while returning/depositing. Idle and attack share a single authored
+// idle sheet per variant; the attack clip is reused as a one-shot
+// gather/deposit work animation.
+SPRITE_SHEET(farmer_idle,        false, SPRITE_TYPE_FARMER,      ANIM_IDLE,   "src/assets/characters/Farmer/cheffy_idle_empty.png", 8, 1, true)
+SPRITE_SHEET(farmer_walk,        false, SPRITE_TYPE_FARMER,      ANIM_WALK,   "src/assets/characters/Farmer/cheffy_walk_empty.png", 8, 1, true)
+SPRITE_SHEET(farmer_hurt,        false, SPRITE_TYPE_FARMER,      ANIM_HURT,   "src/assets/characters/Farmer/hurt.png",              4, 3, true)
+SPRITE_SHEET(farmer_attack,      false, SPRITE_TYPE_FARMER,      ANIM_ATTACK, "src/assets/characters/Farmer/cheffy_idle_empty.png", 8, 1, true)
+
+SPRITE_SHEET(farmer_full_idle,   false, SPRITE_TYPE_FARMER_FULL, ANIM_IDLE,   "src/assets/characters/Farmer/cheffy_idle_full.png",  8, 1, true)
+SPRITE_SHEET(farmer_full_walk,   false, SPRITE_TYPE_FARMER_FULL, ANIM_WALK,   "src/assets/characters/Farmer/cheffy_walk_full.png",  8, 1, true)
+SPRITE_SHEET(farmer_full_hurt,   false, SPRITE_TYPE_FARMER_FULL, ANIM_HURT,   "src/assets/characters/Farmer/hurt.png",              4, 3, true)
+SPRITE_SHEET(farmer_full_attack, false, SPRITE_TYPE_FARMER_FULL, ANIM_ATTACK, "src/assets/characters/Farmer/cheffy_idle_full.png",  8, 1, true)
 
 SPRITE_SHEET(bird_walk,         false, SPRITE_TYPE_BIRD,    ANIM_WALK,   "src/assets/characters/Bird/walk.png",         8, 3, true)
 SPRITE_SHEET(bird_hurt,         false, SPRITE_TYPE_BIRD,    ANIM_HURT,   "src/assets/characters/Bird/hurt.png",         4, 3, true)

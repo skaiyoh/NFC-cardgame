@@ -18,6 +18,18 @@ static float farmer_sprite_rotation(const Entity *e) {
     return (bf_side_for_player(e->ownerID) == SIDE_TOP) ? 180.0f : 0.0f;
 }
 
+// Swap between the empty and full Cheffy sprite variants without touching
+// AnimState. Callers that also need to restart on a new clip (e.g. switching
+// walk duration to the full-variant spec) should call entity_set_state()
+// afterward; callers that just want the pointer repoint (e.g. during an
+// in-progress one-shot) leave the anim alone.
+static void farmer_apply_variant(Entity *e, GameState *gs, bool full) {
+    SpriteType target = full ? SPRITE_TYPE_FARMER_FULL : SPRITE_TYPE_FARMER;
+    if (e->spriteType == target) return;
+    e->spriteType = target;
+    e->sprite = sprite_atlas_get(&gs->spriteAtlas, target);
+}
+
 static float farmer_base_contact_radius(const Entity *farmer, const Entity *base) {
     if (!farmer || !base) return 0.0f;
     float baseNavRadius = (base->navRadius > 0.0f) ? base->navRadius : base->bodyRadius;
@@ -50,6 +62,10 @@ static void farmer_seek(Entity *e, GameState *gs) {
     Battlefield *bf = &gs->battlefield;
     BattleSide side = bf_side_for_player(e->ownerID);
     e->movementTargetId = -1;
+
+    // Seeking Cheffies are always empty. Safety net in case a prior state
+    // left the wrong variant attached (e.g. future code paths).
+    farmer_apply_variant(e, gs, false);
 
     SustenanceNode *node = sustenance_find_nearest_available(bf, side, e->position);
     if (!node) {
@@ -89,10 +105,10 @@ static void farmer_walk_to_sustenance(Entity *e, GameState *gs, float deltaTime)
         SpriteDirection dir = e->anim.dir;
         bool flipH = e->anim.flipH;
         e->farmerState = FARMER_GATHERING;
-        // TODO: Farmer reuses ESTATE_ATTACKING (current farmer attack clip) as work animation.
-        // Add ESTATE_WORKING when farmer-specific animations are available.
+        // Reuse the authored Cheffy idle sheet as a one-shot gather animation
+        // via the empty variant's ATTACK spec row.
         entity_set_state(e, ESTATE_ATTACKING);
-        // Preserve the approach-facing when switching into the placeholder work clip.
+        // Preserve the approach-facing when switching into the one-shot clip.
         e->anim.dir = dir;
         e->anim.flipH = flipH;
         printf("[FARMER] Entity %d arrived at sustenance node %d, gathering\n",
@@ -125,6 +141,9 @@ static void farmer_gather(Entity *e, GameState *gs, float deltaTime) {
         sustenance_deplete_and_respawn(bf, node->id);
         e->claimedSustenanceNodeId = -1;
         e->farmerState = FARMER_RETURNING;
+        // Swap to the full Cheffy variant BEFORE entity_set_state so the new
+        // walk clip is driven by the full variant's spec row.
+        farmer_apply_variant(e, gs, true);
         entity_set_state(e, ESTATE_WALKING);
         printf("[FARMER] Entity %d gathered sustenance (value=%d), returning to base\n",
                e->id, e->carriedSustenanceValue);
@@ -160,7 +179,22 @@ static void farmer_return(Entity *e, GameState *gs, float deltaTime) {
                                       e->reservedDepositSlotIndex, &newIdx)) {
             e->reservedDepositSlotIndex = newIdx;
             e->reservedDepositSlotKind = DEPOSIT_SLOT_PRIMARY;
+            // Restore the walk clip if this farmer was parked in queue idle.
+            if (e->state == ESTATE_IDLE) {
+                SpriteDirection dir = e->anim.dir;
+                bool flipH = e->anim.flipH;
+                entity_set_state(e, ESTATE_WALKING);
+                e->anim.dir = dir;
+                e->anim.flipH = flipH;
+            }
         }
+    }
+
+    // Parked queue farmer waiting for promotion: stay in Idle Full, skip
+    // steering entirely until try_promote above flips us back to WALKING.
+    if (e->state == ESTATE_IDLE &&
+        e->reservedDepositSlotKind == DEPOSIT_SLOT_QUEUE) {
+        return;
     }
 
     // First-time reservation attempt from the farmer's current position.
@@ -191,18 +225,27 @@ static void farmer_return(Entity *e, GameState *gs, float deltaTime) {
     bool arrived = farmer_move_with_steering(e, gs, target, arriveRadius, deltaTime);
 
     // Only a primary-slot arrival promotes to DEPOSITING. Queue-slot arrivals
-    // park the farmer and keep retrying try_promote each tick.
+    // park the farmer in Idle Full and keep retrying try_promote each tick.
     if (arrived && e->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY) {
         SpriteDirection dir = e->anim.dir;
         bool flipH = e->anim.flipH;
         e->farmerState = FARMER_DEPOSITING;
-        // Reuse attack clip for deposit animation
+        // Reuse the full-variant authored idle sheet as a one-shot deposit
+        // animation via the full variant's ATTACK spec row.
         entity_set_state(e, ESTATE_ATTACKING);
-        // Preserve the return-facing when switching into the placeholder work clip.
+        // Preserve the return-facing when switching into the one-shot clip.
         e->anim.dir = dir;
         e->anim.flipH = flipH;
         printf("[FARMER] Entity %d reached deposit slot %d, depositing\n",
                e->id, e->reservedDepositSlotIndex);
+    } else if (arrived && e->reservedDepositSlotKind == DEPOSIT_SLOT_QUEUE &&
+               e->state != ESTATE_IDLE) {
+        // First arrival at the queue wait slot: park in Idle Full.
+        SpriteDirection dir = e->anim.dir;
+        bool flipH = e->anim.flipH;
+        entity_set_state(e, ESTATE_IDLE);
+        e->anim.dir = dir;
+        e->anim.flipH = flipH;
     }
 }
 
@@ -234,6 +277,9 @@ static void farmer_deposit(Entity *e, GameState *gs, float deltaTime) {
     e->carriedSustenanceValue = 0;
     e->movementTargetId = -1;
     e->farmerState = FARMER_SEEKING;
+    // Swap back to the empty variant before transitioning so the idle clip
+    // uses the empty sheet.
+    farmer_apply_variant(e, gs, false);
     entity_set_state(e, ESTATE_IDLE);
 }
 

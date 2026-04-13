@@ -486,6 +486,30 @@ static void test_attack_brute_hit_later_than_knight(void) {
     assert(brute->hitNormalized > knight->hitNormalized);
 }
 
+static void test_spec_farmer_idle_is_real_loop(void) {
+    // Both Cheffy variants play a real looping idle (used for no-food wait and
+    // queue-wait), unlike other troops that degenerate to frame 0.
+    const EntityAnimSpec *empty = anim_spec_get(SPRITE_TYPE_FARMER, ANIM_IDLE);
+    const EntityAnimSpec *full = anim_spec_get(SPRITE_TYPE_FARMER_FULL, ANIM_IDLE);
+    assert(empty->mode == ANIM_PLAY_LOOP);
+    assert(empty->cycleSeconds > 0.0f);
+    assert(full->mode == ANIM_PLAY_LOOP);
+    assert(full->cycleSeconds > 0.0f);
+}
+
+static void test_spec_farmer_attack_is_gather_one_shot(void) {
+    // Farmer ATTACK is reused as the gather/deposit one-shot. Both variants
+    // must have a non-zero duration and satisfy the attack-spec invariants.
+    const EntityAnimSpec *empty = anim_spec_get(SPRITE_TYPE_FARMER, ANIM_ATTACK);
+    const EntityAnimSpec *full = anim_spec_get(SPRITE_TYPE_FARMER_FULL, ANIM_ATTACK);
+    assert(empty->mode == ANIM_PLAY_ONCE);
+    assert(empty->cycleSeconds > 0.0f);
+    assert(empty->lockFacing == true);
+    assert(full->mode == ANIM_PLAY_ONCE);
+    assert(full->cycleSeconds > 0.0f);
+    assert(full->lockFacing == true);
+}
+
 /* ==== Visible-bounds rotation tests ==== */
 
 // Helper: build a minimal 1-frame CharacterSprite with known visibleBounds.
@@ -658,6 +682,8 @@ int main(void) {
     RUN_TEST(test_attack_chained_swings);
     RUN_TEST(test_attack_spec_all_types_have_hit_marker);
     RUN_TEST(test_attack_brute_hit_later_than_knight);
+    RUN_TEST(test_spec_farmer_idle_is_real_loop);
+    RUN_TEST(test_spec_farmer_attack_is_gather_one_shot);
 
     // Visible bounds rotation
     RUN_TEST(test_bounds_unrotated_unflipped);
