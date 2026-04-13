@@ -253,9 +253,8 @@ struct GameState {
     Texture2D sustenanceTexture;
     Texture2D statusBarsTexture;
 
-    // Placeholder hand-bar card texture (shared by hand_ui)
-    Texture2D handPlaceholderTexture;
-    Texture2D handKnightSheetTexture;
+    // Shared hand card atlas texture (shared by hand_ui)
+    Texture2D handCardSheetTexture;
 
     // Screen layout
     int halfWidth; // Half screen width for split screen

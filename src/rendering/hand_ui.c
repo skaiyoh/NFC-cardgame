@@ -15,6 +15,8 @@ static const Color HAND_BAR_BG = { 20, 20, 24, 255 };
 // facing entry point here to keep hand_ui tests lightweight.
 int player_hand_occupied_count(const Player *p);
 
+static const int HAND_CARD_ANIMATION_SEQUENCE[] = {0, 1, 2, 3, 4, 0};
+
 static Texture2D hand_ui_load_texture_checked(const char *path, int expectedWidth, int expectedHeight,
                                               const char *label) {
     Texture2D t = LoadTexture(path);
@@ -36,31 +38,35 @@ static Texture2D hand_ui_load_texture_checked(const char *path, int expectedWidt
     return t;
 }
 
-Texture2D hand_ui_load_placeholder(void) {
-    return hand_ui_load_texture_checked(HAND_CARD_PLACEHOLDER_PATH,
-                                        HAND_CARD_WIDTH, HAND_CARD_HEIGHT,
-                                        "placeholder card");
+Texture2D hand_ui_load_card_sheet(void) {
+    return hand_ui_load_texture_checked(HAND_CARD_SHEET_PATH,
+                                        HAND_CARD_WIDTH * HAND_CARD_FRAME_COUNT,
+                                        HAND_CARD_HEIGHT * HAND_CARD_SHEET_ROWS,
+                                        "hand card sheet");
 }
 
-Texture2D hand_ui_load_knight_sheet(void) {
-    return hand_ui_load_texture_checked(HAND_CARD_KNIGHT_SHEET_PATH,
-                                        HAND_CARD_WIDTH * HAND_CARD_KNIGHT_FRAME_COUNT,
-                                        HAND_CARD_HEIGHT * HAND_CARD_KNIGHT_SHEET_ROWS,
-                                        "knight card sheet");
-}
-
-void hand_ui_unload_placeholder(Texture2D texture) {
+void hand_ui_unload_texture(Texture2D texture) {
     if (texture.id != 0) {
         UnloadTexture(texture);
     }
 }
 
-static bool hand_ui_is_knight_card(const Card *card) {
-    return card && card->card_id && strcmp(card->card_id, "KNIGHT_01") == 0;
+static int hand_ui_sheet_row_for_card(const Card *card) {
+    if (!card || !card->card_id) return 0;
+
+    if (strcmp(card->card_id, "KNIGHT_01") == 0) return 0;
+    if (strcmp(card->card_id, "HEALER_01") == 0) return 1;
+    if (strcmp(card->card_id, "ASSASSIN_01") == 0) return 2;
+    if (strcmp(card->card_id, "FARMER_01") == 0) return 3;
+    if (strcmp(card->card_id, "BRUTE_01") == 0) return 4;
+    if (strcmp(card->card_id, "FIREBALL_01") == 0) return 5;
+
+    // Unimplemented or unknown cards reuse the knight art row.
+    return 0;
 }
 
 static float hand_ui_play_animation_duration(void) {
-    return HAND_CARD_KNIGHT_FRAME_TIME * (float)(HAND_CARD_KNIGHT_FRAME_COUNT + 1);
+    return HAND_CARD_FRAME_TIME * (float)(HAND_CARD_FRAME_COUNT + 1);
 }
 
 static float hand_ui_play_lift_scale(float elapsedSeconds) {
@@ -81,26 +87,26 @@ static float hand_ui_play_lift_scale(float elapsedSeconds) {
     return peakScale - (peakScale - baseScale) * ((t - peakT) / (1.0f - peakT));
 }
 
-static int hand_ui_knight_frame_for_elapsed(float elapsedSeconds) {
-    static const int sequence[] = {0, 1, 2, 3, 4, 0};
+static int hand_ui_frame_for_elapsed(float elapsedSeconds) {
     const float duration = hand_ui_play_animation_duration();
     if (elapsedSeconds <= 0.0f || elapsedSeconds >= duration) {
         return 0;
     }
 
-    int step = (int)(elapsedSeconds / HAND_CARD_KNIGHT_FRAME_TIME);
+    int step = (int)(elapsedSeconds / HAND_CARD_FRAME_TIME);
     if (step < 0) step = 0;
-    if (step >= (int)(sizeof(sequence) / sizeof(sequence[0]))) {
+    if (step >= (int)(sizeof(HAND_CARD_ANIMATION_SEQUENCE) / sizeof(HAND_CARD_ANIMATION_SEQUENCE[0]))) {
         return 0;
     }
-    return sequence[step];
+    return HAND_CARD_ANIMATION_SEQUENCE[step];
 }
 
-static Rectangle hand_ui_knight_src_rect(float elapsedSeconds) {
-    const int frameIndex = hand_ui_knight_frame_for_elapsed(elapsedSeconds);
+static Rectangle hand_ui_card_src_rect(const Card *card, float elapsedSeconds) {
+    const int frameIndex = hand_ui_frame_for_elapsed(elapsedSeconds);
+    const int rowIndex = hand_ui_sheet_row_for_card(card);
     return (Rectangle){
         (float)(frameIndex * HAND_CARD_WIDTH),
-        0.0f,
+        (float)(rowIndex * HAND_CARD_HEIGHT),
         (float)HAND_CARD_WIDTH,
         (float)HAND_CARD_HEIGHT
     };
@@ -137,7 +143,7 @@ static float hand_ui_card_rotation(BattleSide side) {
     return (side == SIDE_BOTTOM) ? 90.0f : 270.0f;
 }
 
-void hand_ui_draw(const Player *p, Texture2D placeholder, Texture2D knightSheet) {
+void hand_ui_draw(const Player *p, Texture2D cardSheet) {
     // 1. Opaque background fill for the entire hand-bar strip.
     DrawRectangleRec(p->handArea, HAND_BAR_BG);
 
@@ -151,20 +157,12 @@ void hand_ui_draw(const Player *p, Texture2D placeholder, Texture2D knightSheet)
         const Card *card = p->handCards[i];
         if (!card) continue;
 
-        Texture2D texture = placeholder;
-        Rectangle srcRect = { 0.0f, 0.0f,
-                              (float)placeholder.width,
-                              (float)placeholder.height };
-        if (hand_ui_is_knight_card(card) && knightSheet.id != 0) {
-            texture = knightSheet;
-            srcRect = hand_ui_knight_src_rect(p->handCardAnimElapsed[i]);
-        }
-
-        if (texture.id == 0) {
+        if (cardSheet.id == 0) {
             visibleIndex++;
             continue;
         }
 
+        Rectangle srcRect = hand_ui_card_src_rect(card, p->handCardAnimElapsed[i]);
         Vector2 center = hand_ui_card_center_for_index(p->handArea, visibleCardCount, visibleIndex);
         const float liftScale = hand_ui_play_lift_scale(p->handCardAnimElapsed[i]);
         const float drawWidth = (float)HAND_CARD_WIDTH * liftScale;
@@ -182,7 +180,7 @@ void hand_ui_draw(const Player *p, Texture2D placeholder, Texture2D knightSheet)
             drawHeight
         };
         Vector2 origin = { drawWidth * 0.5f, drawHeight * 0.5f };
-        DrawTexturePro(texture, srcRect, dstRect, origin, rotation, WHITE);
+        DrawTexturePro(cardSheet, srcRect, dstRect, origin, rotation, WHITE);
         visibleIndex++;
     }
 }

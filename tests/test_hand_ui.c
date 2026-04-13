@@ -47,11 +47,10 @@ static void SetTextureFilter(Texture2D t, int f) { (void)t; (void)f; }
 #define HAND_CARD_WIDTH                128
 #define HAND_CARD_HEIGHT               160
 #define HAND_CARD_GAP                  4
-#define HAND_CARD_PLACEHOLDER_PATH     "src/assets/cards/uvulite_card.png"
-#define HAND_CARD_KNIGHT_SHEET_PATH    "src/assets/cards/uvulite_card_sheet.png"
-#define HAND_CARD_KNIGHT_SHEET_ROWS    1
-#define HAND_CARD_KNIGHT_FRAME_COUNT   5
-#define HAND_CARD_KNIGHT_FRAME_TIME    0.10f
+#define HAND_CARD_SHEET_PATH           "src/assets/cards/card_sheet.png"
+#define HAND_CARD_SHEET_ROWS           8
+#define HAND_CARD_FRAME_COUNT          6
+#define HAND_CARD_FRAME_TIME           0.05f
 #define HAND_CARD_PLAY_LIFT_PEAK_SCALE 1.06f
 
 static int g_draw_texture_calls = 0;
@@ -117,10 +116,9 @@ static int player_hand_occupied_count(const Player *p) {
 
 /* ---- Skip hand_ui.h include chain by providing the declarations ourselves ---- */
 #define NFC_CARDGAME_HAND_UI_H
-Texture2D hand_ui_load_placeholder(void);
-Texture2D hand_ui_load_knight_sheet(void);
-void hand_ui_unload_placeholder(Texture2D texture);
-void hand_ui_draw(const Player *p, Texture2D placeholder, Texture2D knightSheet);
+Texture2D hand_ui_load_card_sheet(void);
+void hand_ui_unload_texture(Texture2D texture);
+void hand_ui_draw(const Player *p, Texture2D cardSheet);
 Vector2 hand_ui_card_center_for_index(Rectangle handArea, int visibleCardCount, int visibleIndex);
 
 /* ---- Production code under test ---- */
@@ -278,11 +276,10 @@ static void test_empty_hand_draws_nothing(void) {
     Player p = {0};
     p.side = SIDE_BOTTOM;
     p.handArea = (Rectangle){ 0.0f, 0.0f, 180.0f, 1080.0f };
-    Texture2D placeholder = { .id = 1, .width = 128, .height = 160, .mipmaps = 1, .format = 0 };
-    Texture2D knightSheet = { .id = 2, .width = 640, .height = 160, .mipmaps = 1, .format = 0 };
+    Texture2D cardSheet = { .id = 2, .width = 768, .height = 1280, .mipmaps = 1, .format = 0 };
 
     reset_draw_capture();
-    hand_ui_draw(&p, placeholder, knightSheet);
+    hand_ui_draw(&p, cardSheet);
     assert(g_draw_texture_calls == 0);
 
     printf("  PASS: test_empty_hand_draws_nothing\n");
@@ -293,8 +290,7 @@ static void test_sparse_hand_compacts_draw_positions(void) {
     Player p = {0};
     Card cardA = { .card_id = "ASSASSIN_01", .type = "assassin" };
     Card cardB = { .card_id = "HEALER_01", .type = "healer" };
-    Texture2D placeholder = { .id = 1, .width = 128, .height = 160, .mipmaps = 1, .format = 0 };
-    Texture2D knightSheet = { .id = 2, .width = 640, .height = 160, .mipmaps = 1, .format = 0 };
+    Texture2D cardSheet = { .id = 2, .width = 768, .height = 1280, .mipmaps = 1, .format = 0 };
 
     p.side = SIDE_TOP;
     p.handArea = (Rectangle){ 1740.0f, 0.0f, 180.0f, 1080.0f };
@@ -302,7 +298,7 @@ static void test_sparse_hand_compacts_draw_positions(void) {
     p.handCards[3] = &cardB;
 
     reset_draw_capture();
-    hand_ui_draw(&p, placeholder, knightSheet);
+    hand_ui_draw(&p, cardSheet);
 
     assert(g_draw_texture_calls == 2);
     assert(approx_eq(g_drawn_rotation[0], 270.0f, 0.01f));
@@ -318,65 +314,63 @@ static void test_sparse_hand_compacts_draw_positions(void) {
     printf("  PASS: test_sparse_hand_compacts_draw_positions\n");
 }
 
-/* ---- Test: idle knight uses frame 1 from the uvulite sheet ---- */
-static void test_idle_knight_uses_uvulite_frame_one(void) {
+/* ---- Test: idle knight uses row 0 from the shared card sheet ---- */
+static void test_idle_knight_uses_sheet_row_zero(void) {
     Player p = {0};
     Card knight = { .card_id = "KNIGHT_01", .type = "knight" };
-    Texture2D placeholder = { .id = 11, .width = 128, .height = 160, .mipmaps = 1, .format = 0 };
-    Texture2D knightSheet = { .id = 22, .width = 640, .height = 160, .mipmaps = 1, .format = 0 };
+    Texture2D cardSheet = { .id = 22, .width = 768, .height = 1280, .mipmaps = 1, .format = 0 };
 
     p.side = SIDE_BOTTOM;
     p.handArea = (Rectangle){ 0.0f, 0.0f, 180.0f, 1080.0f };
     p.handCards[0] = &knight;
 
     reset_draw_capture();
-    hand_ui_draw(&p, placeholder, knightSheet);
+    hand_ui_draw(&p, cardSheet);
 
     assert(g_draw_texture_calls == 1);
-    assert(g_drawn_texture_id[0] == knightSheet.id);
+    assert(g_drawn_texture_id[0] == cardSheet.id);
     assert(approx_eq(g_drawn_src[0].x, 0.0f, 0.01f));
     assert(approx_eq(g_drawn_src[0].y, 0.0f, 0.01f));
     assert(approx_eq(g_drawn_src[0].width, 128.0f, 0.01f));
     assert(approx_eq(g_drawn_src[0].height, 160.0f, 0.01f));
 
-    printf("  PASS: test_idle_knight_uses_uvulite_frame_one\n");
+    printf("  PASS: test_idle_knight_uses_sheet_row_zero\n");
 }
 
-/* ---- Test: non-knight cards still use the generic placeholder texture ---- */
-static void test_non_knight_uses_placeholder_texture(void) {
+/* ---- Test: assassin cards use their mapped row in the shared sheet ---- */
+static void test_assassin_uses_mapped_sheet_row(void) {
     Player p = {0};
     Card assassin = { .card_id = "ASSASSIN_01", .type = "assassin" };
-    Texture2D placeholder = { .id = 11, .width = 128, .height = 160, .mipmaps = 1, .format = 0 };
-    Texture2D knightSheet = { .id = 22, .width = 640, .height = 160, .mipmaps = 1, .format = 0 };
+    Texture2D cardSheet = { .id = 22, .width = 768, .height = 1280, .mipmaps = 1, .format = 0 };
 
     p.side = SIDE_BOTTOM;
     p.handArea = (Rectangle){ 0.0f, 0.0f, 180.0f, 1080.0f };
     p.handCards[0] = &assassin;
 
     reset_draw_capture();
-    hand_ui_draw(&p, placeholder, knightSheet);
+    hand_ui_draw(&p, cardSheet);
 
     assert(g_draw_texture_calls == 1);
-    assert(g_drawn_texture_id[0] == placeholder.id);
+    assert(g_drawn_texture_id[0] == cardSheet.id);
     assert(approx_eq(g_drawn_src[0].x, 0.0f, 0.01f));
-    assert(approx_eq(g_drawn_src[0].y, 0.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].y, 320.0f, 0.01f));
     assert(approx_eq(g_drawn_src[0].width, 128.0f, 0.01f));
     assert(approx_eq(g_drawn_src[0].height, 160.0f, 0.01f));
 
-    printf("  PASS: test_non_knight_uses_placeholder_texture\n");
+    printf("  PASS: test_assassin_uses_mapped_sheet_row\n");
 }
 
-/* ---- Test: knight animation helper follows 1->5->1 once, then clamps ---- */
-static void test_knight_frame_sequence_once_then_static(void) {
-    assert(hand_ui_knight_frame_for_elapsed(0.00f) == 0);
-    assert(hand_ui_knight_frame_for_elapsed(0.10f) == 1);
-    assert(hand_ui_knight_frame_for_elapsed(0.20f) == 2);
-    assert(hand_ui_knight_frame_for_elapsed(0.30f) == 3);
-    assert(hand_ui_knight_frame_for_elapsed(0.40f) == 4);
-    assert(hand_ui_knight_frame_for_elapsed(0.50f) == 0);
-    assert(hand_ui_knight_frame_for_elapsed(0.75f) == 0);
+/* ---- Test: animation helper follows 0->4->0 once, then clamps ---- */
+static void test_frame_sequence_once_then_static(void) {
+    assert(hand_ui_frame_for_elapsed(0.00f) == 0);
+    assert(hand_ui_frame_for_elapsed(0.05f) == 1);
+    assert(hand_ui_frame_for_elapsed(0.10f) == 2);
+    assert(hand_ui_frame_for_elapsed(0.15f) == 3);
+    assert(hand_ui_frame_for_elapsed(0.20f) == 4);
+    assert(hand_ui_frame_for_elapsed(0.25f) == 0);
+    assert(hand_ui_frame_for_elapsed(0.40f) == 0);
 
-    printf("  PASS: test_knight_frame_sequence_once_then_static\n");
+    printf("  PASS: test_frame_sequence_once_then_static\n");
 }
 
 /* ---- Test: lift pulse scales up early, then returns to rest ---- */
@@ -394,12 +388,11 @@ static void test_play_lift_scale_pulses_then_returns_to_rest(void) {
     printf("  PASS: test_play_lift_scale_pulses_then_returns_to_rest\n");
 }
 
-/* ---- Test: animated placeholder card scales up without changing center ---- */
-static void test_animating_placeholder_card_scales_around_center(void) {
+/* ---- Test: animated mapped-row card scales up without changing center ---- */
+static void test_animating_mapped_card_scales_around_center(void) {
     Player p = {0};
     Card assassin = { .card_id = "ASSASSIN_01", .type = "assassin" };
-    Texture2D placeholder = { .id = 11, .width = 128, .height = 160, .mipmaps = 1, .format = 0 };
-    Texture2D knightSheet = { .id = 22, .width = 640, .height = 160, .mipmaps = 1, .format = 0 };
+    Texture2D cardSheet = { .id = 22, .width = 768, .height = 1280, .mipmaps = 1, .format = 0 };
     const float peakTime = hand_ui_play_animation_duration() * 0.25f;
 
     p.side = SIDE_BOTTOM;
@@ -409,10 +402,11 @@ static void test_animating_placeholder_card_scales_around_center(void) {
     p.handCardAnimElapsed[0] = peakTime;
 
     reset_draw_capture();
-    hand_ui_draw(&p, placeholder, knightSheet);
+    hand_ui_draw(&p, cardSheet);
 
     assert(g_draw_texture_calls == 1);
-    assert(g_drawn_texture_id[0] == placeholder.id);
+    assert(g_drawn_texture_id[0] == cardSheet.id);
+    assert(approx_eq(g_drawn_src[0].y, 320.0f, 0.01f));
     assert(approx_eq(g_drawn_dst[0].x, 90.0f, 0.01f));
     assert(approx_eq(g_drawn_dst[0].y, 540.0f, 0.01f));
     assert(approx_eq(g_drawn_dst[0].width,
@@ -420,16 +414,15 @@ static void test_animating_placeholder_card_scales_around_center(void) {
     assert(approx_eq(g_drawn_dst[0].height,
                      (float)HAND_CARD_HEIGHT * HAND_CARD_PLAY_LIFT_PEAK_SCALE, 0.01f));
 
-    printf("  PASS: test_animating_placeholder_card_scales_around_center\n");
+    printf("  PASS: test_animating_mapped_card_scales_around_center\n");
 }
 
-/* ---- Test: animated knight compacts normally and selects the current sheet frame ---- */
-static void test_sparse_hand_with_knight_uses_current_sheet_frame(void) {
+/* ---- Test: sparse hand uses the current frame and each card's mapped row ---- */
+static void test_sparse_hand_uses_current_frame_and_mapped_rows(void) {
     Player p = {0};
     Card knight = { .card_id = "KNIGHT_01", .type = "knight" };
     Card healer = { .card_id = "HEALER_01", .type = "healer" };
-    Texture2D placeholder = { .id = 11, .width = 128, .height = 160, .mipmaps = 1, .format = 0 };
-    Texture2D knightSheet = { .id = 22, .width = 640, .height = 160, .mipmaps = 1, .format = 0 };
+    Texture2D cardSheet = { .id = 22, .width = 768, .height = 1280, .mipmaps = 1, .format = 0 };
 
     p.side = SIDE_TOP;
     p.handArea = (Rectangle){ 1740.0f, 0.0f, 180.0f, 1080.0f };
@@ -439,12 +432,15 @@ static void test_sparse_hand_with_knight_uses_current_sheet_frame(void) {
     p.handCardAnimElapsed[1] = 0.20f;
 
     reset_draw_capture();
-    hand_ui_draw(&p, placeholder, knightSheet);
+    hand_ui_draw(&p, cardSheet);
 
     assert(g_draw_texture_calls == 2);
-    assert(g_drawn_texture_id[0] == knightSheet.id);
-    assert(approx_eq(g_drawn_src[0].x, 256.0f, 0.01f));
-    assert(g_drawn_texture_id[1] == placeholder.id);
+    assert(g_drawn_texture_id[0] == cardSheet.id);
+    assert(approx_eq(g_drawn_src[0].x, 512.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].y, 0.0f, 0.01f));
+    assert(g_drawn_texture_id[1] == cardSheet.id);
+    assert(approx_eq(g_drawn_src[1].x, 0.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[1].y, 160.0f, 0.01f));
 
     Vector2 expected0 = hand_ui_card_center_for_index(p.handArea, 2, 0);
     Vector2 expected1 = hand_ui_card_center_for_index(p.handArea, 2, 1);
@@ -453,15 +449,14 @@ static void test_sparse_hand_with_knight_uses_current_sheet_frame(void) {
     assert(approx_eq(g_drawn_dst[1].x, expected1.x, 0.01f));
     assert(approx_eq(g_drawn_dst[1].y, expected1.y, 0.01f));
 
-    printf("  PASS: test_sparse_hand_with_knight_uses_current_sheet_frame\n");
+    printf("  PASS: test_sparse_hand_uses_current_frame_and_mapped_rows\n");
 }
 
-/* ---- Test: animated knight scales at center while keeping current sheet frame ---- */
+/* ---- Test: animated knight scales at center while keeping atlas row 0 ---- */
 static void test_animating_knight_scales_around_center(void) {
     Player p = {0};
     Card knight = { .card_id = "KNIGHT_01", .type = "knight" };
-    Texture2D placeholder = { .id = 11, .width = 128, .height = 160, .mipmaps = 1, .format = 0 };
-    Texture2D knightSheet = { .id = 22, .width = 640, .height = 160, .mipmaps = 1, .format = 0 };
+    Texture2D cardSheet = { .id = 22, .width = 768, .height = 1280, .mipmaps = 1, .format = 0 };
     const float peakTime = hand_ui_play_animation_duration() * 0.25f;
 
     p.side = SIDE_TOP;
@@ -471,10 +466,11 @@ static void test_animating_knight_scales_around_center(void) {
     p.handCardAnimElapsed[0] = peakTime;
 
     reset_draw_capture();
-    hand_ui_draw(&p, placeholder, knightSheet);
+    hand_ui_draw(&p, cardSheet);
 
     assert(g_draw_texture_calls == 1);
-    assert(g_drawn_texture_id[0] == knightSheet.id);
+    assert(g_drawn_texture_id[0] == cardSheet.id);
+    assert(approx_eq(g_drawn_src[0].y, 0.0f, 0.01f));
     assert(approx_eq(g_drawn_rotation[0], 270.0f, 0.01f));
     assert(approx_eq(g_drawn_dst[0].x, 1830.0f, 0.01f));
     assert(approx_eq(g_drawn_dst[0].y, 540.0f, 0.01f));
@@ -499,12 +495,12 @@ int main(void) {
     test_expected_absolute_positions_p2();
     test_empty_hand_draws_nothing();
     test_sparse_hand_compacts_draw_positions();
-    test_idle_knight_uses_uvulite_frame_one();
-    test_non_knight_uses_placeholder_texture();
-    test_knight_frame_sequence_once_then_static();
+    test_idle_knight_uses_sheet_row_zero();
+    test_assassin_uses_mapped_sheet_row();
+    test_frame_sequence_once_then_static();
     test_play_lift_scale_pulses_then_returns_to_rest();
-    test_animating_placeholder_card_scales_around_center();
-    test_sparse_hand_with_knight_uses_current_sheet_frame();
+    test_animating_mapped_card_scales_around_center();
+    test_sparse_hand_uses_current_frame_and_mapped_rows();
     test_animating_knight_scales_around_center();
     printf("\nAll 17 tests passed!\n");
     return 0;

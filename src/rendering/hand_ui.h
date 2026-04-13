@@ -12,20 +12,17 @@
 
 #include "../core/types.h"
 
-// Load the shared hand placeholder texture once at startup.
+// Load the shared hand card atlas once at startup.
 // Safe to call before the window exists only if raylib is initialized.
-Texture2D hand_ui_load_placeholder(void);
+Texture2D hand_ui_load_card_sheet(void);
 
-// Load the shared knight card sheet once at startup.
-Texture2D hand_ui_load_knight_sheet(void);
-
-// Unload the shared placeholder texture. No-op if the texture id is zero.
-void hand_ui_unload_placeholder(Texture2D texture);
+// Unload a shared hand texture. No-op if the texture id is zero.
+void hand_ui_unload_texture(Texture2D texture);
 
 // Draw the hand bar (background fill + one rotated placeholder card per
 // occupied hand entry) inside the player's handArea. Must be called outside
 // any scissor or camera scope (i.e. at screen-space draw time).
-void hand_ui_draw(const Player *p, Texture2D placeholder, Texture2D knightSheet);
+void hand_ui_draw(const Player *p, Texture2D cardSheet);
 
 // Pure-math helper: compute the world/screen-space center of the visibleIndex-th
 // card in a run of `visibleCardCount` cards inside `handArea`. The stacking axis

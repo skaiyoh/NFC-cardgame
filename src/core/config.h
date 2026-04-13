@@ -153,11 +153,10 @@
 #define HAND_CARD_WIDTH                128
 #define HAND_CARD_HEIGHT               160
 #define HAND_CARD_GAP                  4
-#define HAND_CARD_PLACEHOLDER_PATH     "src/assets/cards/uvulite_card.png"
-#define HAND_CARD_KNIGHT_SHEET_PATH    "src/assets/cards/uvulite_card_sheet.png"
-#define HAND_CARD_KNIGHT_SHEET_ROWS    1
-#define HAND_CARD_KNIGHT_FRAME_COUNT   6
-#define HAND_CARD_KNIGHT_FRAME_TIME    0.05f
+#define HAND_CARD_SHEET_PATH           "src/assets/cards/card_sheet.png"
+#define HAND_CARD_SHEET_ROWS           8
+#define HAND_CARD_FRAME_COUNT          6
+#define HAND_CARD_FRAME_TIME           0.05f
 #define HAND_CARD_PLAY_LIFT_PEAK_SCALE 1.06f
 
 #endif //NFC_CARDGAME_CONFIG_H

@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 static float player_hand_animation_duration(void) {
-    return HAND_CARD_KNIGHT_FRAME_TIME * (float)(HAND_CARD_KNIGHT_FRAME_COUNT + 1);
+    return HAND_CARD_FRAME_TIME * (float)(HAND_CARD_FRAME_COUNT + 1);
 }
 
 void player_init(Player *p, int id, BattleSide side,
