@@ -15,30 +15,38 @@
 // Resolve a character to its (row, col) glyph cell. Returns false for
 // unsupported characters (including space) so the caller advances without
 // drawing.
-static bool uvulite_glyph_cell(char c, UvuliteDigitStyle digitStyle,
+static int uvulite_digit_row(UvuliteTextStyle textStyle) {
+    return (textStyle == UVULITE_TEXT_WHITE_DIGITS_GOLD_LETTERS) ? 0 : 1;
+}
+
+static int uvulite_letter_row_base(UvuliteTextStyle textStyle) {
+    return (textStyle == UVULITE_TEXT_GOLD_DIGITS_RED_LETTERS) ? 5 : 2;
+}
+
+static bool uvulite_glyph_cell(char c, UvuliteTextStyle textStyle,
                                int *row, int *col) {
     if (c >= '0' && c <= '9') {
-        *row = (digitStyle == UVULITE_DIGITS_WHITE) ? 0 : 1;
+        *row = uvulite_digit_row(textStyle);
         *col = c - '0';
         return true;
     }
     if (c >= 'A' && c <= 'J') {
-        *row = 2;
+        *row = uvulite_letter_row_base(textStyle);
         *col = c - 'A';
         return true;
     }
     if (c >= 'K' && c <= 'T') {
-        *row = 3;
+        *row = uvulite_letter_row_base(textStyle) + 1;
         *col = c - 'K';
         return true;
     }
     if (c >= 'U' && c <= 'Z') {
-        *row = 4;
+        *row = uvulite_letter_row_base(textStyle) + 2;
         *col = c - 'U';
         return true;
     }
-    if (c == ':') { *row = 5; *col = 0; return true; }
-    if (c == '!') { *row = 5; *col = 1; return true; }
+    if (c == ':') { *row = 4; *col = 6; return true; }
+    if (c == '!') { *row = 4; *col = 7; return true; }
     return false;
 }
 
@@ -106,7 +114,7 @@ Vector2 uvulite_font_measure(const char *text, float scale, float spacing) {
 
 void uvulite_font_draw(Texture2D texture, const char *text, Vector2 topLeft,
                        float rotationDegrees, float scale, float spacing,
-                       UvuliteDigitStyle digitStyle) {
+                       UvuliteTextStyle textStyle) {
     if (texture.id == 0 || !text || !*text) return;
 
     float rad = rotationDegrees * (3.14159265358979323846f / 180.0f);
@@ -120,7 +128,7 @@ void uvulite_font_draw(Texture2D texture, const char *text, Vector2 topLeft,
         int col = 0;
         float glyphSourceWidth = uvulite_glyph_source_width(c);
 
-        if (uvulite_glyph_cell(c, digitStyle, &row, &col)) {
+        if (uvulite_glyph_cell(c, textStyle, &row, &col)) {
             // Block-local unrotated offset of this glyph's top-left, rotated into
             // world space and added to the shared pivot. Each glyph is then drawn
             // with its own rotation about its own top-left — that composition

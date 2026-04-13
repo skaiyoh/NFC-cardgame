@@ -67,6 +67,13 @@ static Color ui_match_result_fallback_color(const char *text) {
     return GOLD;
 }
 
+static UvuliteTextStyle ui_match_result_bitmap_style(const char *text) {
+    if (text && strcmp(text, "DEFEAT") == 0) {
+        return UVULITE_TEXT_GOLD_DIGITS_RED_LETTERS;
+    }
+    return UVULITE_TEXT_GOLD_DIGITS_GOLD_LETTERS;
+}
+
 static float ui_bitmap_spacing_screen(float scale, float sourceSpacing) {
     return scale * sourceSpacing;
 }
@@ -112,11 +119,11 @@ void ui_draw_sustenance_counter(const Player *p, Rectangle viewport,
     Vector2 pivot = ui_text_position_from_bounds(boundsTopLeft, textSize, rotation);
 
     if (letteringTexture.id != 0) {
-        // White digit row for the numeric count; gold letters fall out of the
-        // sheet automatically since letters have no white variant.
+        // Use white digits for the count while keeping the label letters on
+        // the gold rows.
         uvulite_font_draw(letteringTexture, label, pivot, rotation,
                           UI_SUSTENANCE_SCALE, UI_SUSTENANCE_SPACING,
-                          UVULITE_DIGITS_WHITE);
+                          UVULITE_TEXT_WHITE_DIGITS_GOLD_LETTERS);
     } else {
         float fontSize = (float) UVULITE_FONT_GLYPH_PIXELS * UI_SUSTENANCE_SCALE;
         DrawTextPro(GetFontDefault(), label, pivot, (Vector2){0.0f, 0.0f},
@@ -160,7 +167,7 @@ void ui_draw_match_result(const Player *p, const char *text, float rotation,
     if (letteringTexture.id != 0) {
         uvulite_font_draw(letteringTexture, text, position, rotation,
                           UI_MATCH_RESULT_SCALE, UI_MATCH_RESULT_SPACING,
-                          UVULITE_DIGITS_GOLD);
+                          ui_match_result_bitmap_style(text));
     } else {
         float fontSize = (float) UVULITE_FONT_GLYPH_PIXELS * UI_MATCH_RESULT_SCALE;
         DrawTextPro(GetFontDefault(), text, position, (Vector2){0.0f, 0.0f},

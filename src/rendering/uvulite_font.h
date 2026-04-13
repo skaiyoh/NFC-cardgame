@@ -7,8 +7,11 @@
 // Row 2: A-J (gold)
 // Row 3: K-T (gold)
 // Row 4, cols 0-5: U-Z (gold)
-// Row 5, col 0: ':'
-// Row 5, col 1: '!'
+// Row 4, col 6: ':'
+// Row 4, col 7: '!'
+// Row 5: A-J (red)
+// Row 6: K-T (red)
+// Row 7: U-Z (red)
 // All other characters (including space) advance one glyph without drawing.
 //
 // Colors are baked into the sheet. The font draws with a WHITE tint and does
@@ -22,9 +25,10 @@
 #include <raylib.h>
 
 typedef enum {
-    UVULITE_DIGITS_WHITE,
-    UVULITE_DIGITS_GOLD,
-} UvuliteDigitStyle;
+    UVULITE_TEXT_WHITE_DIGITS_GOLD_LETTERS,
+    UVULITE_TEXT_GOLD_DIGITS_GOLD_LETTERS,
+    UVULITE_TEXT_GOLD_DIGITS_RED_LETTERS,
+} UvuliteTextStyle;
 
 #define UVULITE_FONT_GLYPH_PIXELS 10
 #define UVULITE_FONT_SHEET_PIXELS 100
@@ -56,6 +60,6 @@ Vector2 uvulite_font_measure(const char *text, float scale, float spacing);
 // without drawing.
 void uvulite_font_draw(Texture2D texture, const char *text, Vector2 topLeft,
                        float rotationDegrees, float scale, float spacing,
-                       UvuliteDigitStyle digitStyle);
+                       UvuliteTextStyle textStyle);
 
 #endif //NFC_CARDGAME_UVULITE_FONT_H
