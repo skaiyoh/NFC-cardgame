@@ -10,7 +10,7 @@
 bool pathfind_step_entity(Entity *e, const Battlefield *bf, float deltaTime);
 
 // Apply waypoint-based facing to an animation state.
-// Horizontal movement uses DIR_SIDE with flipH; vertical uses DIR_UP / DIR_DOWN.
+// Troops now use only DIR_SIDE; pure vertical motion keeps a right-facing bias.
 // diff: vector from current position toward target waypoint (target - position).
 void pathfind_apply_direction(AnimState *anim, Vector2 diff);
 
@@ -56,9 +56,9 @@ void pathfind_sync_lane_progress(Entity *e, const Battlefield *bf);
 bool pathfind_move_toward_goal(Entity *e, Vector2 goal, float stopRadius,
                                const Battlefield *bf, float deltaTime);
 
-// Apply facing using the supplied side's perspective.
-// SIDE_BOTTOM treats decreasing y as "away" (DIR_UP), while SIDE_TOP treats
-// increasing y as "away" (DIR_UP).
+// Apply troop-facing using the supplied side's perspective.
+// Troops always use DIR_SIDE; SIDE_TOP still inverts flipH because those
+// sprites are rendered with a 180-degree rotation.
 void pathfind_apply_direction_for_side(AnimState *anim, Vector2 diff, BattleSide side);
 
 // Top-side presentation uses a 180-degree sprite rotation so entities read

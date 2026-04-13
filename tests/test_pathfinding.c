@@ -654,14 +654,14 @@ static void test_sprite_direction(void) {
     assert(anim.dir == DIR_SIDE);
     assert(anim.flipH == false);
 
-    /* Moving up (negative Y) -> DIR_UP */
+    /* Pure vertical movement keeps the right-facing bias */
     pathfind_apply_direction(&anim, (Vector2){0, -100});
-    assert(anim.dir == DIR_UP);
+    assert(anim.dir == DIR_SIDE);
     assert(anim.flipH == false);
 
-    /* Moving down (positive Y) -> DIR_DOWN */
+    /* Same right-facing bias when moving down */
     pathfind_apply_direction(&anim, (Vector2){0, 100});
-    assert(anim.dir == DIR_DOWN);
+    assert(anim.dir == DIR_SIDE);
     assert(anim.flipH == false);
 
     /* Zero vector: direction unchanged */
@@ -691,22 +691,22 @@ static void test_sprite_direction_for_side(void) {
     assert(anim.flipH == true);
 
     pathfind_apply_direction_for_side(&anim, (Vector2){0, -100}, SIDE_BOTTOM);
-    assert(anim.dir == DIR_UP);
+    assert(anim.dir == DIR_SIDE);
     assert(anim.flipH == false);
 
     pathfind_apply_direction_for_side(&anim, (Vector2){0, 100}, SIDE_BOTTOM);
-    assert(anim.dir == DIR_DOWN);
+    assert(anim.dir == DIR_SIDE);
     assert(anim.flipH == false);
 
-    // Top-side units walking down the canonical board are moving away from their
-    // home camera, so they should use the back-facing row.
+    // Top-side sprites still invert flipH so the 180-degree presentation
+    // rotation preserves a right-facing bias.
     pathfind_apply_direction_for_side(&anim, (Vector2){0, 100}, SIDE_TOP);
-    assert(anim.dir == DIR_UP);
-    assert(anim.flipH == false);
+    assert(anim.dir == DIR_SIDE);
+    assert(anim.flipH == true);
 
     pathfind_apply_direction_for_side(&anim, (Vector2){0, -100}, SIDE_TOP);
-    assert(anim.dir == DIR_DOWN);
-    assert(anim.flipH == false);
+    assert(anim.dir == DIR_SIDE);
+    assert(anim.flipH == true);
 
     pathfind_apply_direction_for_side(&anim, (Vector2){100, 0}, SIDE_TOP);
     assert(anim.dir == DIR_SIDE);
@@ -747,7 +747,7 @@ static void test_seam_overlap_preserves_presentation_bottom_to_top(void) {
     assert(e.position.y < SEAM_Y);
     assert(e.position.y + 32.0f > SEAM_Y);
     assert(e.presentationSide == SIDE_BOTTOM);
-    assert(e.anim.dir == DIR_UP);
+    assert(e.anim.dir == DIR_SIDE);
     assert(e.anim.flipH == false);
     assert(approx_eq(e.spriteRotationDegrees, 0.0f, 0.001f));
 }
@@ -763,7 +763,7 @@ static void test_seam_clear_defers_presentation_bottom_to_top(void) {
     assert(walking == true);
     assert(e.position.y + 32.0f < SEAM_Y);
     assert(e.presentationSide == SIDE_BOTTOM);
-    assert(e.anim.dir == DIR_UP);
+    assert(e.anim.dir == DIR_SIDE);
     assert(e.anim.flipH == false);
     assert(approx_eq(e.spriteRotationDegrees, 0.0f, 0.001f));
 }
@@ -781,8 +781,8 @@ static void test_walk_loop_commit_swaps_presentation_bottom_to_top(void) {
     pathfind_update_walk_facing(&e, &bf);
 
     assert(e.presentationSide == SIDE_TOP);
-    assert(e.anim.dir == DIR_DOWN);
-    assert(e.anim.flipH == false);
+    assert(e.anim.dir == DIR_SIDE);
+    assert(e.anim.flipH == true);
     assert(approx_eq(e.spriteRotationDegrees, 180.0f, 0.001f));
 }
 
@@ -800,8 +800,8 @@ static void test_seam_overlap_preserves_presentation_top_to_bottom(void) {
     assert(e.position.y > SEAM_Y);
     assert(e.position.y - 32.0f < SEAM_Y);
     assert(e.presentationSide == SIDE_TOP);
-    assert(e.anim.dir == DIR_UP);
-    assert(e.anim.flipH == false);
+    assert(e.anim.dir == DIR_SIDE);
+    assert(e.anim.flipH == true);
     assert(approx_eq(e.spriteRotationDegrees, 180.0f, 0.001f));
 }
 
@@ -818,8 +818,8 @@ static void test_seam_clear_defers_presentation_top_to_bottom(void) {
     assert(walking == true);
     assert(e.position.y - 32.0f > SEAM_Y);
     assert(e.presentationSide == SIDE_TOP);
-    assert(e.anim.dir == DIR_UP);
-    assert(e.anim.flipH == false);
+    assert(e.anim.dir == DIR_SIDE);
+    assert(e.anim.flipH == true);
     assert(approx_eq(e.spriteRotationDegrees, 180.0f, 0.001f));
 }
 
@@ -838,7 +838,7 @@ static void test_walk_loop_commit_swaps_presentation_top_to_bottom(void) {
     pathfind_update_walk_facing(&e, &bf);
 
     assert(e.presentationSide == SIDE_BOTTOM);
-    assert(e.anim.dir == DIR_DOWN);
+    assert(e.anim.dir == DIR_SIDE);
     assert(e.anim.flipH == false);
     assert(approx_eq(e.spriteRotationDegrees, 0.0f, 0.001f));
 }
@@ -1260,8 +1260,8 @@ static void test_lane_end_without_pursuit_idles_and_faces_enemy_base(void) {
     assert(walking == false);
     assert(unit.state == ESTATE_IDLE);
     assert(unit.presentationSide == SIDE_TOP);
-    assert(unit.anim.dir == DIR_DOWN);
-    assert(unit.anim.flipH == false);
+    assert(unit.anim.dir == DIR_SIDE);
+    assert(unit.anim.flipH == true);
     assert(approx_eq(unit.spriteRotationDegrees, 180.0f, 0.001f));
 }
 

@@ -134,6 +134,7 @@ Entity *troop_spawn(Player *owner, const TroopData *data, Vector2 position,
 
     // Start walking immediately
     entity_set_state(e, ESTATE_WALKING);
+    pathfind_apply_direction_for_side(&e->anim, (Vector2){ 1.0f, 0.0f }, e->presentationSide);
     e->spriteRotationDegrees = pathfind_sprite_rotation_for_side(e->anim.dir, owner->side);
 
     // Farmer role: override combat stats from code, not card JSON
@@ -150,6 +151,7 @@ Entity *troop_spawn(Player *owner, const TroopData *data, Vector2 position,
         e->lane = -1;
         e->waypointIndex = -1;
         entity_set_state(e, ESTATE_IDLE); // seek on first update, not walk-in-place
+        pathfind_apply_direction_for_side(&e->anim, (Vector2){ 1.0f, 0.0f }, e->presentationSide);
         e->spriteRotationDegrees = (owner->side == SIDE_TOP) ? 180.0f : 0.0f;
     }
 

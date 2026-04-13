@@ -1052,16 +1052,10 @@ void pathfind_apply_direction(AnimState *anim, Vector2 diff) {
 
     if (fabsf(diff.x) < eps && fabsf(diff.y) < eps) return;
 
-    if (fabsf(diff.x) >= eps) {
-        anim->dir = DIR_SIDE;
-        anim->flipH = (diff.x < 0);
-    } else if (diff.y < 0) {
-        anim->dir = DIR_UP;
-        anim->flipH = false;
-    } else {
-        anim->dir = DIR_DOWN;
-        anim->flipH = false;
-    }
+    anim->dir = DIR_SIDE;
+    // Troops now use only left/right-facing rows. Pure vertical motion keeps a
+    // stable right-facing bias instead of selecting front/back rows.
+    anim->flipH = (fabsf(diff.x) >= eps) ? (diff.x < 0.0f) : false;
 }
 
 void pathfind_apply_direction_for_side(AnimState *anim, Vector2 diff, BattleSide side) {
@@ -1069,20 +1063,16 @@ void pathfind_apply_direction_for_side(AnimState *anim, Vector2 diff, BattleSide
 
     if (fabsf(diff.x) < eps && fabsf(diff.y) < eps) return;
 
+    anim->dir = DIR_SIDE;
+    // Top-side units are rendered with a 180-degree sprite rotation, so their
+    // horizontal flip must be inverted to preserve left/right-facing. Pure
+    // vertical motion keeps a stable right-facing bias.
     if (fabsf(diff.x) >= eps) {
-        anim->dir = DIR_SIDE;
-        // Top-side units are rendered with a 180-degree sprite rotation, so
-        // their horizontal flip must be inverted to preserve left/right facing.
-        anim->flipH = (side == SIDE_TOP) ? (diff.x > 0) : (diff.x < 0);
+        anim->flipH = (side == SIDE_TOP) ? (diff.x > 0.0f) : (diff.x < 0.0f);
         return;
     }
 
-    // Vertical facing is side-perspective aware:
-    // SIDE_BOTTOM: moving up the canonical board means away from camera.
-    // SIDE_TOP: moving down the canonical board means away from camera.
-    bool movingAway = (side == SIDE_BOTTOM) ? (diff.y < 0.0f) : (diff.y > 0.0f);
-    anim->dir = movingAway ? DIR_UP : DIR_DOWN;
-    anim->flipH = false;
+    anim->flipH = (side == SIDE_TOP);
 }
 
 float pathfind_sprite_rotation_for_side(SpriteDirection dir, BattleSide side) {
