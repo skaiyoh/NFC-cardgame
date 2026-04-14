@@ -612,19 +612,26 @@ static void draw_base_bars(const GameState *gs, const Entity *base, const Player
 
     char hpLabel[32];
     char energyLabel[32];
+    char levelLabel[32];
     int filledPips = base_energy_filled_pips(owner->energy);
     // The top player's viewport is vertically flipped during composite, so its
     // raw RT-space outside offset stays positive while the unflipped P1 path
     // needs the opposite sign to land on the same authored side on screen.
     float energyLabelDirection = reverseEnergyFillDirection ? 1.0f : -1.0f;
+    int displayLevel = (base->baseLevel > 0) ? base->baseLevel : 1;
     format_bar_label(hpLabel, sizeof(hpLabel), base->hp, base->maxHP);
     format_bar_label(energyLabel, sizeof(energyLabel),
                      filledPips, STATUS_BAR_ENERGY_PIP_COUNT);
+    snprintf(levelLabel, sizeof(levelLabel), "LVL %d", displayLevel);
 
     draw_bar_numeric_label(hpLabel, healthCenter, STATUS_BAR_BASE_DRAW_WIDTH,
                            STATUS_BAR_BASE_LABEL_FONT_SIZE,
                            labelRotationDegrees, rotationDegrees, LABEL_INSIDE,
                            1.0f);
+    draw_bar_numeric_label(levelLabel, healthCenter, STATUS_BAR_BASE_DRAW_WIDTH,
+                           STATUS_BAR_BASE_LABEL_FONT_SIZE,
+                           labelRotationDegrees, rotationDegrees, LABEL_OUTSIDE,
+                           energyLabelDirection);
     draw_bar_numeric_label(energyLabel, energyCenter, STATUS_BAR_BASE_DRAW_WIDTH,
                            STATUS_BAR_BASE_LABEL_FONT_SIZE,
                            labelRotationDegrees, rotationDegrees, LABEL_OUTSIDE,
@@ -740,17 +747,24 @@ static void draw_base_bars_fallback(const Entity *base, const Player *owner,
 
     char hpLabel[32];
     char energyLabel[32];
+    char levelLabel[32];
     int filledPips = base_energy_filled_pips(owner->energy);
     // Keep fallback label placement aligned with the textured path.
     float energyLabelDirection = reverseEnergyFillDirection ? 1.0f : -1.0f;
+    int displayLevel = (base->baseLevel > 0) ? base->baseLevel : 1;
     format_bar_label(hpLabel, sizeof(hpLabel), base->hp, base->maxHP);
     format_bar_label(energyLabel, sizeof(energyLabel),
                      filledPips, STATUS_BAR_ENERGY_PIP_COUNT);
+    snprintf(levelLabel, sizeof(levelLabel), "LVL %d", displayLevel);
 
     draw_bar_numeric_label(hpLabel, healthCenter, STATUS_BAR_BASE_DRAW_WIDTH,
                            STATUS_BAR_BASE_LABEL_FONT_SIZE,
                            labelRotationDegrees, rotationDegrees, LABEL_INSIDE,
                            1.0f);
+    draw_bar_numeric_label(levelLabel, healthCenter, STATUS_BAR_BASE_DRAW_WIDTH,
+                           STATUS_BAR_BASE_LABEL_FONT_SIZE,
+                           labelRotationDegrees, rotationDegrees, LABEL_OUTSIDE,
+                           energyLabelDirection);
     draw_bar_numeric_label(energyLabel, energyCenter, STATUS_BAR_BASE_DRAW_WIDTH,
                            STATUS_BAR_BASE_LABEL_FONT_SIZE,
                            labelRotationDegrees, rotationDegrees, LABEL_OUTSIDE,

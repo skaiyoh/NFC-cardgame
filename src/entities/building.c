@@ -56,6 +56,10 @@ Entity *building_create_base(Player *owner, Vector2 position, const SpriteAtlas 
     // presentationSide are finalized.
     deposit_slots_build_for_base(e);
 
+    e->baseLevel = 1;
+    e->basePendingKingBurst = false;
+    e->basePendingKingBurstDamage = 0;
+
     printf("[BASE] Spawned base (id=%d) for player %d at (%.0f, %.0f)\n",
            e->id, owner->id, position.x, position.y);
 

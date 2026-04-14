@@ -187,6 +187,9 @@ struct Entity {
     // Base-only payloads. Non-base entities leave these zero-initialized.
     DepositSlotRing depositSlots;
     AssaultSlotRing assaultSlots;
+    int  baseLevel;                    // 1..PROGRESSION_MAX_LEVEL; 0 for non-bases
+    bool basePendingKingBurst;         // true while a queued King swing awaits hit-marker
+    int  basePendingKingBurstDamage;   // damage to apply at the swing's hit frame
 };
 
 // Card slot - represents a physical NFC reader position

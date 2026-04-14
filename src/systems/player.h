@@ -44,4 +44,8 @@ int player_hand_occupied_count(const Player *p);
 
 void player_hand_restart_animation_for_card(Player *p, const Card *card);
 
+// Single choke point for all sustenance grants. Adds to the player's counter
+// and re-syncs progression-dependent state (base level, energy regen).
+void player_award_sustenance(GameState *gs, int playerIndex, int amount);
+
 #endif //NFC_CARDGAME_PLAYER_H

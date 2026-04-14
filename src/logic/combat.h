@@ -67,6 +67,11 @@ void combat_resolve(Entity *attacker, Entity *target, GameState *gs, float delta
 // Checks for base kill and latches win condition if applicable.
 void combat_apply_hit(Entity *attacker, Entity *target, GameState *gs);
 
+// Area burst centered on a base. Damages every alive enemy troop/building
+// within `radius` by `damage`, skipping projectiles, friendlies, and the
+// base itself. Applies the full kill-bookkeeping path (farmer drop, win latch).
+void combat_apply_king_burst(Entity *base, float radius, int damage, GameState *gs);
+
 // Apply damage to an entity; transitions to ESTATE_DEAD if hp <= 0.
 // Returns true if the entity was just killed (was alive, now dead).
 bool entity_take_damage(Entity *entity, int damage);

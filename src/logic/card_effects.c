@@ -8,6 +8,7 @@
 #include "../entities/entities.h"
 #include "../systems/player.h"
 #include "../systems/energy.h"
+#include "../systems/progression.h"
 #include "../systems/spawn.h"
 #include "../systems/spawn_placement.h"
 #include "../core/battlefield.h"
@@ -155,9 +156,9 @@ static void play_fishfing(const Card *card, GameState *state, int playerIndex, i
     spawn_troop_from_card(card, state, playerIndex, slotIndex);
 }
 
-// King is animation-only in this pass: targets the owning player's base and
-// restarts the base sword clip. No spawn, no gameplay effect. Energy is
-// consumed only after the live-base check so failed plays are side-effect-free.
+// King queues an area burst on the owning base. The swing animation drives
+// damage resolution at the spec's hit marker, so activation only consumes
+// energy, restarts the clip, and stages pending-burst state on the base.
 static void play_king(const Card *card, GameState *state, int playerIndex, int slotIndex) {
     if (!state) return;
 
@@ -181,6 +182,11 @@ static void play_king(const Card *card, GameState *state, int playerIndex, int s
     }
     if (!energy_consume(player, card->cost)) return;
 
+    int level = (base->baseLevel > 0) ? base->baseLevel : 1;
+    base->basePendingKingBurst = true;
+    base->basePendingKingBurstDamage =
+        progression_king_burst_damage_for_level(level);
+
     if (base->state == ESTATE_ATTACKING) {
         entity_restart_clip(base);
     } else {
@@ -189,7 +195,8 @@ static void play_king(const Card *card, GameState *state, int playerIndex, int s
     base->attackTargetId = -1;
 
     player_hand_restart_animation_for_card(player, card);
-    printf("[PLAY] king '%s' activated base attack for player %d\n", card->name, playerIndex);
+    printf("[PLAY] king '%s' activated base burst for player %d (level %d, dmg %d)\n",
+           card->name, playerIndex, level, base->basePendingKingBurstDamage);
 }
 
 void card_action_init(void) {

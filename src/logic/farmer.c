@@ -11,6 +11,7 @@
 #include "../core/sustenance.h"
 #include "../core/config.h"
 #include "../entities/entities.h"
+#include "../systems/player.h"
 #include <math.h>
 #include <stdio.h>
 
@@ -259,8 +260,9 @@ static void farmer_deposit(Entity *e, GameState *gs, float deltaTime) {
     // Wait for one-shot attack clip to finish
     if (!e->anim.finished) return;
 
-    // Deposit complete
-    gs->players[e->ownerID].sustenanceCollected += e->carriedSustenanceValue;
+    // Deposit complete — funnel through the helper so progression stays in
+    // sync on the same frame the counter increases.
+    player_award_sustenance(gs, e->ownerID, e->carriedSustenanceValue);
     printf("[FARMER] Entity %d deposited %d sustenance (player %d total: %d)\n",
            e->id, e->carriedSustenanceValue, e->ownerID,
            gs->players[e->ownerID].sustenanceCollected);
@@ -318,10 +320,11 @@ void farmer_on_death(Entity *farmer, GameState *gs) {
 
     Battlefield *bf = &gs->battlefield;
 
-    // Award carried sustenance to the opposing player
+    // Award carried sustenance to the opposing player via the progression
+    // helper so their base level/regen updates immediately.
     if (farmer->carriedSustenanceValue > 0) {
         int opponent = 1 - farmer->ownerID;
-        gs->players[opponent].sustenanceCollected += farmer->carriedSustenanceValue;
+        player_award_sustenance(gs, opponent, farmer->carriedSustenanceValue);
         printf("[FARMER] Entity %d died carrying %d sustenance — awarded to player %d\n",
                farmer->id, farmer->carriedSustenanceValue, opponent);
         farmer->carriedSustenanceValue = 0;

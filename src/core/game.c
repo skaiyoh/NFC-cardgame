@@ -20,6 +20,7 @@
 #include "../rendering/hand_ui.h"
 #include "../rendering/uvulite_font.h"
 #include "../systems/player.h"
+#include "../systems/progression.h"
 #include "../entities/entities.h"
 #include "../entities/building.h"
 #include <stdlib.h>
@@ -118,6 +119,7 @@ bool game_init(GameState *g) {
             g->players[i].base = base;
             bf_add_entity(&g->battlefield, base);
         }
+        progression_sync_player(g, i);
     }
 
     // Match result state

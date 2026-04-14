@@ -18,6 +18,7 @@
 #define NFC_CARDGAME_ENTITIES_H
 #define NFC_CARDGAME_PLAYER_H
 #define NFC_CARDGAME_ENERGY_H
+#define NFC_CARDGAME_PROGRESSION_H
 #define NFC_CARDGAME_SPAWN_H
 #define NFC_CARDGAME_SPAWN_PLACEMENT_H
 #define NFC_CARDGAME_BATTLEFIELD_H
@@ -74,6 +75,9 @@ typedef struct Entity {
     bool markedForRemoval;
     EntityState state;
     int attackTargetId;
+    int baseLevel;
+    bool basePendingKingBurst;
+    int basePendingKingBurstDamage;
 } Entity;
 
 typedef struct {
@@ -208,6 +212,12 @@ void entity_restart_clip(Entity *e) {
     g_entity_restart_clip_calls++;
 }
 
+int progression_king_burst_damage_for_level(int level) {
+    if (level < 1) level = 1;
+    if (level > 10) level = 10;
+    return 28 + (level - 1) * 3;
+}
+
 /* ---- Production code under test ---- */
 #include "../src/logic/card_effects.c"
 
@@ -240,6 +250,7 @@ static Entity make_base(EntityState state) {
     base.alive = true;
     base.state = state;
     base.attackTargetId = 77;
+    base.baseLevel = 1;
     return base;
 }
 
@@ -273,6 +284,10 @@ static void test_king_dispatch_consumes_energy_and_enters_attack(void) {
     assert(gs.players[0].energy == 6.0f);
     assert(base.state == ESTATE_ATTACKING);
     assert(base.attackTargetId == -1);
+    /* Level 1 base queues the level-1 burst (28 damage) but does not apply
+     * it yet — the hit-marker branch in entities.c resolves damage later. */
+    assert(base.basePendingKingBurst == true);
+    assert(base.basePendingKingBurstDamage == 28);
     assert(g_entity_set_state_calls == 1);
     assert(g_entity_restart_clip_calls == 0);
     assert(g_player_hand_restart_calls == 1);
@@ -282,6 +297,52 @@ static void test_king_dispatch_consumes_energy_and_enters_attack(void) {
     assert(g_troop_create_data_calls == 0);
     assert(g_troop_spawn_calls == 0);
     assert(g_spawn_register_calls == 0);
+}
+
+static void test_king_burst_damage_scales_with_base_level(void) {
+    GameState gs = make_game_state();
+    Entity base = make_base(ESTATE_IDLE);
+    Card king = make_king_card();
+    base.baseLevel = 10;
+    gs.players[0].base = &base;
+
+    bool ok = card_action_play(&king, &gs, 0, 0);
+
+    assert(ok);
+    assert(base.basePendingKingBurst == true);
+    assert(base.basePendingKingBurstDamage == 55);
+}
+
+static void test_king_burst_overwrites_pending_on_replay(void) {
+    GameState gs = make_game_state();
+    Entity base = make_base(ESTATE_ATTACKING);
+    Card king = make_king_card();
+    base.basePendingKingBurst = true;
+    base.basePendingKingBurstDamage = 999;  /* stale value from a prior frame */
+    gs.players[0].base = &base;
+
+    bool ok = card_action_play(&king, &gs, 0, 0);
+
+    assert(ok);
+    assert(base.basePendingKingBurst == true);
+    assert(base.basePendingKingBurstDamage == 28);  /* overwritten, not stacked */
+    assert(g_entity_restart_clip_calls == 1);
+}
+
+static void test_king_gating_leaves_pending_burst_untouched(void) {
+    GameState gs = make_game_state();
+    Entity base = make_base(ESTATE_IDLE);
+    Card king = make_king_card();
+    gs.players[0].base = &base;
+    gs.players[0].energy = 1.0f;  /* cannot afford cost 4 */
+
+    bool ok = card_action_play(&king, &gs, 0, 0);
+
+    assert(ok);
+    assert(gs.players[0].energy == 1.0f);
+    assert(base.basePendingKingBurst == false);
+    assert(base.basePendingKingBurstDamage == 0);
+    assert(base.state == ESTATE_IDLE);
 }
 
 static void test_king_slot_cooldown_blocks_without_side_effects(void) {
@@ -415,6 +476,9 @@ static void test_catalog_type_resolution_allows_known_card_id_without_db_type(vo
 int main(void) {
     printf("Running card_effects tests...\n");
     RUN_TEST(test_king_dispatch_consumes_energy_and_enters_attack);
+    RUN_TEST(test_king_burst_damage_scales_with_base_level);
+    RUN_TEST(test_king_burst_overwrites_pending_on_replay);
+    RUN_TEST(test_king_gating_leaves_pending_burst_untouched);
     RUN_TEST(test_king_slot_cooldown_blocks_without_side_effects);
     RUN_TEST(test_king_invalid_slot_blocks_without_side_effects);
     RUN_TEST(test_king_missing_dead_or_marked_base_blocks_without_energy_spend);

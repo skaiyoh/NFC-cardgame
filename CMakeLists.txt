@@ -47,7 +47,8 @@ set(SRC_SYSTEMS    src/systems/player.c
                    src/systems/energy.c
                    src/systems/spawn.c
                    src/systems/spawn_placement.c
-                   src/systems/match.c)
+                   src/systems/match.c
+                   src/systems/progression.c)
 set(SRC_LOGIC      src/logic/card_effects.c
                    src/logic/assault_slots.c
                    src/logic/combat.c
@@ -172,6 +173,16 @@ add_executable(test_uvulite_font
     tests/test_uvulite_font.c)
 target_link_libraries(test_uvulite_font ${MATH_LIB})
 add_test(NAME uvulite_font COMMAND test_uvulite_font)
+
+add_executable(test_card_effects
+    tests/test_card_effects.c)
+target_link_libraries(test_card_effects ${MATH_LIB})
+add_test(NAME card_effects COMMAND test_card_effects)
+
+add_executable(test_progression
+    tests/test_progression.c)
+target_link_libraries(test_progression ${MATH_LIB})
+add_test(NAME progression COMMAND test_progression)
 
 # --- Database init (convenience target) ---
 add_custom_target(init-db

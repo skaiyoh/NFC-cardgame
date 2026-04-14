@@ -10,6 +10,7 @@
 #include "../logic/pathfinding.h"
 #include "../logic/combat.h"
 #include "../logic/farmer.h"
+#include "../systems/progression.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -437,14 +438,27 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
         case ESTATE_ATTACKING: {
             if (!e->alive) break;
 
-            // Buildings play a one-shot attack clip with no target / no combat
-            // application (e.g. play_king triggers the base sword swing for
-            // visual feedback only). Tick the clip and return to idle when it
-            // finishes so the normal troop-shaped attack path below can stay
-            // unchanged.
+            // Buildings play a one-shot attack clip. Bases queue a King burst
+            // via play_king and resolve damage when the clip crosses the spec's
+            // hit marker. Any pending burst is cleared when the clip finishes
+            // so a whiff still ends cleanly.
             if (e->type == ENTITY_BUILDING) {
+                const EntityAnimSpec *spec = anim_spec_get(e->spriteType, ANIM_ATTACK);
                 AnimPlaybackEvent evt = anim_state_update(&e->anim, deltaTime);
+
+                if (spec->hitNormalized >= 0.0f &&
+                    evt.prevNormalized < spec->hitNormalized &&
+                    evt.currNormalized >= spec->hitNormalized &&
+                    e->basePendingKingBurst) {
+                    combat_apply_king_burst(e, PROGRESSION_KING_BURST_RADIUS,
+                                            e->basePendingKingBurstDamage, gs);
+                    e->basePendingKingBurst = false;
+                    e->basePendingKingBurstDamage = 0;
+                }
+
                 if (evt.finishedThisTick) {
+                    e->basePendingKingBurst = false;
+                    e->basePendingKingBurstDamage = 0;
                     entity_set_state(e, ESTATE_IDLE);
                 }
                 return;

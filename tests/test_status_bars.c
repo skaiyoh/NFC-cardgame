@@ -235,6 +235,9 @@ typedef struct Entity {
     bool alive;
     bool markedForRemoval;
     int healAmount;
+    int baseLevel;
+    bool basePendingKingBurst;
+    int basePendingKingBurstDamage;
 } Entity;
 
 typedef struct Player {
@@ -398,7 +401,8 @@ static void test_damaged_troop_uses_fallback_when_troop_texture_missing(void) {
  *   - Health: 1 empty shell (92x9 src -> 188x20 dst) + 1 scaled fill overlay
  *   - Energy: 1 empty shell (92x9 src -> 188x20 dst) + 7 pip overlays
  *
- * Each label emits 2 DrawTextPro calls (shadow + main). */
+ * Each label emits 2 DrawTextPro calls (shadow + main). Order: hp, LVL,
+ * energy. */
 static void test_base_bars_health_fill_and_energy_pips(void) {
     GameState gs = make_game_state();
     Entity base = make_base(4500, 5000);
@@ -411,8 +415,8 @@ static void test_base_bars_health_fill_and_energy_pips(void) {
 
     /* 1 health shell + 1 health fill + 1 energy shell + 7 energy pips = 10. */
     assert(g_drawCalls == 10);
-    /* 2 labels * (shadow + main) = 4 text draws. */
-    assert(g_textCalls == 4);
+    /* 3 labels * (shadow + main) = 6 text draws. */
+    assert(g_textCalls == 6);
 
     float expectedHealthFillSrcWidth = 0.9f * STATUS_BAR_HEALTH_FILL_SRC_WIDTH;
     float expectedHealthFillDstWidth =
@@ -563,12 +567,10 @@ static void test_fractional_energy_shows_whole_pips(void) {
     /* 1 health shell + 1 health fill + 1 energy shell + 6 pips = 9. */
     assert(g_drawCalls == 9);
 
-    /* Energy label text (shadow at index 2, main at index 3 in draw order).
-     * Health label: draws 0-1. Energy label: draws 2-3. */
-    assert(strcmp(g_textStrings[2], "6/10") == 0);
-    assert(strcmp(g_textStrings[3], "6/10") == 0);
-    /* Health label still shows raw HP. */
+    /* Draw order: hp (0,1), LVL (2,3), energy (4,5). */
     assert(strcmp(g_textStrings[0], "5000/5000") == 0);
+    assert(strcmp(g_textStrings[4], "6/10") == 0);
+    assert(strcmp(g_textStrings[5], "6/10") == 0);
 }
 
 /* Per-bar label placement: health label sits at the bar center; energy
@@ -584,8 +586,8 @@ static void test_label_placement_health_inside_energy_outside(void) {
     /* Use rotation 0 so OUTSIDE offset shows up purely in X. */
     status_bars_draw_screen(&gs, camera, 0.0f, 0.0f, false);
 
-    /* Label order: health shadow, health main, energy shadow, energy main. */
-    assert(g_textCalls == 4);
+    /* Draw order: hp (0,1), LVL (2,3), energy (4,5). */
+    assert(g_textCalls == 6);
 
     /* Health label shadow is at (healthCenter + (1,1)); main is at
      * healthCenter. The shadow/main pair sit within 2px of each other. */
@@ -596,15 +598,23 @@ static void test_label_placement_health_inside_energy_outside(void) {
 
     /* For the non-flipped P1 path, the energy label sits on the left side of
      * the bar, so the offset is along -X. */
-    float energyOffsetX = g_textPositions[3].x - g_textPositions[1].x;
+    float energyOffsetX = g_textPositions[5].x - g_textPositions[1].x;
     assert(energyOffsetX < -100.0f);
 
     /* Energy and health labels sit on separate bars stacked along the base's
      * head direction. At rotation 0 the head direction is -Y, so the two
      * bar centers differ in Y by (cellHeight + stackGap) = 20 + 6 = 26. */
-    float energyY = g_textPositions[3].y;
+    float energyY = g_textPositions[5].y;
     float healthY = g_textPositions[1].y;
     assert(fabsf(energyY - healthY) > 20.0f);
+
+    /* LVL label lives on the health bar (same Y as hp label) and is pushed
+     * OUTSIDE on the same authored side as the energy label (-X for P1). */
+    assert(strcmp(g_textStrings[3], "LVL 1") == 0);
+    float lvlDy = g_textPositions[3].y - g_textPositions[1].y;
+    assert(fabsf(lvlDy) < 1.0f);
+    float lvlOffsetX = g_textPositions[3].x - g_textPositions[1].x;
+    assert(lvlOffsetX < -50.0f);
 }
 
 /* Live P1 path: bars rotate 90 and labels rotate 90, with the energy label
@@ -623,12 +633,13 @@ static void test_live_p1_energy_label_uses_bar_axis_for_outside_offset(void) {
     Vector2 healthCenter, energyCenter;
     base_bar_centers(&base, camera, &healthCenter, &energyCenter);
 
-    Vector2 energyLabel = g_textPositions[3];
+    /* Energy main label is draw index 5 (hp=0,1; LVL=2,3; energy=4,5). */
+    Vector2 energyLabel = g_textPositions[5];
     float dx = energyLabel.x - energyCenter.x;
     float dy = energyLabel.y - energyCenter.y;
 
     assert(approx_eq(g_textRotations[1], 90.0f, 0.001f));
-    assert(approx_eq(g_textRotations[3], 90.0f, 0.001f));
+    assert(approx_eq(g_textRotations[5], 90.0f, 0.001f));
     assert(fabsf(dx) < 0.01f);
     assert(dy < -100.0f);
 }
@@ -649,14 +660,14 @@ static void test_live_p2_energy_label_uses_bar_axis_not_text_rotation(void) {
     base_bar_centers(&base, camera, &healthCenter, &energyCenter);
 
     Vector2 healthLabel = g_textPositions[1];
-    Vector2 energyLabel = g_textPositions[3];
+    Vector2 energyLabel = g_textPositions[5]; /* hp,LVL,energy — energy at 4,5 */
     float energyDx = energyLabel.x - energyCenter.x;
     float energyDy = energyLabel.y - energyCenter.y;
     float healthDx = healthLabel.x - healthCenter.x;
     float healthDy = healthLabel.y - healthCenter.y;
 
     assert(approx_eq(g_textRotations[1], 270.0f, 0.001f));
-    assert(approx_eq(g_textRotations[3], 270.0f, 0.001f));
+    assert(approx_eq(g_textRotations[5], 270.0f, 0.001f));
     assert(fabsf(healthDx) < 0.01f);
     assert(fabsf(healthDy) < 0.01f);
     assert(fabsf(energyDx) < 0.01f);
@@ -718,10 +729,11 @@ static void test_fallback_renders_bars_and_labels(void) {
     assert(color_eq(g_rectColors[4], BAR_EMPTY_COLOR));
     assert(color_eq(g_rectColors[5], ENERGY_BAR_FILL_COLOR));
 
-    /* Labels still render: 2 bars * (shadow + main) = 4 text draws. */
-    assert(g_textCalls == 4);
+    /* Labels still render: 3 labels (hp, LVL, energy) * (shadow + main) = 6. */
+    assert(g_textCalls == 6);
     assert(strcmp(g_textStrings[0], "3420/5000") == 0);
-    assert(strcmp(g_textStrings[2], "7/10") == 0);
+    assert(strcmp(g_textStrings[2], "LVL 1") == 0);
+    assert(strcmp(g_textStrings[4], "7/10") == 0);
 }
 
 /* Zero-energy fallback draws only the shell (2 rects): no pip rects. */

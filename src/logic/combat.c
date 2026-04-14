@@ -406,6 +406,39 @@ void combat_apply_hit(Entity *attacker, Entity *target, GameState *gs) {
     apply_effect(attacker, target, gs);
 }
 
+void combat_apply_king_burst(Entity *base, float radius, int damage, GameState *gs) {
+    if (!base || !gs) return;
+    if (damage <= 0 || radius <= 0.0f) return;
+
+    Battlefield *bf = &gs->battlefield;
+    CanonicalPos basePos = { base->position };
+
+    for (int i = 0; i < bf->entityCount; i++) {
+        Entity *target = bf->entities[i];
+        if (!target) continue;
+        if (target == base) continue;
+        if (!target->alive || target->markedForRemoval) continue;
+        if (target->type == ENTITY_PROJECTILE) continue;
+        if (target->ownerID == base->ownerID) continue;
+
+        CanonicalPos targetPos = { target->position };
+        float dist = bf_distance(basePos, targetPos);
+        if (dist > radius) continue;
+
+        bool killed = entity_take_damage(target, damage);
+        debug_event_emit_xy(target->position.x, target->position.y, DEBUG_EVT_HIT);
+        printf("[COMBAT] King burst from base %d dealt %d damage to entity %d (hp: %d/%d)\n",
+               base->id, damage, target->id, target->hp, target->maxHP);
+
+        if (killed) {
+            combat_on_kill(target, gs);
+            if (target->type == ENTITY_BUILDING) {
+                win_latch_from_destroyed_base(gs, target);
+            }
+        }
+    }
+}
+
 void combat_resolve(Entity *attacker, Entity *target, GameState *gs, float deltaTime) {
     if (!attacker || !target || !gs) return;
     if (!attacker->alive || attacker->markedForRemoval) return;

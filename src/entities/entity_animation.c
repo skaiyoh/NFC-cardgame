@@ -86,14 +86,14 @@ static const EntityAnimSpec s_specs[SPRITE_TYPE_COUNT][ANIM_COUNT] = {
         [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.50f, -1.0f, false, true  },
         [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.60f,  0.5f, true,  false }, // 6 frames
     },
-    // SPRITE_TYPE_BASE (King art — real attack one-shot for play_king trigger)
+    // SPRITE_TYPE_BASE (King art — attack clip drives King burst at midpoint)
     {
         [ANIM_IDLE]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 1.00f, -1.0f, false, false },
         [ANIM_RUN]    = { ANIM_RUN,    ANIM_PLAY_LOOP, 1.00f, -1.0f, false, false },
         [ANIM_WALK]   = { ANIM_WALK,   ANIM_PLAY_LOOP, 1.00f, -1.0f, false, false },
         [ANIM_HURT]   = { ANIM_HURT,   ANIM_PLAY_ONCE, 0.50f, -1.0f, false, false },
         [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 1.00f, -1.0f, false, true  },
-        [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.60f, -1.0f, true,  false },
+        [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.60f,  0.5f, true,  false }, // 6 frames
     },
 };
 

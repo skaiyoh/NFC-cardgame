@@ -25,6 +25,8 @@
 #define NFC_CARDGAME_PATHFINDING_H
 #define NFC_CARDGAME_COMBAT_H
 #define NFC_CARDGAME_FARMER_H
+#define NFC_CARDGAME_PROGRESSION_H
+#define PROGRESSION_KING_BURST_RADIUS 160.0f
 
 /* ---- Local steering constants (must mirror src/core/config.h) ---- */
 #define LANE_WAYPOINT_COUNT              8
@@ -207,6 +209,9 @@ struct Entity {
     int reservedDepositSlotIndex;
     DepositSlotKind reservedDepositSlotKind;
     DepositSlotRing depositSlots;
+    int baseLevel;
+    bool basePendingKingBurst;
+    int basePendingKingBurstDamage;
 };
 
 typedef struct Battlefield {
@@ -229,6 +234,10 @@ static Entity *g_findWithinRadiusResult = NULL;
 static int g_applyHitCalls = 0;
 static Entity *g_lastApplyHitAttacker = NULL;
 static Entity *g_lastApplyHitTarget = NULL;
+static int g_applyKingBurstCalls = 0;
+static Entity *g_lastKingBurstBase = NULL;
+static float g_lastKingBurstRadius = 0.0f;
+static int g_lastKingBurstDamage = 0;
 
 /* ---- Stubs required by entities.c ---- */
 enum { DEBUG_EVT_STATE_CHANGE = 0, DEBUG_EVT_HIT = 1, DEBUG_EVT_DEATH_FINISH = 2 };
@@ -313,6 +322,14 @@ void combat_apply_hit(Entity *attacker, Entity *target, GameState *gs) {
     g_applyHitCalls++;
     g_lastApplyHitAttacker = attacker;
     g_lastApplyHitTarget = target;
+}
+
+void combat_apply_king_burst(Entity *base, float radius, int damage, GameState *gs) {
+    (void)gs;
+    g_applyKingBurstCalls++;
+    g_lastKingBurstBase = base;
+    g_lastKingBurstRadius = radius;
+    g_lastKingBurstDamage = damage;
 }
 
 void pathfind_step_entity(Entity *e, const Battlefield *bf, float deltaTime) {
@@ -497,6 +514,10 @@ static void reset_globals(void) {
     g_applyHitCalls = 0;
     g_lastApplyHitAttacker = NULL;
     g_lastApplyHitTarget = NULL;
+    g_applyKingBurstCalls = 0;
+    g_lastKingBurstBase = NULL;
+    g_lastKingBurstRadius = 0.0f;
+    g_lastKingBurstDamage = 0;
 }
 
 static void battlefield_add(Battlefield *bf, Entity *entity) {
@@ -1015,6 +1036,49 @@ static void test_building_attack_clip_finishes_and_returns_to_idle(void) {
     assert(g_applyHitCalls == 0);
 }
 
+static void test_building_attack_hit_marker_dispatches_queued_king_burst_once(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity base = make_base_building(1, 0, (Vector2){540.0f, 1800.0f});
+    entity_set_state(&base, ESTATE_ATTACKING);
+    base.basePendingKingBurst = true;
+    base.basePendingKingBurstDamage = 43;
+    base.anim.elapsed = 0.49f;
+    base.anim.normalizedTime = 0.49f;
+
+    entity_update(&base, &gs, 0.05f);
+
+    assert(base.state == ESTATE_ATTACKING);
+    assert(g_applyKingBurstCalls == 1);
+    assert(g_lastKingBurstBase == &base);
+    assert(fabsf(g_lastKingBurstRadius - PROGRESSION_KING_BURST_RADIUS) < 0.001f);
+    assert(g_lastKingBurstDamage == 43);
+    assert(base.basePendingKingBurst == false);
+    assert(base.basePendingKingBurstDamage == 0);
+}
+
+static void test_building_attack_finish_clears_pending_king_burst_without_dispatch(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity base = make_base_building(1, 0, (Vector2){540.0f, 1800.0f});
+    entity_set_state(&base, ESTATE_ATTACKING);
+    base.basePendingKingBurst = true;
+    base.basePendingKingBurstDamage = 52;
+    base.anim.elapsed = 0.95f;
+    base.anim.normalizedTime = 0.95f;
+
+    entity_update(&base, &gs, 0.10f);
+
+    assert(g_applyKingBurstCalls == 0);
+    assert(base.basePendingKingBurst == false);
+    assert(base.basePendingKingBurstDamage == 0);
+    assert(base.state == ESTATE_IDLE);
+    assert(base.anim.anim == ANIM_IDLE);
+    assert(base.anim.oneShot == false);
+}
+
 int main(void) {
     printf("Running entities tests...\n");
 
@@ -1022,6 +1086,8 @@ int main(void) {
     RUN_TEST(test_healer_cancels_stale_heal_and_walks_without_replacement);
     RUN_TEST(test_non_healer_enemy_hit_flow_unchanged);
     RUN_TEST(test_building_attack_clip_finishes_and_returns_to_idle);
+    RUN_TEST(test_building_attack_hit_marker_dispatches_queued_king_burst_once);
+    RUN_TEST(test_building_attack_finish_clears_pending_king_burst_without_dispatch);
 
     RUN_TEST(test_walking_unit_acquires_movement_target_in_aggro_radius);
     RUN_TEST(test_idle_unit_acquires_enemy_pursuit_in_aggro_radius);

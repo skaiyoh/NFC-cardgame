@@ -4,6 +4,7 @@
 
 #include "player.h"
 #include "energy.h"
+#include "progression.h"
 #include "../core/battlefield.h"
 #include <string.h>
 #include <stdio.h>
@@ -50,8 +51,9 @@ void player_init(Player *p, int id, BattleSide side,
         p->slots[i].cooldownTimer = 0.0f;
     }
 
-    // Initialize energy
-    energy_init(p, 10.0f, 1.5f);
+    // Initialize energy at the level-1 regen rate; progression_sync_player
+    // re-asserts this after the base is created.
+    energy_init(p, 10.0f, PROGRESSION_REGEN_LEVEL1);
 
     printf("Player %d (side %s) initialized\n", id,
            side == SIDE_BOTTOM ? "BOTTOM" : "TOP");
@@ -146,4 +148,10 @@ void player_hand_restart_animation_for_card(Player *p, const Card *card) {
         p->handCardAnimElapsed[i] = 0.0f;
         return;
     }
+}
+
+void player_award_sustenance(GameState *gs, int playerIndex, int amount) {
+    if (!gs || playerIndex < 0 || playerIndex > 1 || amount <= 0) return;
+    gs->players[playerIndex].sustenanceCollected += amount;
+    progression_sync_player(gs, playerIndex);
 }

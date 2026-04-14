@@ -1,4 +1,4 @@
-.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_deposit_slots test_assault_slots test_status_bars test_win_condition test_sustenance test_hand_ui test_card_effects test_uvulite_font sprite-frame-atlas
+.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_deposit_slots test_assault_slots test_status_bars test_win_condition test_sustenance test_hand_ui test_card_effects test_uvulite_font test_progression sprite-frame-atlas
 
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
@@ -11,7 +11,7 @@ SRC_CORE = src/core/game.c src/core/battlefield.c src/core/battlefield_math.c sr
 SRC_DATA = src/data/db.c src/data/cards.c
 SRC_RENDERING = src/rendering/card_renderer.c src/rendering/tilemap_renderer.c src/rendering/viewport.c src/rendering/sprite_renderer.c src/rendering/spawn_fx.c src/rendering/status_bars.c src/rendering/biome.c src/rendering/ui.c src/rendering/debug_overlay.c src/rendering/sustenance_renderer.c src/rendering/hand_ui.c src/rendering/uvulite_font.c
 SRC_ENTITIES = src/entities/entities.c src/entities/entity_animation.c src/entities/troop.c src/entities/building.c src/entities/projectile.c
-SRC_SYSTEMS = src/systems/player.c src/systems/energy.c src/systems/spawn.c src/systems/spawn_placement.c src/systems/match.c
+SRC_SYSTEMS = src/systems/player.c src/systems/energy.c src/systems/spawn.c src/systems/spawn_placement.c src/systems/match.c src/systems/progression.c
 SRC_LOGIC = src/logic/assault_slots.c src/logic/card_effects.c src/logic/combat.c src/logic/deposit_slots.c src/logic/farmer.c src/logic/pathfinding.c src/logic/win_condition.c
 SRC_HARDWARE = src/hardware/nfc_reader.c src/hardware/arduino_protocol.c
 SRC_LIB = third_party/cjson/cJSON.c
@@ -101,7 +101,10 @@ test_card_effects: tests/test_card_effects.c src/logic/card_effects.c
 test_uvulite_font: tests/test_uvulite_font.c src/rendering/uvulite_font.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_uvulite_font.c -o test_uvulite_font -lm
 
-test: test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_deposit_slots test_assault_slots test_status_bars test_win_condition test_sustenance test_hand_ui test_card_effects test_uvulite_font
+test_progression: tests/test_progression.c src/systems/progression.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_progression.c -o test_progression -lm
+
+test: test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_deposit_slots test_assault_slots test_status_bars test_win_condition test_sustenance test_hand_ui test_card_effects test_uvulite_font test_progression
 	./test_pathfinding
 	./test_combat
 	./test_entities
@@ -119,9 +122,10 @@ test: test_pathfinding test_combat test_entities test_battlefield_math test_batt
 	./test_hand_ui
 	./test_card_effects
 	./test_uvulite_font
+	./test_progression
 
 sprite-frame-atlas:
 	python3 tools/generate_sprite_frame_atlas.py
 
 clean:
-	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_deposit_slots test_assault_slots test_status_bars test_win_condition test_sustenance test_hand_ui test_card_effects test_uvulite_font test_ore
+	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_deposit_slots test_assault_slots test_status_bars test_win_condition test_sustenance test_hand_ui test_card_effects test_uvulite_font test_progression test_ore

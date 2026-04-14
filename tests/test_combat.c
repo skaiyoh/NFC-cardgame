@@ -212,6 +212,9 @@ struct Entity {
     DepositSlotKind reservedDepositSlotKind;
     DepositSlotRing depositSlots;
     AssaultSlotRing assaultSlots;
+    int baseLevel;
+    bool basePendingKingBurst;
+    int basePendingKingBurstDamage;
 };
 
 /* Player stub -- lean struct matching Plan 11-05 types.h */
@@ -338,9 +341,15 @@ void win_latch_from_destroyed_base(GameState *gs, const Entity *destroyedBase) {
     }
 }
 
+static int s_farmerOnDeathCalls = 0;
+static Entity *s_lastFarmerOnDeath = NULL;
+static GameState *s_lastFarmerOnDeathGameState = NULL;
+
 /* farmer_on_death stub -- combat.c now calls this on farmer kills */
 void farmer_on_death(Entity *farmer, GameState *gs) {
-    (void)farmer; (void)gs;
+    s_farmerOnDeathCalls++;
+    s_lastFarmerOnDeath = farmer;
+    s_lastFarmerOnDeathGameState = gs;
 }
 
 void assault_slots_build_for_base(Entity *base);
@@ -467,6 +476,12 @@ static int tests_passed = 0;
     tests_passed++; \
     printf("PASS: %s\n", #fn); \
 } while(0)
+
+static void reset_test_observers(void) {
+    s_farmerOnDeathCalls = 0;
+    s_lastFarmerOnDeath = NULL;
+    s_lastFarmerOnDeathGameState = NULL;
+}
 
 static void test_in_range_same_space(void) {
     GameState gs = make_game_state();
@@ -836,6 +851,140 @@ static void test_apply_hit_null_safety(void) {
     /* Should not crash */
     combat_apply_hit(NULL, &attacker, &gs);
     combat_apply_hit(&attacker, NULL, &gs);
+}
+
+/* ---- combat_apply_king_burst tests ---- */
+
+static void test_king_burst_damages_only_live_enemy_non_projectiles_in_radius(void) {
+    reset_test_observers();
+    GameState gs = make_game_state();
+
+    Entity base = make_entity(0, ENTITY_BUILDING, (Vector2){540, 1600});
+    base.hp = 5000;
+    base.maxHP = 5000;
+
+    Entity enemyTroop = make_entity(1, ENTITY_TROOP, (Vector2){600, 1600});
+    Entity enemyBuilding = make_entity(1, ENTITY_BUILDING, (Vector2){540, 1490});
+    Entity friendlyTroop = make_entity(0, ENTITY_TROOP, (Vector2){520, 1600});
+    Entity friendlyBuilding = make_entity(0, ENTITY_BUILDING, (Vector2){540, 1510});
+    Entity projectile = make_entity(1, ENTITY_PROJECTILE, (Vector2){540, 1580});
+    Entity deadEnemy = make_entity(1, ENTITY_TROOP, (Vector2){560, 1600});
+    Entity markedEnemy = make_entity(1, ENTITY_TROOP, (Vector2){580, 1600});
+    Entity farEnemy = make_entity(1, ENTITY_TROOP, (Vector2){540, 1785});
+
+    deadEnemy.alive = false;
+    deadEnemy.hp = 0;
+    markedEnemy.markedForRemoval = true;
+
+    bf_test_add_entity(&gs, &base);
+    bf_test_add_entity(&gs, &enemyTroop);
+    bf_test_add_entity(&gs, &enemyBuilding);
+    bf_test_add_entity(&gs, &friendlyTroop);
+    bf_test_add_entity(&gs, &friendlyBuilding);
+    bf_test_add_entity(&gs, &projectile);
+    bf_test_add_entity(&gs, &deadEnemy);
+    bf_test_add_entity(&gs, &markedEnemy);
+    bf_test_add_entity(&gs, &farEnemy);
+
+    combat_apply_king_burst(&base, 160.0f, 30, &gs);
+
+    assert(base.hp == 5000);
+    assert(enemyTroop.hp == 70);
+    assert(enemyBuilding.hp == 70);
+    assert(friendlyTroop.hp == 100);
+    assert(friendlyBuilding.hp == 100);
+    assert(projectile.hp == 100);
+    assert(deadEnemy.hp == 0);
+    assert(markedEnemy.hp == 100);
+    assert(farEnemy.hp == 100);
+    assert(s_farmerOnDeathCalls == 0);
+    assert(gs.gameOver == false);
+}
+
+static void test_king_burst_farmer_kill_calls_farmer_on_death(void) {
+    reset_test_observers();
+    GameState gs = make_game_state();
+
+    Entity base = make_entity(0, ENTITY_BUILDING, (Vector2){540, 1600});
+    Entity farmer = make_entity(1, ENTITY_TROOP, (Vector2){600, 1600});
+    farmer.unitRole = UNIT_ROLE_FARMER;
+    farmer.hp = 20;
+    farmer.maxHP = 20;
+
+    bf_test_add_entity(&gs, &base);
+    bf_test_add_entity(&gs, &farmer);
+
+    combat_apply_king_burst(&base, 160.0f, 30, &gs);
+
+    assert(farmer.hp == 0);
+    assert(farmer.alive == false);
+    assert(farmer.state == ESTATE_DEAD);
+    assert(s_farmerOnDeathCalls == 1);
+    assert(s_lastFarmerOnDeath == &farmer);
+    assert(s_lastFarmerOnDeathGameState == &gs);
+}
+
+static void test_king_burst_kills_enemy_base_latches_win(void) {
+    reset_test_observers();
+    GameState gs = make_game_state();
+
+    Entity base = make_entity(0, ENTITY_BUILDING, (Vector2){540, 1600});
+    Entity enemyBase = make_entity(1, ENTITY_BUILDING, (Vector2){540, 1500});
+    enemyBase.hp = 25;
+    enemyBase.maxHP = 5000;
+    gs.players[1].base = (void *)&enemyBase;
+
+    bf_test_add_entity(&gs, &base);
+    bf_test_add_entity(&gs, &enemyBase);
+
+    combat_apply_king_burst(&base, 160.0f, 30, &gs);
+
+    assert(enemyBase.hp == 0);
+    assert(enemyBase.alive == false);
+    assert(gs.gameOver == true);
+    assert(gs.winnerID == 0);
+}
+
+static void test_king_burst_kills_non_base_building_without_match_end(void) {
+    reset_test_observers();
+    GameState gs = make_game_state();
+
+    Entity base = make_entity(0, ENTITY_BUILDING, (Vector2){540, 1600});
+    Entity enemyBuilding = make_entity(1, ENTITY_BUILDING, (Vector2){540, 1500});
+    enemyBuilding.hp = 25;
+    enemyBuilding.maxHP = 100;
+
+    bf_test_add_entity(&gs, &base);
+    bf_test_add_entity(&gs, &enemyBuilding);
+
+    combat_apply_king_burst(&base, 160.0f, 30, &gs);
+
+    assert(enemyBuilding.hp == 0);
+    assert(enemyBuilding.alive == false);
+    assert(gs.gameOver == false);
+    assert(gs.winnerID == -1);
+}
+
+static void test_king_burst_null_and_invalid_params_are_noops(void) {
+    reset_test_observers();
+    GameState gs = make_game_state();
+
+    Entity base = make_entity(0, ENTITY_BUILDING, (Vector2){540, 1600});
+    Entity enemy = make_entity(1, ENTITY_TROOP, (Vector2){540, 1500});
+
+    bf_test_add_entity(&gs, &base);
+    bf_test_add_entity(&gs, &enemy);
+
+    combat_apply_king_burst(NULL, 160.0f, 30, &gs);
+    combat_apply_king_burst(&base, 0.0f, 30, &gs);
+    combat_apply_king_burst(&base, 160.0f, 0, &gs);
+    combat_apply_king_burst(&base, 160.0f, 30, NULL);
+
+    assert(enemy.hp == 100);
+    assert(enemy.alive == true);
+    assert(s_farmerOnDeathCalls == 0);
+    assert(gs.gameOver == false);
+    assert(gs.winnerID == -1);
 }
 
 /* ---- Win-latch path tests ---- */
@@ -1341,6 +1490,11 @@ int main(void) {
     RUN_TEST(test_apply_hit_kills);
     RUN_TEST(test_apply_hit_skips_dead);
     RUN_TEST(test_apply_hit_null_safety);
+    RUN_TEST(test_king_burst_damages_only_live_enemy_non_projectiles_in_radius);
+    RUN_TEST(test_king_burst_farmer_kill_calls_farmer_on_death);
+    RUN_TEST(test_king_burst_kills_enemy_base_latches_win);
+    RUN_TEST(test_king_burst_kills_non_base_building_without_match_end);
+    RUN_TEST(test_king_burst_null_and_invalid_params_are_noops);
     RUN_TEST(test_apply_hit_kills_p1_base_latches_p2_win);
     RUN_TEST(test_resolve_kills_p2_base_latches_p1_win);
     RUN_TEST(test_killing_non_base_building_no_match_end);
