@@ -21,4 +21,9 @@ void ui_draw_sustenance_counter(const Player *p, Rectangle viewport,
 void ui_draw_match_result(const Player *p, const char *text, float rotation,
                           Texture2D letteringTexture);
 
+// Draws a translucent full-screen black backdrop behind the match-result
+// labels so VICTORY/DEFEAT/DRAW text reads clearly over the battlefield.
+// Call once per frame, before the per-player result labels.
+void ui_draw_match_result_backdrop(void);
+
 #endif //NFC_CARDGAME_UI_H

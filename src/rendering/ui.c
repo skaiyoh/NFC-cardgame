@@ -14,6 +14,7 @@
 #define UI_SUSTENANCE_PADDING 40.0f
 #define UI_MATCH_RESULT_SCALE   8.0f
 #define UI_MATCH_RESULT_SPACING 1.0f
+#define UI_MATCH_RESULT_BACKDROP_ALPHA 0.35f
 
 static int ui_normalize_rotation(float rotation) {
     int normalized = ((int) rotation) % 360;
@@ -177,4 +178,9 @@ void ui_draw_match_result(const Player *p, const char *text, float rotation,
                     ui_match_result_fallback_color(text));
     }
     (void) p;
+}
+
+void ui_draw_match_result_backdrop(void) {
+    DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(),
+                  Fade(BLACK, UI_MATCH_RESULT_BACKDROP_ALPHA));
 }

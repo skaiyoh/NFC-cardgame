@@ -378,8 +378,10 @@ void game_render(GameState *g) {
     hand_ui_draw(&g->players[0], g->handBarBackgroundTexture, g->handCardSheetTexture);
     hand_ui_draw(&g->players[1], g->handBarBackgroundTexture, g->handCardSheetTexture);
 
-    // Match result overlay
+    // Match result overlay — full-screen dim backdrop first, then rotated
+    // VICTORY/DEFEAT/DRAW labels on top for each player.
     if (g->gameOver) {
+        ui_draw_match_result_backdrop();
         for (int i = 0; i < 2; i++) {
             const bool drawnMatch = (g->winnerID < 0);
             const bool playerWon = (g->winnerID == g->players[i].id);
