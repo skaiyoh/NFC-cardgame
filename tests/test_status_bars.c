@@ -383,6 +383,34 @@ static void test_status_bars_draws_damaged_troop_bar(void) {
     assert(approx_eq(g_drawDsts[0].height, 16.0f, 0.001f));
 }
 
+static void test_status_bars_reverses_troop_bar_for_flipped_viewport(void) {
+    GameState gs = make_game_state();
+    Entity troop = make_troop(80, 100);
+    Camera2D camera = {0};
+
+    gs.battlefield.entities[0] = &troop;
+    gs.battlefield.entityCount = 1;
+
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+
+    Rectangle forwardSrc = g_drawSrcs[0];
+    Rectangle forwardDst = g_drawDsts[0];
+
+    reset_draw_state();
+    status_bars_draw_screen(&gs, camera, 90.0f, 270.0f, true);
+
+    assert(g_drawCalls == 1);
+    assert(approx_eq(g_drawDsts[0].x, forwardDst.x, 0.001f));
+    assert(approx_eq(g_drawDsts[0].y, forwardDst.y, 0.001f));
+    assert(approx_eq(g_drawDsts[0].width, forwardDst.width, 0.001f));
+    assert(approx_eq(g_drawDsts[0].height, forwardDst.height, 0.001f));
+
+    assert(approx_eq(g_drawSrcs[0].x, forwardSrc.x, 0.001f));
+    assert(approx_eq(g_drawSrcs[0].y, forwardSrc.y, 0.001f));
+    assert(approx_eq(g_drawSrcs[0].width, -forwardSrc.width, 0.001f));
+    assert(approx_eq(g_drawSrcs[0].height, forwardSrc.height, 0.001f));
+}
+
 static void test_damaged_troop_uses_fallback_when_troop_texture_missing(void) {
     GameState gs = make_game_state();
     Entity troop = make_troop(80, 100);
@@ -396,6 +424,29 @@ static void test_damaged_troop_uses_fallback_when_troop_texture_missing(void) {
 
     assert(g_drawCalls == 0);
     assert(g_rectCalls == 3);
+}
+
+static void test_fallback_troop_bar_reverses_for_flipped_viewport(void) {
+    GameState gs = make_game_state();
+    Entity troop = make_troop(80, 100);
+    Camera2D camera = {0};
+
+    gs.troopHealthBarTexture.id = 0;
+    gs.battlefield.entities[0] = &troop;
+    gs.battlefield.entityCount = 1;
+
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+    float forwardShellY = g_rectDsts[1].y;
+    float forwardFillY = g_rectDsts[2].y;
+
+    reset_draw_state();
+    status_bars_draw_screen(&gs, camera, 90.0f, 270.0f, true);
+    float reversedShellY = g_rectDsts[1].y;
+    float reversedFillY = g_rectDsts[2].y;
+
+    assert(approx_eq(forwardShellY, reversedShellY, 0.001f));
+    assert(forwardFillY < forwardShellY);
+    assert(reversedFillY > reversedShellY);
 }
 
 /* Base bars: 4500/5000 HP (0.9) and 7/10 energy.
@@ -996,7 +1047,9 @@ int main(void) {
     RUN_TEST(test_damaged_troop_frame_visible);
     RUN_TEST(test_status_bars_draw_skips_undamaged_troops);
     RUN_TEST(test_status_bars_draws_damaged_troop_bar);
+    RUN_TEST(test_status_bars_reverses_troop_bar_for_flipped_viewport);
     RUN_TEST(test_damaged_troop_uses_fallback_when_troop_texture_missing);
+    RUN_TEST(test_fallback_troop_bar_reverses_for_flipped_viewport);
     RUN_TEST(test_base_bars_health_fill_and_energy_pips);
     RUN_TEST(test_base_bar_full_health_and_energy);
     RUN_TEST(test_base_bar_near_empty_health_draws_tiny_fill);
