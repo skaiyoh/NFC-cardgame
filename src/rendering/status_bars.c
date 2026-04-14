@@ -65,6 +65,10 @@
 #define STATUS_BAR_LABEL_SPACING           1.0f
 #define STATUS_BAR_LABEL_GAP               2.0f
 #define STATUS_BAR_BASE_LABEL_FONT_SIZE   16.0f
+#define STATUS_BAR_REGEN_LABEL_FONT_SIZE  12.0f
+#define STATUS_BAR_REGEN_LABEL_STACK_OFFSET 12.0f
+#define STATUS_BAR_REGEN_GHOST_ALPHA       72
+#define STATUS_BAR_REGEN_PROGRESS_ALPHA   176
 
 typedef enum {
     LABEL_INSIDE,
@@ -78,6 +82,14 @@ static const Color HP_BAR_FILL_COLOR     = { 232,  74,  66, 255 };
 static const Color ENERGY_BAR_FILL_COLOR = { 255, 197,  75, 255 };
 static const Color BAR_EMPTY_COLOR       = {  44,  27,  43, 255 };
 static const Color BAR_BORDER_COLOR      = {  34,  12,  33, 255 };
+static const Color ENERGY_BAR_REGEN_GHOST_TINT =
+    { 255, 255, 255, STATUS_BAR_REGEN_GHOST_ALPHA };
+static const Color ENERGY_BAR_REGEN_PROGRESS_TINT =
+    { 255, 255, 255, STATUS_BAR_REGEN_PROGRESS_ALPHA };
+static const Color ENERGY_BAR_REGEN_GHOST_COLOR =
+    { 255, 197,  75, STATUS_BAR_REGEN_GHOST_ALPHA };
+static const Color ENERGY_BAR_REGEN_PROGRESS_COLOR =
+    { 255, 197,  75, STATUS_BAR_REGEN_PROGRESS_ALPHA };
 
 static float clamp01(float value) {
     if (value < 0.0f) return 0.0f;
@@ -327,24 +339,40 @@ static void draw_troop_health_bar(const GameState *gs, const Entity *troop,
 // Draw a sub-rect overlay at a local (dx, dy) offset from a rotated bar center.
 // Local +X is the bar's length axis; +Y is its thickness axis, both measured
 // in bar-local (pre-rotation) pixels.
-static void draw_base_overlay(Texture2D texture, Rectangle src,
-                              Vector2 screenCenter, float dx, float dy,
-                              float dstWidth, float dstHeight,
-                              float rotationDegrees) {
-    if (texture.id == 0) return;
-
+static Rectangle base_overlay_dst_rect(Vector2 screenCenter, float dx, float dy,
+                                       float dstWidth, float dstHeight,
+                                       float rotationDegrees) {
     float rad = rotationDegrees * (PI_F / 180.0f);
     float cosA = cosf(rad);
     float sinA = sinf(rad);
 
-    Rectangle dst = {
+    return (Rectangle){
         screenCenter.x + dx * cosA - dy * sinA,
         screenCenter.y + dx * sinA + dy * cosA,
         dstWidth,
         dstHeight
     };
+}
+
+static void draw_base_overlay_tinted(Texture2D texture, Rectangle src,
+                                     Vector2 screenCenter, float dx, float dy,
+                                     float dstWidth, float dstHeight,
+                                     float rotationDegrees, Color tint) {
+    if (texture.id == 0) return;
+
+    Rectangle dst = base_overlay_dst_rect(screenCenter, dx, dy,
+                                          dstWidth, dstHeight,
+                                          rotationDegrees);
     Vector2 origin = { dstWidth * 0.5f, dstHeight * 0.5f };
-    DrawTexturePro(texture, src, dst, origin, rotationDegrees, WHITE);
+    DrawTexturePro(texture, src, dst, origin, rotationDegrees, tint);
+}
+
+static void draw_base_overlay(Texture2D texture, Rectangle src,
+                              Vector2 screenCenter, float dx, float dy,
+                              float dstWidth, float dstHeight,
+                              float rotationDegrees) {
+    draw_base_overlay_tinted(texture, src, screenCenter, dx, dy,
+                             dstWidth, dstHeight, rotationDegrees, WHITE);
 }
 
 // Quantize a continuous energy value into whole-pip units. Partial-pip fills
@@ -356,6 +384,42 @@ static int base_energy_filled_pips(float energy) {
     if (pips < 0) pips = 0;
     if (pips > STATUS_BAR_ENERGY_PIP_COUNT) pips = STATUS_BAR_ENERGY_PIP_COUNT;
     return pips;
+}
+
+static bool energy_regen_cue_visible(float energy, float maxEnergy,
+                                     float energyRegenRate) {
+    return energy < maxEnergy &&
+           energyRegenRate > 0.0f &&
+           base_energy_filled_pips(energy) < STATUS_BAR_ENERGY_PIP_COUNT;
+}
+
+static float energy_regen_cue_progress(float energy) {
+    return clamp01(energy - floorf(energy));
+}
+
+static int energy_regen_cue_slot_index(float energy, bool reverseFillDirection) {
+    int filled = base_energy_filled_pips(energy);
+    return reverseFillDirection
+        ? (STATUS_BAR_ENERGY_PIP_COUNT - 1 - filled)
+        : filled;
+}
+
+static Rectangle energy_pip_src_rect(int slotIndex) {
+    return (Rectangle){
+        STATUS_BAR_ENERGY_FULL_CELL_X + STATUS_BAR_ENERGY_PIP_SRC_LEFT_INSET
+            + STATUS_BAR_ENERGY_PIP_STRIDE * (float)slotIndex,
+        STATUS_BAR_ENERGY_FULL_CELL_Y + STATUS_BAR_ENERGY_PIP_TOP_INSET,
+        STATUS_BAR_ENERGY_PIP_WIDTH,
+        STATUS_BAR_ENERGY_PIP_HEIGHT
+    };
+}
+
+static float energy_pip_center_dx(int slotIndex, float pipWidthDst) {
+    return -(STATUS_BAR_BASE_DRAW_WIDTH * 0.5f
+             - STATUS_BAR_ENERGY_EMPTY_PIP_LEFT_INSET * STATUS_BAR_BASE_DRAW_SCALE_X)
+           + pipWidthDst * 0.5f
+           + STATUS_BAR_ENERGY_PIP_STRIDE * STATUS_BAR_BASE_DRAW_SCALE_X
+                 * (float)slotIndex;
 }
 
 // Health bar: empty shell + continuous fill overlay sourced from the full-shell
@@ -400,6 +464,7 @@ static void draw_base_health_continuous(Texture2D texture, float ratio,
 // the authored pip geometry so the 9 separators are preserved and never
 // painted over.
 static void draw_base_energy_pips(Texture2D texture, float energy,
+                                  float maxEnergy, float energyRegenRate,
                                   Vector2 screenCenter, float rotationDegrees,
                                   bool reverseFillDirection) {
     if (texture.id == 0) return;
@@ -422,23 +487,38 @@ static void draw_base_energy_pips(Texture2D texture, float energy,
         int slotIndex = reverseFillDirection
             ? (STATUS_BAR_ENERGY_PIP_COUNT - 1 - i)
             : i;
-        Rectangle pipSrc = {
-            STATUS_BAR_ENERGY_FULL_CELL_X + STATUS_BAR_ENERGY_PIP_SRC_LEFT_INSET
-                + STATUS_BAR_ENERGY_PIP_STRIDE * (float)slotIndex,
-            STATUS_BAR_ENERGY_FULL_CELL_Y + STATUS_BAR_ENERGY_PIP_TOP_INSET,
-            STATUS_BAR_ENERGY_PIP_WIDTH,
-            STATUS_BAR_ENERGY_PIP_HEIGHT
-        };
-        float dx = -(STATUS_BAR_BASE_DRAW_WIDTH * 0.5f
-                     - STATUS_BAR_ENERGY_EMPTY_PIP_LEFT_INSET * STATUS_BAR_BASE_DRAW_SCALE_X)
-                   + pipWidthDst * 0.5f
-                   + STATUS_BAR_ENERGY_PIP_STRIDE * STATUS_BAR_BASE_DRAW_SCALE_X
-                         * (float)slotIndex;
+        Rectangle pipSrc = energy_pip_src_rect(slotIndex);
+        float dx = energy_pip_center_dx(slotIndex, pipWidthDst);
         draw_base_overlay(texture, pipSrc, screenCenter, dx, dyPip,
                           pipWidthDst,
                           pipHeightDst,
                           rotationDegrees);
     }
+
+    if (!energy_regen_cue_visible(energy, maxEnergy, energyRegenRate)) return;
+
+    int regenSlotIndex = energy_regen_cue_slot_index(energy, reverseFillDirection);
+    Rectangle regenSrc = energy_pip_src_rect(regenSlotIndex);
+    float regenDx = energy_pip_center_dx(regenSlotIndex, pipWidthDst);
+    draw_base_overlay_tinted(texture, regenSrc, screenCenter, regenDx, dyPip,
+                             pipWidthDst, pipHeightDst, rotationDegrees,
+                             ENERGY_BAR_REGEN_GHOST_TINT);
+
+    float progress = energy_regen_cue_progress(energy);
+    if (progress <= 0.0f) return;
+
+    Rectangle progressSrc = regenSrc;
+    float progressWidthSrc = progressSrc.width * progress;
+    float progressWidthDst = pipWidthDst * progress;
+    if (reverseFillDirection) {
+        progressSrc.x += progressSrc.width - progressWidthSrc;
+    }
+    progressSrc.width = progressWidthSrc;
+    float progressDx = regenDx +
+        (reverseFillDirection ? 1.0f : -1.0f) * (pipWidthDst - progressWidthDst) * 0.5f;
+    draw_base_overlay_tinted(texture, progressSrc, screenCenter, progressDx, dyPip,
+                             progressWidthDst, pipHeightDst, rotationDegrees,
+                             ENERGY_BAR_REGEN_PROGRESS_TINT);
 }
 
 // Draws a numeric label anchored to a bar center, rotated to match the bar.
@@ -450,7 +530,9 @@ static void draw_bar_numeric_label(const char *text, Vector2 barCenter,
                                    float textRotationDegrees,
                                    float axisRotationDegrees,
                                    LabelPlacement placement,
-                                   float outsideDirectionSign) {
+                                   float outsideDirectionSign,
+                                   float extraAxialOffset,
+                                   float extraNormalOffset) {
     if (!text || text[0] == '\0') return;
 
     Font font = GetFontDefault();
@@ -466,9 +548,16 @@ static void draw_bar_numeric_label(const char *text, Vector2 barCenter,
         float cosA = cosf(rad);
         float sinA = sinf(rad);
         float outsideOffset =
-            barWidth * 0.5f + STATUS_BAR_LABEL_GAP + textSize.x * 0.5f;
+            barWidth * 0.5f + STATUS_BAR_LABEL_GAP + textSize.x * 0.5f
+            + extraAxialOffset;
         center.x += cosA * outsideOffset * outsideDirectionSign;
         center.y += sinA * outsideOffset * outsideDirectionSign;
+
+        // Optional offset in the screen-space normal of the bar axis. Useful
+        // for stacking secondary labels near the same bar end without turning
+        // them into one long crowded run.
+        center.x += -sinA * extraNormalOffset;
+        center.y +=  cosA * extraNormalOffset;
     }
 
     Vector2 origin = { textSize.x * 0.5f, textSize.y * 0.5f };
@@ -590,6 +679,29 @@ static void format_bar_label(char *buf, size_t bufSize, int cur, int max) {
     snprintf(buf, bufSize, "%d/%d", cur, max);
 }
 
+static void format_regen_label(char *buf, size_t bufSize, float rate) {
+    if (rate < 0.0f) rate = 0.0f;
+    snprintf(buf, bufSize, "+%.1f/sec", rate);
+}
+
+static float stacked_label_axial_offset(const char *anchorText, float anchorFontSize,
+                                        const char *stackedText, float stackedFontSize) {
+    Font font = GetFontDefault();
+    Vector2 anchorSize = MeasureTextEx(font, anchorText, anchorFontSize,
+                                       STATUS_BAR_LABEL_SPACING);
+    Vector2 stackedSize = MeasureTextEx(font, stackedText, stackedFontSize,
+                                        STATUS_BAR_LABEL_SPACING);
+    return (anchorSize.x - stackedSize.x) * 0.5f;
+}
+
+static float regen_label_normal_offset(float labelRotationDegrees) {
+    int rot = ((int)lroundf(labelRotationDegrees)) % 360;
+    if (rot < 0) rot += 360;
+    return (rot == 270)
+        ? -STATUS_BAR_REGEN_LABEL_STACK_OFFSET
+        :  STATUS_BAR_REGEN_LABEL_STACK_OFFSET;
+}
+
 static void draw_base_bars(const GameState *gs, const Entity *base, const Player *owner,
                            Camera2D camera,
                            float rotationDegrees,
@@ -607,12 +719,14 @@ static void draw_base_bars(const GameState *gs, const Entity *base, const Player
     draw_base_health_continuous(gs->statusBarsTexture, hpRatio,
                                 healthCenter, rotationDegrees);
     draw_base_energy_pips(gs->statusBarsTexture, owner->energy,
+                          owner->maxEnergy, owner->energyRegenRate,
                           energyCenter, rotationDegrees,
                           reverseEnergyFillDirection);
 
     char hpLabel[32];
     char energyLabel[32];
     char levelLabel[32];
+    char regenLabel[32];
     int filledPips = base_energy_filled_pips(owner->energy);
     // The top player's viewport is vertically flipped during composite, so its
     // raw RT-space outside offset stays positive while the unflipped P1 path
@@ -623,19 +737,30 @@ static void draw_base_bars(const GameState *gs, const Entity *base, const Player
     format_bar_label(energyLabel, sizeof(energyLabel),
                      filledPips, STATUS_BAR_ENERGY_PIP_COUNT);
     snprintf(levelLabel, sizeof(levelLabel), "LVL %d", displayLevel);
+    format_regen_label(regenLabel, sizeof(regenLabel), owner->energyRegenRate);
+    float regenNormalOffset = regen_label_normal_offset(labelRotationDegrees);
+    float regenAxialOffset = stacked_label_axial_offset(
+        energyLabel, STATUS_BAR_BASE_LABEL_FONT_SIZE,
+        regenLabel, STATUS_BAR_REGEN_LABEL_FONT_SIZE
+    );
 
     draw_bar_numeric_label(hpLabel, healthCenter, STATUS_BAR_BASE_DRAW_WIDTH,
                            STATUS_BAR_BASE_LABEL_FONT_SIZE,
                            labelRotationDegrees, rotationDegrees, LABEL_INSIDE,
-                           1.0f);
+                           1.0f, 0.0f, 0.0f);
     draw_bar_numeric_label(levelLabel, healthCenter, STATUS_BAR_BASE_DRAW_WIDTH,
                            STATUS_BAR_BASE_LABEL_FONT_SIZE,
                            labelRotationDegrees, rotationDegrees, LABEL_OUTSIDE,
-                           energyLabelDirection);
+                           energyLabelDirection, 0.0f, 0.0f);
     draw_bar_numeric_label(energyLabel, energyCenter, STATUS_BAR_BASE_DRAW_WIDTH,
                            STATUS_BAR_BASE_LABEL_FONT_SIZE,
                            labelRotationDegrees, rotationDegrees, LABEL_OUTSIDE,
-                           energyLabelDirection);
+                           energyLabelDirection, 0.0f, 0.0f);
+    draw_bar_numeric_label(regenLabel, energyCenter, STATUS_BAR_BASE_DRAW_WIDTH,
+                           STATUS_BAR_REGEN_LABEL_FONT_SIZE,
+                           labelRotationDegrees, rotationDegrees, LABEL_OUTSIDE,
+                           energyLabelDirection, regenAxialOffset,
+                           regenNormalOffset);
 }
 
 // Draw the base-bar shell border + empty interior used by both fallback bars.
@@ -691,16 +816,12 @@ static void draw_base_health_fallback(Vector2 screenCenter, float ratio,
 // Fallback energy: shell + one pip rect per filled unit, scaled from the
 // authored 8x5 pip geometry.
 static void draw_base_energy_fallback(Vector2 screenCenter, float energy,
+                                      float maxEnergy, float energyRegenRate,
                                       float rotationDegrees,
                                       bool reverseFillDirection) {
     draw_base_fallback_shell(screenCenter, rotationDegrees);
 
     int filled = base_energy_filled_pips(energy);
-    if (filled <= 0) return;
-
-    float rad = rotationDegrees * (PI_F / 180.0f);
-    float cosA = cosf(rad);
-    float sinA = sinf(rad);
     float pipWidthDst = STATUS_BAR_ENERGY_PIP_WIDTH * STATUS_BAR_BASE_DRAW_SCALE_X;
     float pipHeightDst = STATUS_BAR_ENERGY_PIP_HEIGHT * STATUS_BAR_BASE_DRAW_SCALE_Y;
     float dy = STATUS_BAR_ENERGY_PIP_TOP_INSET * STATUS_BAR_BASE_DRAW_SCALE_Y
@@ -711,21 +832,38 @@ static void draw_base_energy_fallback(Vector2 screenCenter, float energy,
         int slotIndex = reverseFillDirection
             ? (STATUS_BAR_ENERGY_PIP_COUNT - 1 - i)
             : i;
-        float dx = -(STATUS_BAR_BASE_DRAW_WIDTH * 0.5f
-                     - STATUS_BAR_ENERGY_EMPTY_PIP_LEFT_INSET * STATUS_BAR_BASE_DRAW_SCALE_X)
-                   + pipWidthDst * 0.5f
-                   + STATUS_BAR_ENERGY_PIP_STRIDE * STATUS_BAR_BASE_DRAW_SCALE_X
-                         * (float)slotIndex;
-        Rectangle pipDst = {
-            screenCenter.x + dx * cosA - dy * sinA,
-            screenCenter.y + dx * sinA + dy * cosA,
-            pipWidthDst,
-            pipHeightDst
-        };
+        float dx = energy_pip_center_dx(slotIndex, pipWidthDst);
+        Rectangle pipDst = base_overlay_dst_rect(screenCenter, dx, dy,
+                                                 pipWidthDst, pipHeightDst,
+                                                 rotationDegrees);
         Vector2 pipOrigin = { pipDst.width * 0.5f, pipDst.height * 0.5f };
         DrawRectanglePro(pipDst, pipOrigin, rotationDegrees,
                          ENERGY_BAR_FILL_COLOR);
     }
+
+    if (!energy_regen_cue_visible(energy, maxEnergy, energyRegenRate)) return;
+
+    int regenSlotIndex = energy_regen_cue_slot_index(energy, reverseFillDirection);
+    float regenDx = energy_pip_center_dx(regenSlotIndex, pipWidthDst);
+    Rectangle ghostDst = base_overlay_dst_rect(screenCenter, regenDx, dy,
+                                               pipWidthDst, pipHeightDst,
+                                               rotationDegrees);
+    Vector2 ghostOrigin = { ghostDst.width * 0.5f, ghostDst.height * 0.5f };
+    DrawRectanglePro(ghostDst, ghostOrigin, rotationDegrees,
+                     ENERGY_BAR_REGEN_GHOST_COLOR);
+
+    float progress = energy_regen_cue_progress(energy);
+    if (progress <= 0.0f) return;
+
+    float progressWidthDst = pipWidthDst * progress;
+    float progressDx = regenDx +
+        (reverseFillDirection ? 1.0f : -1.0f) * (pipWidthDst - progressWidthDst) * 0.5f;
+    Rectangle progressDst = base_overlay_dst_rect(screenCenter, progressDx, dy,
+                                                  progressWidthDst, pipHeightDst,
+                                                  rotationDegrees);
+    Vector2 progressOrigin = { progressDst.width * 0.5f, progressDst.height * 0.5f };
+    DrawRectanglePro(progressDst, progressOrigin, rotationDegrees,
+                     ENERGY_BAR_REGEN_PROGRESS_COLOR);
 }
 
 static void draw_base_bars_fallback(const Entity *base, const Player *owner,
@@ -742,12 +880,15 @@ static void draw_base_bars_fallback(const Entity *base, const Player *owner,
         : 0.0f;
 
     draw_base_health_fallback(healthCenter, hpRatio, rotationDegrees);
-    draw_base_energy_fallback(energyCenter, owner->energy, rotationDegrees,
+    draw_base_energy_fallback(energyCenter, owner->energy,
+                              owner->maxEnergy, owner->energyRegenRate,
+                              rotationDegrees,
                               reverseEnergyFillDirection);
 
     char hpLabel[32];
     char energyLabel[32];
     char levelLabel[32];
+    char regenLabel[32];
     int filledPips = base_energy_filled_pips(owner->energy);
     // Keep fallback label placement aligned with the textured path.
     float energyLabelDirection = reverseEnergyFillDirection ? 1.0f : -1.0f;
@@ -756,19 +897,30 @@ static void draw_base_bars_fallback(const Entity *base, const Player *owner,
     format_bar_label(energyLabel, sizeof(energyLabel),
                      filledPips, STATUS_BAR_ENERGY_PIP_COUNT);
     snprintf(levelLabel, sizeof(levelLabel), "LVL %d", displayLevel);
+    format_regen_label(regenLabel, sizeof(regenLabel), owner->energyRegenRate);
+    float regenNormalOffset = regen_label_normal_offset(labelRotationDegrees);
+    float regenAxialOffset = stacked_label_axial_offset(
+        energyLabel, STATUS_BAR_BASE_LABEL_FONT_SIZE,
+        regenLabel, STATUS_BAR_REGEN_LABEL_FONT_SIZE
+    );
 
     draw_bar_numeric_label(hpLabel, healthCenter, STATUS_BAR_BASE_DRAW_WIDTH,
                            STATUS_BAR_BASE_LABEL_FONT_SIZE,
                            labelRotationDegrees, rotationDegrees, LABEL_INSIDE,
-                           1.0f);
+                           1.0f, 0.0f, 0.0f);
     draw_bar_numeric_label(levelLabel, healthCenter, STATUS_BAR_BASE_DRAW_WIDTH,
                            STATUS_BAR_BASE_LABEL_FONT_SIZE,
                            labelRotationDegrees, rotationDegrees, LABEL_OUTSIDE,
-                           energyLabelDirection);
+                           energyLabelDirection, 0.0f, 0.0f);
     draw_bar_numeric_label(energyLabel, energyCenter, STATUS_BAR_BASE_DRAW_WIDTH,
                            STATUS_BAR_BASE_LABEL_FONT_SIZE,
                            labelRotationDegrees, rotationDegrees, LABEL_OUTSIDE,
-                           energyLabelDirection);
+                           energyLabelDirection, 0.0f, 0.0f);
+    draw_bar_numeric_label(regenLabel, energyCenter, STATUS_BAR_BASE_DRAW_WIDTH,
+                           STATUS_BAR_REGEN_LABEL_FONT_SIZE,
+                           labelRotationDegrees, rotationDegrees, LABEL_OUTSIDE,
+                           energyLabelDirection, regenAxialOffset,
+                           regenNormalOffset);
 }
 
 Texture2D status_bars_load(void) {

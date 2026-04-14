@@ -49,6 +49,7 @@ static int g_rectCalls = 0;          /* DrawRectanglePro */
 static int g_textCalls = 0;          /* DrawTextPro */
 static Rectangle g_drawSrcs[MAX_CAPTURED_DRAWS];
 static Rectangle g_drawDsts[MAX_CAPTURED_DRAWS];
+static Color     g_drawTints[MAX_CAPTURED_DRAWS];
 static Rectangle g_rectDsts[MAX_CAPTURED_DRAWS];
 static Color     g_rectColors[MAX_CAPTURED_DRAWS];
 static char      g_textStrings[MAX_CAPTURED_DRAWS][32];
@@ -79,6 +80,7 @@ static void DrawTexturePro(Texture2D texture, Rectangle source, Rectangle dest,
     if (g_drawCalls < MAX_CAPTURED_DRAWS) {
         g_drawSrcs[g_drawCalls] = source;
         g_drawDsts[g_drawCalls] = dest;
+        g_drawTints[g_drawCalls] = tint;
     }
     g_drawCalls++;
 }
@@ -296,6 +298,7 @@ static void reset_draw_state(void) {
     for (int i = 0; i < MAX_CAPTURED_DRAWS; i++) {
         g_drawSrcs[i] = (Rectangle){0};
         g_drawDsts[i] = (Rectangle){0};
+        g_drawTints[i] = (Color){0};
         g_rectDsts[i] = (Rectangle){0};
         g_rectColors[i] = (Color){0};
         g_textStrings[i][0] = '\0';
@@ -399,10 +402,10 @@ static void test_damaged_troop_uses_fallback_when_troop_texture_missing(void) {
  *
  * Expected draws per bar:
  *   - Health: 1 empty shell (92x9 src -> 188x20 dst) + 1 scaled fill overlay
- *   - Energy: 1 empty shell (92x9 src -> 188x20 dst) + 7 pip overlays
+ *   - Energy: 1 empty shell + 7 full pip overlays + 1 ghost next-pip overlay
  *
  * Each label emits 2 DrawTextPro calls (shadow + main). Order: hp, LVL,
- * energy. */
+ * energy, regen. */
 static void test_base_bars_health_fill_and_energy_pips(void) {
     GameState gs = make_game_state();
     Entity base = make_base(4500, 5000);
@@ -410,13 +413,15 @@ static void test_base_bars_health_fill_and_energy_pips(void) {
 
     gs.players[0].base = &base;
     gs.players[0].energy = 7.0f;
+    gs.players[0].energyRegenRate = 1.0f;
 
     status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
 
-    /* 1 health shell + 1 health fill + 1 energy shell + 7 energy pips = 10. */
-    assert(g_drawCalls == 10);
-    /* 3 labels * (shadow + main) = 6 text draws. */
-    assert(g_textCalls == 6);
+    /* 1 health shell + 1 health fill + 1 energy shell + 7 energy pips +
+     * 1 ghost regen pip = 11. */
+    assert(g_drawCalls == 11);
+    /* 4 labels (hp, LVL, energy, regen) * (shadow + main) = 8 text draws. */
+    assert(g_textCalls == 8);
 
     float expectedHealthFillSrcWidth = 0.9f * STATUS_BAR_HEALTH_FILL_SRC_WIDTH;
     float expectedHealthFillDstWidth =
@@ -461,6 +466,14 @@ static void test_base_bars_health_fill_and_energy_pips(void) {
         assert(approx_eq(g_drawSrcs[idx].width, STATUS_BAR_ENERGY_PIP_WIDTH, 0.001f));
         assert(approx_eq(g_drawSrcs[idx].height, STATUS_BAR_ENERGY_PIP_HEIGHT, 0.001f));
     }
+
+    /* Integer energy still shows the next charging pip as a faint ghost. */
+    assert(approx_eq(g_drawSrcs[10].x,
+                     STATUS_BAR_ENERGY_FULL_CELL_X + STATUS_BAR_ENERGY_PIP_SRC_LEFT_INSET +
+                         STATUS_BAR_ENERGY_PIP_STRIDE * 7.0f,
+                     0.001f));
+    assert(approx_eq(g_drawSrcs[10].width, STATUS_BAR_ENERGY_PIP_WIDTH, 0.001f));
+    assert(g_drawTints[10].a == STATUS_BAR_REGEN_GHOST_ALPHA);
 }
 
 /* Full bar: health fill spans the full scaled interior, energy draws all
@@ -472,10 +485,12 @@ static void test_base_bar_full_health_and_energy(void) {
 
     gs.players[0].base = &base;
     gs.players[0].energy = 10.0f;
+    gs.players[0].energyRegenRate = 1.0f;
 
     status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
 
-    /* 1 health shell + 1 health fill + 1 energy shell + 10 pips = 13. */
+    /* Full energy suppresses the regen cue: 1 health shell + 1 health fill +
+     * 1 energy shell + 10 pips = 13. */
     assert(g_drawCalls == 13);
 
     /* Health fill spans the full 89-pixel source band and scaled draw width. */
@@ -561,16 +576,81 @@ static void test_fractional_energy_shows_whole_pips(void) {
 
     gs.players[0].base = &base;
     gs.players[0].energy = 6.9f;
+    gs.players[0].energyRegenRate = 1.0f;
 
     status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
 
-    /* 1 health shell + 1 health fill + 1 energy shell + 6 pips = 9. */
-    assert(g_drawCalls == 9);
+    /* 1 health shell + 1 health fill + 1 energy shell + 6 pips +
+     * ghost + fractional progress = 11. */
+    assert(g_drawCalls == 11);
 
-    /* Draw order: hp (0,1), LVL (2,3), energy (4,5). */
+    /* Draw order: hp (0,1), LVL (2,3), energy (4,5), regen (6,7). */
     assert(strcmp(g_textStrings[0], "5000/5000") == 0);
     assert(strcmp(g_textStrings[4], "6/10") == 0);
     assert(strcmp(g_textStrings[5], "6/10") == 0);
+}
+
+/* Fractional energy now drives a visual-first cue: the next pip is ghosted
+ * and partially filled toward the next whole energy. */
+static void test_fractional_energy_draws_regen_ghost_and_progress(void) {
+    GameState gs = make_game_state();
+    Entity base = make_base(5000, 5000);
+    Camera2D camera = {0};
+
+    gs.players[0].base = &base;
+    gs.players[0].energy = 6.9f;
+    gs.players[0].energyRegenRate = 1.0f;
+
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+
+    /* After the shell and 6 full pips, draw 1 ghost pip then 1 clipped
+     * progress overlay in the same slot. */
+    assert(g_drawCalls == 11);
+    assert(approx_eq(g_drawSrcs[9].x,
+                     STATUS_BAR_ENERGY_FULL_CELL_X + STATUS_BAR_ENERGY_PIP_SRC_LEFT_INSET +
+                         STATUS_BAR_ENERGY_PIP_STRIDE * 6.0f,
+                     0.001f));
+    assert(approx_eq(g_drawSrcs[9].width, STATUS_BAR_ENERGY_PIP_WIDTH, 0.001f));
+    assert(g_drawTints[9].a == STATUS_BAR_REGEN_GHOST_ALPHA);
+
+    assert(approx_eq(g_drawSrcs[10].x, g_drawSrcs[9].x, 0.001f));
+    assert(approx_eq(g_drawSrcs[10].width, 0.9f * STATUS_BAR_ENERGY_PIP_WIDTH, 0.001f));
+    assert(approx_eq(g_drawDsts[10].width,
+                     0.9f * STATUS_BAR_ENERGY_PIP_WIDTH * STATUS_BAR_BASE_DRAW_SCALE_X,
+                     0.001f));
+    assert(g_drawTints[10].a == STATUS_BAR_REGEN_PROGRESS_ALPHA);
+}
+
+/* The flipped P2 fill direction should charge the same next pip, but the
+ * clipped fractional overlay must grow from the already-filled side. */
+static void test_fractional_regen_cue_reverses_for_p2(void) {
+    GameState gs = make_game_state();
+    Entity base = make_base(5000, 5000);
+    Camera2D camera = {0};
+
+    gs.players[0].base = &base;
+    gs.players[0].energy = 1.25f;
+    gs.players[0].energyRegenRate = 1.0f;
+
+    status_bars_draw_screen(&gs, camera, 90.0f, 270.0f, true);
+
+    /* shell + 1 full pip + ghost + progress */
+    assert(g_drawCalls == 6);
+
+    /* Full pip lands in the reversed slot 9; the charging pip is slot 8. */
+    assert(approx_eq(g_drawSrcs[3].x,
+                     STATUS_BAR_ENERGY_FULL_CELL_X + STATUS_BAR_ENERGY_PIP_SRC_LEFT_INSET +
+                         STATUS_BAR_ENERGY_PIP_STRIDE * 9.0f,
+                     0.001f));
+    assert(approx_eq(g_drawSrcs[4].x,
+                     STATUS_BAR_ENERGY_FULL_CELL_X + STATUS_BAR_ENERGY_PIP_SRC_LEFT_INSET +
+                         STATUS_BAR_ENERGY_PIP_STRIDE * 8.0f,
+                     0.001f));
+    /* Reverse clipping trims from the left edge of the authored slot. */
+    assert(g_drawSrcs[5].x > g_drawSrcs[4].x);
+    assert(approx_eq(g_drawSrcs[5].width, 0.25f * STATUS_BAR_ENERGY_PIP_WIDTH, 0.001f));
+    assert(g_drawTints[4].a == STATUS_BAR_REGEN_GHOST_ALPHA);
+    assert(g_drawTints[5].a == STATUS_BAR_REGEN_PROGRESS_ALPHA);
 }
 
 /* Per-bar label placement: health label sits at the bar center; energy
@@ -582,12 +662,13 @@ static void test_label_placement_health_inside_energy_outside(void) {
 
     gs.players[0].base = &base;
     gs.players[0].energy = 7.0f;
+    gs.players[0].energyRegenRate = 1.0f;
 
     /* Use rotation 0 so OUTSIDE offset shows up purely in X. */
     status_bars_draw_screen(&gs, camera, 0.0f, 0.0f, false);
 
-    /* Draw order: hp (0,1), LVL (2,3), energy (4,5). */
-    assert(g_textCalls == 6);
+    /* Draw order: hp (0,1), LVL (2,3), energy (4,5), regen (6,7). */
+    assert(g_textCalls == 8);
 
     /* Health label shadow is at (healthCenter + (1,1)); main is at
      * healthCenter. The shadow/main pair sit within 2px of each other. */
@@ -595,11 +676,6 @@ static void test_label_placement_health_inside_energy_outside(void) {
     float healthDy = g_textPositions[1].y - g_textPositions[0].y;
     assert(approx_eq(healthDx, -1.0f, 0.001f));
     assert(approx_eq(healthDy, -1.0f, 0.001f));
-
-    /* For the non-flipped P1 path, the energy label sits on the left side of
-     * the bar, so the offset is along -X. */
-    float energyOffsetX = g_textPositions[5].x - g_textPositions[1].x;
-    assert(energyOffsetX < -100.0f);
 
     /* Energy and health labels sit on separate bars stacked along the base's
      * head direction. At rotation 0 the head direction is -Y, so the two
@@ -615,6 +691,19 @@ static void test_label_placement_health_inside_energy_outside(void) {
     assert(fabsf(lvlDy) < 1.0f);
     float lvlOffsetX = g_textPositions[3].x - g_textPositions[1].x;
     assert(lvlOffsetX < -50.0f);
+
+    /* For the non-flipped P1 path, the energy label sits on the left side of
+     * the bar, so the offset is along -X. */
+    float energyOffsetX = g_textPositions[5].x - g_textPositions[1].x;
+    assert(energyOffsetX < -100.0f);
+
+    /* Regen remains a secondary stacked label, but it should stay centered to
+     * the energy label even though the regen string is longer. */
+    assert(strcmp(g_textStrings[7], "+1.0/sec") == 0);
+    float regenDy = g_textPositions[7].y - g_textPositions[5].y;
+    float regenDx = g_textPositions[7].x - g_textPositions[5].x;
+    assert(regenDy > 8.0f);
+    assert(fabsf(regenDx) < 10.0f);
 }
 
 /* Live P1 path: bars rotate 90 and labels rotate 90, with the energy label
@@ -627,13 +716,15 @@ static void test_live_p1_energy_label_uses_bar_axis_for_outside_offset(void) {
 
     gs.players[0].base = &base;
     gs.players[0].energy = 7.0f;
+    gs.players[0].energyRegenRate = 1.0f;
 
     status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
 
     Vector2 healthCenter, energyCenter;
     base_bar_centers(&base, camera, &healthCenter, &energyCenter);
 
-    /* Energy main label is draw index 5 (hp=0,1; LVL=2,3; energy=4,5). */
+    /* Energy main label is draw index 5 (hp=0,1; LVL=2,3; energy=4,5;
+     * regen=6,7). */
     Vector2 energyLabel = g_textPositions[5];
     float dx = energyLabel.x - energyCenter.x;
     float dy = energyLabel.y - energyCenter.y;
@@ -642,6 +733,15 @@ static void test_live_p1_energy_label_uses_bar_axis_for_outside_offset(void) {
     assert(approx_eq(g_textRotations[5], 90.0f, 0.001f));
     assert(fabsf(dx) < 0.01f);
     assert(dy < -100.0f);
+
+    /* Regen becomes a stacked secondary label: same general bar end, but
+     * shifted off-axis to the left so the cluster reads less crowded. */
+    Vector2 regenLabel = g_textPositions[7];
+    float regenDx = regenLabel.x - energyCenter.x;
+    float regenDy = regenLabel.y - energyCenter.y;
+    assert(approx_eq(g_textRotations[7], 90.0f, 0.001f));
+    assert(regenDx < -8.0f);
+    assert(regenDy < -90.0f);
 }
 
 /* Live P2 path: bars still rotate 90, but labels rotate 270. Outside offset
@@ -653,6 +753,7 @@ static void test_live_p2_energy_label_uses_bar_axis_not_text_rotation(void) {
 
     gs.players[0].base = &base;
     gs.players[0].energy = 7.0f;
+    gs.players[0].energyRegenRate = 1.0f;
 
     status_bars_draw_screen(&gs, camera, 90.0f, 270.0f, true);
 
@@ -660,7 +761,7 @@ static void test_live_p2_energy_label_uses_bar_axis_not_text_rotation(void) {
     base_bar_centers(&base, camera, &healthCenter, &energyCenter);
 
     Vector2 healthLabel = g_textPositions[1];
-    Vector2 energyLabel = g_textPositions[5]; /* hp,LVL,energy — energy at 4,5 */
+    Vector2 energyLabel = g_textPositions[5]; /* hp,LVL,energy,regen — energy at 4,5 */
     float energyDx = energyLabel.x - energyCenter.x;
     float energyDy = energyLabel.y - energyCenter.y;
     float healthDx = healthLabel.x - healthCenter.x;
@@ -672,12 +773,98 @@ static void test_live_p2_energy_label_uses_bar_axis_not_text_rotation(void) {
     assert(fabsf(healthDy) < 0.01f);
     assert(fabsf(energyDx) < 0.01f);
     assert(energyDy > 100.0f);
+
+    /* Regen keeps the same overall end of the bar, but shifts right off-axis
+     * so it stacks under the energy label on the flipped P2 path. */
+    Vector2 regenLabel = g_textPositions[7];
+    float regenDx = regenLabel.x - energyCenter.x;
+    float regenDy = regenLabel.y - energyCenter.y;
+    assert(approx_eq(g_textRotations[7], 270.0f, 0.001f));
+    assert(regenDx > 8.0f);
+    assert(regenDy > 90.0f);
+}
+
+/* The primary stat labels (LVL and energy) should keep the same bar-to-label
+ * spacing on the mirrored P1 and P2 live HUD paths. Only the sign flips. */
+static void test_live_primary_label_spacing_is_mirrored_between_p1_and_p2(void) {
+    GameState gs = make_game_state();
+    Entity base = make_base(4500, 5000);
+    Camera2D camera = {0};
+
+    gs.players[0].base = &base;
+    gs.players[0].energy = 7.0f;
+    gs.players[0].energyRegenRate = 1.0f;
+
+    Vector2 healthCenter, energyCenter;
+    base_bar_centers(&base, camera, &healthCenter, &energyCenter);
+
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+    float p1LevelDx = g_textPositions[3].x - healthCenter.x;
+    float p1LevelDy = g_textPositions[3].y - healthCenter.y;
+    float p1EnergyDx = g_textPositions[5].x - energyCenter.x;
+    float p1EnergyDy = g_textPositions[5].y - energyCenter.y;
+
+    reset_draw_state();
+    status_bars_draw_screen(&gs, camera, 90.0f, 270.0f, true);
+    float p2LevelDx = g_textPositions[3].x - healthCenter.x;
+    float p2LevelDy = g_textPositions[3].y - healthCenter.y;
+    float p2EnergyDx = g_textPositions[5].x - energyCenter.x;
+    float p2EnergyDy = g_textPositions[5].y - energyCenter.y;
+
+    assert(fabsf(p1LevelDx) < 0.01f);
+    assert(fabsf(p2LevelDx) < 0.01f);
+    assert(fabsf(p1EnergyDx) < 0.01f);
+    assert(fabsf(p2EnergyDx) < 0.01f);
+
+    assert(p1LevelDy < 0.0f);
+    assert(p2LevelDy > 0.0f);
+    assert(p1EnergyDy < 0.0f);
+    assert(p2EnergyDy > 0.0f);
+
+    assert(approx_eq(fabsf(p1LevelDy), fabsf(p2LevelDy), 0.001f));
+    assert(approx_eq(fabsf(p1EnergyDy), fabsf(p2EnergyDy), 0.001f));
+}
+
+/* Regen label reflects Player.energyRegenRate with %.1f/s formatting.
+ * Values sampled from the actual progression curve in src/systems/
+ * progression.c (level 1..10 ninths between 1.0 and 2.0). */
+static void test_regen_label_values(void) {
+    GameState gs = make_game_state();
+    Entity base = make_base(5000, 5000);
+    Camera2D camera = {0};
+    gs.players[0].base = &base;
+    gs.players[0].energy = 5.0f;
+
+    /* Level 1 → +1.0/sec. */
+    reset_draw_state();
+    gs.players[0].energyRegenRate = 1.0f;
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+    assert(strcmp(g_textStrings[6], "+1.0/sec") == 0);
+    assert(strcmp(g_textStrings[7], "+1.0/sec") == 0);
+
+    /* Level 4 → 1.333.../s → +1.3/sec. */
+    reset_draw_state();
+    gs.players[0].energyRegenRate = 1.0f + 3.0f / 9.0f;
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+    assert(strcmp(g_textStrings[7], "+1.3/sec") == 0);
+
+    /* Level 7 → 1.666.../s → +1.7/sec. */
+    reset_draw_state();
+    gs.players[0].energyRegenRate = 1.0f + 6.0f / 9.0f;
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+    assert(strcmp(g_textStrings[7], "+1.7/sec") == 0);
+
+    /* Level 10 → +2.0/sec. */
+    reset_draw_state();
+    gs.players[0].energyRegenRate = 2.0f;
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+    assert(strcmp(g_textStrings[7], "+2.0/sec") == 0);
 }
 
 /* Atlas load failure → fallback path draws both base bars plus labels.
  * Health fallback = shell (border + bg) + 1 fill rect = 3 rects.
- * Energy fallback = shell (border + bg) + filledPips pip rects.
- * For 7 energy: 3 + 2 + 7 = 12 rect draws total. */
+ * Energy fallback = shell (border + bg) + filledPips pip rects + ghost cue.
+ * For 7 energy: 3 + 2 + 7 + 1 = 13 rect draws total. */
 static void test_fallback_renders_bars_and_labels(void) {
     GameState gs = make_game_state();
     gs.statusBarsTexture.id = 0;
@@ -686,6 +873,7 @@ static void test_fallback_renders_bars_and_labels(void) {
 
     gs.players[0].base = &base;
     gs.players[0].energy = 7.0f;
+    gs.players[0].energyRegenRate = 1.0f;
 
     status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
 
@@ -693,8 +881,8 @@ static void test_fallback_renders_bars_and_labels(void) {
     assert(g_drawCalls == 0);
 
     /* Health shell (2 rects) + health fill (1 rect) + energy shell (2 rects)
-     * + 7 pip rects = 12. */
-    assert(g_rectCalls == 12);
+     * + 7 pip rects + ghost cue = 13. */
+    assert(g_rectCalls == 13);
 
     /* Health shell bg: unchanged 188x20 draw footprint. */
     assert(approx_eq(g_rectDsts[1].width, STATUS_BAR_BASE_DRAW_WIDTH, 0.001f));
@@ -728,12 +916,36 @@ static void test_fallback_renders_bars_and_labels(void) {
     assert(color_eq(g_rectColors[3], BAR_BORDER_COLOR));
     assert(color_eq(g_rectColors[4], BAR_EMPTY_COLOR));
     assert(color_eq(g_rectColors[5], ENERGY_BAR_FILL_COLOR));
+    assert(color_eq(g_rectColors[12], ENERGY_BAR_REGEN_GHOST_COLOR));
 
-    /* Labels still render: 3 labels (hp, LVL, energy) * (shadow + main) = 6. */
-    assert(g_textCalls == 6);
+    /* Labels still render: 4 labels (hp, LVL, energy, regen) *
+     * (shadow + main) = 8. */
+    assert(g_textCalls == 8);
     assert(strcmp(g_textStrings[0], "3420/5000") == 0);
     assert(strcmp(g_textStrings[2], "LVL 1") == 0);
     assert(strcmp(g_textStrings[4], "7/10") == 0);
+    assert(strcmp(g_textStrings[6], "+1.0/sec") == 0);
+}
+
+static void test_fallback_fractional_energy_draws_regen_cue(void) {
+    GameState gs = make_game_state();
+    gs.statusBarsTexture.id = 0;
+    Entity base = make_base(5000, 5000);
+    Camera2D camera = {0};
+
+    gs.players[0].base = &base;
+    gs.players[0].energy = 6.25f;
+    gs.players[0].energyRegenRate = 1.0f;
+
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+
+    /* 3 health rects + 2 energy shell rects + 6 full pips + ghost + progress. */
+    assert(g_rectCalls == 13);
+    assert(color_eq(g_rectColors[11], ENERGY_BAR_REGEN_GHOST_COLOR));
+    assert(color_eq(g_rectColors[12], ENERGY_BAR_REGEN_PROGRESS_COLOR));
+    assert(approx_eq(g_rectDsts[12].width,
+                     0.25f * STATUS_BAR_ENERGY_PIP_WIDTH * STATUS_BAR_BASE_DRAW_SCALE_X,
+                     0.001f));
 }
 
 /* Zero-energy fallback draws only the shell (2 rects): no pip rects. */
@@ -790,10 +1002,15 @@ int main(void) {
     RUN_TEST(test_base_bar_near_empty_health_draws_tiny_fill);
     RUN_TEST(test_base_bar_granularity_moves_on_small_hit);
     RUN_TEST(test_fractional_energy_shows_whole_pips);
+    RUN_TEST(test_fractional_energy_draws_regen_ghost_and_progress);
+    RUN_TEST(test_fractional_regen_cue_reverses_for_p2);
     RUN_TEST(test_label_placement_health_inside_energy_outside);
     RUN_TEST(test_live_p1_energy_label_uses_bar_axis_for_outside_offset);
     RUN_TEST(test_live_p2_energy_label_uses_bar_axis_not_text_rotation);
+    RUN_TEST(test_live_primary_label_spacing_is_mirrored_between_p1_and_p2);
+    RUN_TEST(test_regen_label_values);
     RUN_TEST(test_fallback_renders_bars_and_labels);
+    RUN_TEST(test_fallback_fractional_energy_draws_regen_cue);
     RUN_TEST(test_fallback_zero_energy_draws_shell_only);
     RUN_TEST(test_reversed_energy_fill_direction_for_flipped_viewport);
 
