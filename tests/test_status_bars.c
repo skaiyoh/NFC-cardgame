@@ -191,10 +191,20 @@ typedef struct {
     bool idleHolding;
 } AnimState;
 
+static bool sprite_sheet_has_content(const SpriteSheet *sheet) {
+    return sheet &&
+           (sheet->texture.id != 0 ||
+            sheet->frameWidth > 0 ||
+            sheet->frameHeight > 0 ||
+            sheet->frameCount > 0 ||
+            sheet->visibleBounds != NULL);
+}
+
 static const SpriteSheet *sprite_sheet_get(const CharacterSprite *cs, AnimationType anim) {
-    (void)cs;
-    (void)anim;
-    return NULL;
+    if (!cs || anim < 0 || anim >= ANIM_COUNT) return NULL;
+
+    const SpriteSheet *sheet = &cs->anims[anim];
+    return sprite_sheet_has_content(sheet) ? sheet : NULL;
 }
 
 static Rectangle sprite_visible_bounds(const CharacterSprite *cs, const AnimState *state,
@@ -312,6 +322,21 @@ static void reset_draw_state(void) {
         g_textStrings[i][0] = '\0';
         g_textPositions[i] = (Vector2){0};
         g_textRotations[i] = 0.0f;
+    }
+}
+
+static void set_sheet_visible_bounds(SpriteSheet *sheet, Rectangle *bounds,
+                                     int frameCount, int frameWidth, int frameHeight,
+                                     Rectangle visibleBounds) {
+    sheet->frameCount = frameCount;
+    sheet->frameWidth = frameWidth;
+    sheet->frameHeight = frameHeight;
+    sheet->visibleBounds = bounds;
+
+    for (int dir = 0; dir < DIR_COUNT; dir++) {
+        for (int frame = 0; frame < frameCount; frame++) {
+            bounds[dir * frameCount + frame] = visibleBounds;
+        }
     }
 }
 
@@ -623,6 +648,76 @@ static void test_base_bar_granularity_moves_on_small_hit(void) {
                          STATUS_BAR_BASE_DRAW_SCALE_X,
                      0.001f));
     assert(fullFillWidth - hitFillWidth >= 1.0f);
+}
+
+static void test_base_bar_centers_stay_fixed_when_base_anim_changes(void) {
+    CharacterSprite sprite = {0};
+    Rectangle idleBounds[DIR_COUNT] = {0};
+    Rectangle attackBounds[DIR_COUNT] = {0};
+    Entity base = make_base(4500, 5000);
+    Camera2D camera = {0};
+    Vector2 idleHealthCenter, idleEnergyCenter;
+    Vector2 attackHealthCenter, attackEnergyCenter;
+
+    set_sheet_visible_bounds(&sprite.anims[ANIM_IDLE], idleBounds,
+                             1, 64, 64,
+                             (Rectangle){12.0f, 8.0f, 40.0f, 40.0f});
+    set_sheet_visible_bounds(&sprite.anims[ANIM_ATTACK], attackBounds,
+                             1, 64, 64,
+                             (Rectangle){4.0f, 0.0f, 56.0f, 56.0f});
+
+    base.sprite = &sprite;
+    base.spriteScale = 1.0f;
+    base.spriteRotationDegrees = 0.0f;
+    base.anim.anim = ANIM_IDLE;
+
+    base_bar_centers(&base, camera, &idleHealthCenter, &idleEnergyCenter);
+
+    base.anim.anim = ANIM_ATTACK;
+    base_bar_centers(&base, camera, &attackHealthCenter, &attackEnergyCenter);
+
+    assert(approx_eq(idleHealthCenter.x, attackHealthCenter.x, 0.001f));
+    assert(approx_eq(idleHealthCenter.y, attackHealthCenter.y, 0.001f));
+    assert(approx_eq(idleEnergyCenter.x, attackEnergyCenter.x, 0.001f));
+    assert(approx_eq(idleEnergyCenter.y, attackEnergyCenter.y, 0.001f));
+}
+
+static void test_base_bar_draw_positions_stay_fixed_when_base_attacks(void) {
+    GameState gs = make_game_state();
+    CharacterSprite sprite = {0};
+    Rectangle idleBounds[DIR_COUNT] = {0};
+    Rectangle attackBounds[DIR_COUNT] = {0};
+    Entity base = make_base(4500, 5000);
+    Camera2D camera = {0};
+    Rectangle idleHealthShell, idleEnergyShell;
+
+    set_sheet_visible_bounds(&sprite.anims[ANIM_IDLE], idleBounds,
+                             1, 64, 64,
+                             (Rectangle){12.0f, 8.0f, 40.0f, 40.0f});
+    set_sheet_visible_bounds(&sprite.anims[ANIM_ATTACK], attackBounds,
+                             1, 64, 64,
+                             (Rectangle){4.0f, 0.0f, 56.0f, 56.0f});
+
+    base.sprite = &sprite;
+    base.spriteScale = 1.0f;
+    base.spriteRotationDegrees = 0.0f;
+    gs.players[0].base = &base;
+    gs.players[0].energy = 7.0f;
+    gs.players[0].energyRegenRate = 1.0f;
+
+    base.anim.anim = ANIM_IDLE;
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+    idleHealthShell = g_drawDsts[0];
+    idleEnergyShell = g_drawDsts[2];
+
+    reset_draw_state();
+    base.anim.anim = ANIM_ATTACK;
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+
+    assert(approx_eq(g_drawDsts[0].x, idleHealthShell.x, 0.001f));
+    assert(approx_eq(g_drawDsts[0].y, idleHealthShell.y, 0.001f));
+    assert(approx_eq(g_drawDsts[2].x, idleEnergyShell.x, 0.001f));
+    assert(approx_eq(g_drawDsts[2].y, idleEnergyShell.y, 0.001f));
 }
 
 /* Fractional energy quantizes down to whole pips: 6.9 → 6 drawn + "6/10"
@@ -1062,6 +1157,8 @@ int main(void) {
     RUN_TEST(test_base_bar_full_health_and_energy);
     RUN_TEST(test_base_bar_near_empty_health_draws_tiny_fill);
     RUN_TEST(test_base_bar_granularity_moves_on_small_hit);
+    RUN_TEST(test_base_bar_centers_stay_fixed_when_base_anim_changes);
+    RUN_TEST(test_base_bar_draw_positions_stay_fixed_when_base_attacks);
     RUN_TEST(test_fractional_energy_shows_whole_pips);
     RUN_TEST(test_fractional_energy_draws_regen_ghost_and_progress);
     RUN_TEST(test_fractional_regen_cue_reverses_for_p2);

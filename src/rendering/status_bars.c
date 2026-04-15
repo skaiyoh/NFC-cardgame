@@ -154,14 +154,11 @@ static Rectangle entity_visible_world_bounds(const Entity *e) {
     return (Rectangle){e->position.x, e->position.y, 0.0f, 0.0f};
 }
 
-static Rectangle entity_stable_visible_world_bounds(const Entity *e) {
-    if (!e || !e->sprite) {
-        return entity_visible_world_bounds(e);
-    }
-
-    const SpriteSheet *sheet = sprite_sheet_get(e->sprite, e->anim.anim);
-    if (!sheet || sheet->frameWidth <= 0 || sheet->frameHeight <= 0) {
-        return entity_visible_world_bounds(e);
+static Rectangle entity_stable_visible_world_bounds_from_sheet(const Entity *e,
+                                                               const SpriteSheet *sheet) {
+    if (!e || !e->sprite || !sheet ||
+        sheet->frameWidth <= 0 || sheet->frameHeight <= 0) {
+        return (Rectangle){0.0f, 0.0f, 0.0f, 0.0f};
     }
 
     float rad = e->spriteRotationDegrees * (PI_F / 180.0f);
@@ -217,10 +214,36 @@ static Rectangle entity_stable_visible_world_bounds(const Entity *e) {
     }
 
     if (!foundVisible) {
-        return entity_visible_world_bounds(e);
+        return (Rectangle){0.0f, 0.0f, 0.0f, 0.0f};
     }
 
     return (Rectangle){ minX, minY, maxX - minX, maxY - minY };
+}
+
+static Rectangle entity_stable_visible_world_bounds_for_anim(const Entity *e,
+                                                             AnimationType anim) {
+    if (!e || !e->sprite || anim < 0 || anim >= ANIM_COUNT) {
+        return (Rectangle){0.0f, 0.0f, 0.0f, 0.0f};
+    }
+
+    return entity_stable_visible_world_bounds_from_sheet(
+        e, &e->sprite->anims[anim]
+    );
+}
+
+static Rectangle entity_stable_visible_world_bounds(const Entity *e) {
+    if (!e || !e->sprite) {
+        return entity_visible_world_bounds(e);
+    }
+
+    Rectangle stable = entity_stable_visible_world_bounds_from_sheet(
+        e, sprite_sheet_get(e->sprite, e->anim.anim)
+    );
+    if (stable.width > 0.0f && stable.height > 0.0f) {
+        return stable;
+    }
+
+    return entity_visible_world_bounds(e);
 }
 
 static Rectangle world_rect_to_screen(Rectangle worldRect, Camera2D camera) {
@@ -295,11 +318,6 @@ static Vector2 screen_anchor_from_bounds(Rectangle screenBounds, const Entity *e
     }
 
     return center;
-}
-
-static Vector2 entity_screen_anchor(const Entity *e, Camera2D camera, Vector2 headDirection) {
-    Rectangle screenBounds = world_rect_to_screen(entity_visible_world_bounds(e), camera);
-    return screen_anchor_from_bounds(screenBounds, e, camera, headDirection);
 }
 
 static void draw_status_bar(Texture2D texture, Rectangle src, Vector2 screenCenter,
@@ -667,14 +685,11 @@ static void base_bar_centers(const Entity *base, Camera2D camera,
                              Vector2 *outHealth, Vector2 *outEnergy) {
     Vector2 headDirection = entity_screen_head_direction(base, camera);
     Rectangle baseScreenBounds = world_rect_to_screen(
-        entity_stable_visible_world_bounds(base), camera
+        entity_stable_visible_world_bounds_for_anim(base, ANIM_IDLE), camera
     );
-    Vector2 anchor;
-    if (baseScreenBounds.width <= 0.0f || baseScreenBounds.height <= 0.0f) {
-        anchor = entity_screen_anchor(base, camera, headDirection);
-    } else {
-        anchor = screen_anchor_from_bounds(baseScreenBounds, base, camera, headDirection);
-    }
+    Vector2 anchor = screen_anchor_from_bounds(
+        baseScreenBounds, base, camera, headDirection
+    );
 
     float firstOffset  = STATUS_BAR_BASE_TOP_GAP + STATUS_BAR_BASE_DRAW_HEIGHT * 0.5f;
     float secondOffset = STATUS_BAR_BASE_TOP_GAP + STATUS_BAR_BASE_DRAW_HEIGHT +
