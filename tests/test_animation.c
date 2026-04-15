@@ -456,6 +456,38 @@ static void test_single_row_sheet_reuses_row_zero_for_all_directions(void) {
     assert(sheet_source_row(&sheet, DIR_UP) == 0);
 }
 
+static void test_knight_attack_manifest_and_atlas_match_uvulite_sheet(void) {
+    const SpriteSheetManifestEntry *manifestEntry = NULL;
+    const SpriteSheetAtlasEntry *atlasEntry = NULL;
+
+    for (int i = 0; i < kSpriteSheetManifestCount; i++) {
+        const SpriteSheetManifestEntry *entry = &kSpriteSheetManifest[i];
+        if (!entry->isBaseFallback &&
+            entry->spriteType == SPRITE_TYPE_KNIGHT &&
+            entry->anim == ANIM_ATTACK) {
+            manifestEntry = entry;
+            break;
+        }
+    }
+
+    assert(manifestEntry != NULL);
+    assert(strcmp(manifestEntry->path, "src/assets/characters/Knight/uvulite_attack.png") == 0);
+    assert(manifestEntry->frameCount == 6);
+    assert(manifestEntry->sourceRowCount == 1);
+
+    for (int i = 0; i < kSpriteSheetAtlasCount; i++) {
+        const SpriteSheetAtlasEntry *entry = &kSpriteSheetAtlas[i];
+        if (strcmp(entry->path, "src/assets/characters/Knight/uvulite_attack.png") == 0) {
+            atlasEntry = entry;
+            break;
+        }
+    }
+
+    assert(atlasEntry != NULL);
+    assert(atlasEntry->frameCount == 6);
+    assert(atlasEntry->sourceRowCount == 1);
+}
+
 static void test_king_idle_manifest_and_atlas_match_new_sheet(void) {
     const SpriteSheetManifestEntry *manifestEntry = NULL;
     const SpriteSheetAtlasEntry *atlasEntry = NULL;
@@ -870,6 +902,7 @@ int main(void) {
     RUN_TEST(test_sheet_lookup_prefers_authored_clip);
     RUN_TEST(test_sheet_lookup_resolves_walk_to_idle_when_needed);
     RUN_TEST(test_single_row_sheet_reuses_row_zero_for_all_directions);
+    RUN_TEST(test_knight_attack_manifest_and_atlas_match_uvulite_sheet);
     RUN_TEST(test_king_idle_manifest_and_atlas_match_new_sheet);
 
     // Cycle calculations
