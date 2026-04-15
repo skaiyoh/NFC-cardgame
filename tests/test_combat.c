@@ -124,19 +124,6 @@ typedef enum {
 } UnitNavProfile;
 
 typedef enum {
-    ASSAULT_SLOT_NONE = 0,
-    ASSAULT_SLOT_PRIMARY,
-    ASSAULT_SLOT_QUEUE
-} AssaultSlotKind;
-
-typedef enum {
-    COMBAT_ENGAGEMENT_NONE = 0,
-    COMBAT_ENGAGEMENT_ASSAULT_SLOT,
-    COMBAT_ENGAGEMENT_PERIMETER,
-    COMBAT_ENGAGEMENT_DIRECT
-} CombatEngagementType;
-
-typedef enum {
     DEPOSIT_SLOT_NONE = 0,
     DEPOSIT_SLOT_PRIMARY,
     DEPOSIT_SLOT_QUEUE
@@ -148,21 +135,10 @@ typedef struct {
 } DepositSlot;
 
 typedef struct {
-    Vector2 worldPos;
-    int     claimedByEntityId;
-} AssaultSlot;
-
-typedef struct {
     DepositSlot primary[BASE_DEPOSIT_PRIMARY_SLOT_COUNT];
     DepositSlot queue  [BASE_DEPOSIT_QUEUE_SLOT_COUNT];
     bool initialized;
 } DepositSlotRing;
-
-typedef struct {
-    AssaultSlot primary[BASE_ASSAULT_PRIMARY_SLOT_COUNT];
-    AssaultSlot queue  [BASE_ASSAULT_QUEUE_SLOT_COUNT];
-    bool initialized;
-} AssaultSlotRing;
 
 struct Entity {
     int id;
@@ -204,14 +180,9 @@ struct Entity {
     int movementTargetId;
     int ticksSinceProgress;
     int lastSteerSideSign;
-    CombatEngagementType engagementType;
-    int reservedAssaultTargetId;
-    int reservedAssaultSlotIndex;
-    AssaultSlotKind reservedAssaultSlotKind;
     int reservedDepositSlotIndex;
     DepositSlotKind reservedDepositSlotKind;
     DepositSlotRing depositSlots;
-    AssaultSlotRing assaultSlots;
     int baseLevel;
     bool basePendingKingBurst;
     int basePendingKingBurstDamage;
@@ -352,11 +323,6 @@ void farmer_on_death(Entity *farmer, GameState *gs) {
     s_lastFarmerOnDeathGameState = gs;
 }
 
-void assault_slots_build_for_base(Entity *base);
-void assault_slots_release_for_entity(Entity *base, int entityId);
-Vector2 assault_slots_get_position(const Entity *base, AssaultSlotKind kind,
-                                   int slotIndex);
-
 /* ---- Include combat.c directly ---- */
 #include "../src/logic/combat.c"
 
@@ -378,30 +344,6 @@ const CharacterSprite *sprite_atlas_get(const SpriteAtlas *atlas, SpriteType typ
 void deposit_slots_build_for_base(Entity *base) {
     if (!base) return;
     base->depositSlots.initialized = true;
-}
-
-void assault_slots_build_for_base(Entity *base) {
-    if (!base) return;
-    base->assaultSlots.initialized = true;
-}
-
-void assault_slots_release_for_entity(Entity *base, int entityId) {
-    (void)base;
-    (void)entityId;
-}
-
-Vector2 assault_slots_get_position(const Entity *base, AssaultSlotKind kind,
-                                   int slotIndex) {
-    if (!base) return (Vector2){0.0f, 0.0f};
-    if (kind == ASSAULT_SLOT_PRIMARY &&
-        slotIndex >= 0 && slotIndex < BASE_ASSAULT_PRIMARY_SLOT_COUNT) {
-        return base->assaultSlots.primary[slotIndex].worldPos;
-    }
-    if (kind == ASSAULT_SLOT_QUEUE &&
-        slotIndex >= 0 && slotIndex < BASE_ASSAULT_QUEUE_SLOT_COUNT) {
-        return base->assaultSlots.queue[slotIndex].worldPos;
-    }
-    return base->position;
 }
 
 /* ---- Include building.c directly ---- */

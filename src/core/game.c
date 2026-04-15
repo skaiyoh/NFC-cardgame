@@ -10,6 +10,7 @@
 #include "../data/card_catalog.h"
 #include "../logic/card_effects.h"
 #include "../logic/farmer.h"
+#include "../logic/nav_frame.h"
 #include "../logic/win_condition.h"
 #include "../rendering/viewport.h"
 #include "../rendering/debug_overlay.h"
@@ -88,6 +89,10 @@ bool game_init(GameState *g) {
     bf_init(&g->battlefield, g->biomeDefs,
             BIOME_GRASS, BIOME_GRASS,  // bottom/top biome (matches current setup)
             tileSize, 42, 99);         // seeds match current hardcoded values
+
+    // Initialize per-frame flow-field navigation cache. nav_begin_frame()
+    // is called each tick before the entity update loop (wired in Phase 2).
+    nav_frame_init(&g->nav);
 
     // Initialize sustenance resource nodes (dedicated RNG, after bf_init generates waypoints)
     sustenance_init(&g->battlefield, sustenanceSeed);
@@ -185,7 +190,6 @@ static void game_handle_debug_input(void) {
     if (IsKeyPressed(KEY_F5)) s_debugFlags.rangeCirlces = !s_debugFlags.rangeCirlces;
     if (IsKeyPressed(KEY_F6)) s_debugFlags.sustenanceNodes     = !s_debugFlags.sustenanceNodes;
     if (IsKeyPressed(KEY_F7)) s_debugFlags.sustenancePlacement  = !s_debugFlags.sustenancePlacement;
-    if (IsKeyPressed(KEY_F8)) s_debugFlags.assaultGeometry      = !s_debugFlags.assaultGeometry;
     if (IsKeyPressed(KEY_F9)) s_debugFlags.depositSlots         = !s_debugFlags.depositSlots;
     if (IsKeyPressed(KEY_F10)) s_debugFlags.crowdShells         = !s_debugFlags.crowdShells;
 }
@@ -237,10 +241,37 @@ void game_update(GameState *g) {
     player_update(&g->players[0], deltaTime);
     player_update(&g->players[1], deltaTime);
 
+    Battlefield *bf = &g->battlefield;
+
+    // Per-frame nav snapshot. nav_begin_frame resets the static obstacle
+    // mask to the board-edge moat; the entity pass below stamps static
+    // building footprints and mobile troop density on top. Every movement
+    // decision this tick reads the same frozen snapshot.
+    nav_begin_frame(&g->nav, bf);
+    for (int i = 0; i < bf->entityCount; i++) {
+        Entity *e = bf->entities[i];
+        if (!e || !e->alive) continue;
+        int side = (e->ownerID == 0) ? 0 : 1;
+        // Freeze every live entity's position in the nav snapshot before
+        // any movement runs, so target fields built mid-tick always see
+        // the same pivot regardless of update order.
+        nav_snapshot_entity_position(&g->nav, e->id, e->position.x, e->position.y);
+        if (e->navProfile == NAV_PROFILE_STATIC) {
+            float radius = (e->navRadius > 0.0f) ? e->navRadius : e->bodyRadius;
+            if (radius <= 0.0f) radius = BASE_NAV_RADIUS;
+            // Inflates internally by NAV_MAX_MOBILE_BODY_RADIUS + gap so
+            // the cell-center-only flow stepper still keeps movers a
+            // full shell away from the authored footprint.
+            nav_stamp_static_entity(&g->nav, e->id,
+                                    e->position.x, e->position.y, radius);
+        } else {
+            nav_stamp_density(&g->nav, side, e->position.x, e->position.y);
+        }
+    }
+
     // Update all entities from Battlefield registry in a stable id-sorted
     // order so local steering jams deterministically (lower-id wins the
     // jam) regardless of the registry's swap-with-last removal order.
-    Battlefield *bf = &g->battlefield;
     int updateOrder[MAX_ENTITIES * 2];
     int updateCount = bf_build_update_order(bf, updateOrder);
     for (int i = 0; i < updateCount; i++) {
@@ -418,6 +449,7 @@ void game_cleanup(GameState *g) {
     spawn_fx_cleanup(&g->spawnFx);
     // Cleanup Battlefield (must be before biome_free_all since tilemaps reference biome textures)
     bf_cleanup(&g->battlefield);
+    nav_frame_destroy(&g->nav);
 
     sprite_atlas_free(&g->spriteAtlas);
     card_atlas_free(&g->cardAtlas);

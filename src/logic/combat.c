@@ -341,15 +341,6 @@ bool entity_apply_heal(Entity *entity, int amount) {
 static void combat_on_kill(Entity *victim, GameState *gs) {
     if (!victim || !gs) return;
 
-    if (victim->reservedAssaultTargetId != -1 ||
-        victim->reservedAssaultSlotIndex != -1 ||
-        victim->reservedAssaultSlotKind != ASSAULT_SLOT_NONE) {
-        victim->reservedAssaultSlotKind = ASSAULT_SLOT_NONE;
-        victim->reservedAssaultSlotIndex = -1;
-        victim->reservedAssaultTargetId = -1;
-        victim->engagementType = COMBAT_ENGAGEMENT_NONE;
-    }
-
     if (victim->unitRole == UNIT_ROLE_FARMER) {
         farmer_on_death(victim, gs);
     }

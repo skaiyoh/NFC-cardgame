@@ -985,8 +985,89 @@ static bool pathfind_try_step_toward(Entity *e, Vector2 goal, float stopRadius,
     return moved;
 }
 
+// Phase 3d: free-goal flow stepper for farmers and any other free-mover.
+//
+// Builds (or fetches) a free-goal flow field centered on `goal` with
+// stopRadius-sized seed disk from the caller's own side perspective, then
+// sub-steps the entity along the bilinear-sampled flow direction. Same
+// sub-step hard-blocker semantics as the lane/target flow steppers.
+// Returns true when the stepper either consumed the tick cleanly or
+// determined the entity has arrived; false if nav is unavailable and the
+// caller should fall back to the old candidate fan.
+static bool pathfind_step_free_goal_flow(Entity *e, Vector2 goal,
+                                           float stopRadius, NavFrame *nav,
+                                           const Battlefield *bf,
+                                           float deltaTime) {
+    if (!nav) return false;
+    int side = (e->ownerID == 0) ? 0 : 1;
+    const NavField *field =
+        nav_get_or_build_free_goal_field(nav, bf, goal.x, goal.y, stopRadius, side);
+    if (!field) return false;
+
+    float fx = 0.0f, fy = 0.0f;
+    nav_sample_flow(field, e->position.x, e->position.y, &fx, &fy);
+    if (fx == 0.0f && fy == 0.0f) {
+        // No flow: either already inside the seed disk (arrived) or
+        // standing in a fully-blocked neighborhood. The arrival check
+        // in the outer move_toward_goal covers the first case; for the
+        // second, stall and let the outer caller re-tick next frame.
+        e->ticksSinceProgress++;
+        pathfind_face_goal(e, bf, goal);
+        return true;
+    }
+
+    float totalStep = e->moveSpeed * deltaTime;
+    if (totalStep < 0.0f) totalStep = 0.0f;
+    float maxSub = (float)NAV_CELL_SIZE * 0.5f;
+    int32_t subCount = 1;
+    if (totalStep > maxSub) {
+        subCount = (int32_t)ceilf(totalStep / maxSub);
+    }
+    float subLen = (subCount > 0) ? totalStep / (float)subCount : 0.0f;
+
+    float posX = e->position.x;
+    float posY = e->position.y;
+    bool moved = false;
+    for (int32_t s = 0; s < subCount; ++s) {
+        float tryX = posX + fx * subLen;
+        float tryY = posY + fy * subLen;
+        int32_t tryCell = nav_cell_index_for_world(tryX, tryY);
+        if (field->hardBlocked[tryCell]) break;
+        // Arrival: if we would cross into the stopRadius, clamp and
+        // stop. Saves a frame of wiggling at the ring boundary.
+        float dxGoal = tryX - goal.x;
+        float dyGoal = tryY - goal.y;
+        if (dxGoal * dxGoal + dyGoal * dyGoal <= stopRadius * stopRadius) {
+            posX = tryX;
+            posY = tryY;
+            moved = true;
+            break;
+        }
+        posX = tryX;
+        posY = tryY;
+        moved = true;
+    }
+    if (!moved) {
+        e->ticksSinceProgress++;
+        pathfind_face_goal(e, bf, goal);
+        return true;
+    }
+
+    if (posX < 0.0f) posX = 0.0f;
+    if (posY < 0.0f) posY = 0.0f;
+    if (posX > (float)BOARD_WIDTH)  posX = (float)BOARD_WIDTH;
+    if (posY > (float)BOARD_HEIGHT) posY = (float)BOARD_HEIGHT;
+
+    e->position.x = posX;
+    e->position.y = posY;
+    e->ticksSinceProgress = 0;
+    pathfind_face_goal(e, bf, goal);
+    return true;
+}
+
 bool pathfind_move_toward_goal(Entity *e, Vector2 goal, float stopRadius,
-                               const Battlefield *bf, float deltaTime) {
+                               NavFrame *nav, const Battlefield *bf,
+                               float deltaTime) {
     const float arriveEpsilon = 0.01f;
     if (!e || !bf) return true;
 
@@ -998,11 +1079,269 @@ bool pathfind_move_toward_goal(Entity *e, Vector2 goal, float stopRadius,
         return true;
     }
 
+    // Phase 3d: route through the free-goal flow field when a live
+    // nav snapshot is available. Falls through to the old candidate
+    // fan otherwise (tests that ride the Phase 3a NULL macros).
+    if (pathfind_step_free_goal_flow(e, goal, stopRadius, nav, bf, deltaTime)) {
+        // Re-check arrival after the flow step.
+        float ddx = goal.x - e->position.x;
+        float ddy = goal.y - e->position.y;
+        if (ddx * ddx + ddy * ddy <= (stopRadius + arriveEpsilon) *
+                                      (stopRadius + arriveEpsilon)) {
+            return true;
+        }
+        return false;
+    }
+
     pathfind_try_step_toward(e, goal, stopRadius, bf, deltaTime, false, false);
     return false;
 }
 
-bool pathfind_step_entity(Entity *e, const Battlefield *bf, float deltaTime) {
+// Phase 3b: flow-field lane-march stepper.
+//
+// Entry conditions (checked by the caller in pathfind_step_entity):
+//   - nav is a live per-frame NavFrame snapshot
+//   - e->navProfile == NAV_PROFILE_LANE
+//   - goalIsWaypoint (pure lane march, no pursuit target)
+//
+// This stepper bypasses the old candidate fan entirely. Movement is
+// continuous position integration along the bilinear-sampled flow vector
+// from the lane field. Hard blockers (board-edge moat, NAV_PROFILE_STATIC
+// footprints) are consulted via the global staticBlockers mask; allied
+// troops are NOT blockers here -- their influence is already baked into
+// the flow field as density shaping cost. The 96 px home-half lane
+// corridor is enforced by the lane-field builder's corridor mask, so a
+// lane troop steered off the corridor simply loses its flow gradient and
+// stalls instead of being hard-rejected by a candidate check.
+//
+// The stepper still updates facing, lane progress, and stagnation ticks
+// the same way the old stepper did, so downstream combat/target logic
+// remains unchanged.
+static void pathfind_step_lane_flow(Entity *e, NavFrame *nav,
+                                      const Battlefield *bf,
+                                      BattleSide ownerSide,
+                                      Vector2 facingGoal,
+                                      float deltaTime) {
+    const NavField *field = nav_get_or_build_lane_field(nav, bf, ownerSide, e->lane);
+    if (!field) {
+        e->ticksSinceProgress++;
+        return;
+    }
+
+    float fx = 0.0f, fy = 0.0f;
+    nav_sample_flow(field, e->position.x, e->position.y, &fx, &fy);
+    if (fx == 0.0f && fy == 0.0f) {
+        // No flow neighborhood: units just outside the 96 px corridor can
+        // land here. Stand in place, keep facing, and let the enclosing
+        // tick loop decide whether to switch state.
+        e->ticksSinceProgress++;
+        return;
+    }
+
+    // Walk the step length in sub-steps of at most half a cell so large
+    // moveSpeed * deltaTime products do not tunnel past static blockers
+    // (bases, board-edge moat). The sampled flow direction is held
+    // constant for the whole tick -- within a single frame at realistic
+    // moveSpeeds this is indistinguishable from re-sampling per sub-step.
+    float totalStep = e->moveSpeed * deltaTime;
+    if (totalStep < 0.0f) totalStep = 0.0f;
+    float maxSub = (float)NAV_CELL_SIZE * 0.5f;
+    int32_t subCount = 1;
+    if (totalStep > maxSub) {
+        subCount = (int32_t)ceilf(totalStep / maxSub);
+    }
+    float subLen = (subCount > 0) ? totalStep / (float)subCount : 0.0f;
+
+    float posX = e->position.x;
+    float posY = e->position.y;
+    bool moved = false;
+    for (int32_t s = 0; s < subCount; ++s) {
+        float tryX = posX + fx * subLen;
+        float tryY = posY + fy * subLen;
+        int32_t tryCell = nav_cell_index_for_world(tryX, tryY);
+        // Per-field hard-blocked check. The lane field's hardBlocked
+        // mask is the single source of truth for "where this lane's
+        // troops are allowed to stand": it contains the static
+        // obstacle mask that was live when the field was built PLUS
+        // the 96 px home-half corridor mask. Checking it here
+        // (instead of nav->staticBlockers) is what actually enforces
+        // the corridor at step time -- a bilinearly-blended flow
+        // vector that points across a corridor edge no longer leaks.
+        if (field->hardBlocked[tryCell]) {
+            break;
+        }
+        posX = tryX;
+        posY = tryY;
+        moved = true;
+    }
+    if (!moved) {
+        // Fully blocked in front. Stall.
+        e->ticksSinceProgress++;
+        return;
+    }
+
+    // Clamp to canonical board bounds as a last safety net. The moat
+    // should already cover this, but keep the assertion friendly.
+    if (posX < 0.0f) posX = 0.0f;
+    if (posY < 0.0f) posY = 0.0f;
+    if (posX > (float)BOARD_WIDTH)  posX = (float)BOARD_WIDTH;
+    if (posY > (float)BOARD_HEIGHT) posY = (float)BOARD_HEIGHT;
+
+    e->position.x = posX;
+    e->position.y = posY;
+    e->ticksSinceProgress = 0;
+
+    // Facing uses the outer waypoint-derived goal, not the bilinear-
+    // sampled flow direction. Flow sampling on the 8-way integer cell
+    // gradient picks up a small x component whenever the entity is
+    // offset from the lane center (e.g. after a crowd-shaped step),
+    // and feeding that directly to pathfind_face_goal would flip the
+    // sprite flipH on near-pure-vertical movement. The waypoint goal
+    // stays stable along the straight lane centerline, which matches
+    // the old stepper's facing behavior.
+    pathfind_face_goal(e, bf, facingGoal);
+}
+
+// Phase 3c: flow-field target-pursuit stepper.
+//
+// Entry conditions (checked by the caller in pathfind_step_entity):
+//   - nav is a live per-frame NavFrame snapshot
+//   - e->movementTargetId >= 0 and points at a live non-self entity
+//   - goalIsWaypoint == false (outer path computed a pursuit point)
+//
+// Builds a NavTargetGoal from the target's frozen snapshot position and
+// the attacker's effective engagement radius (taken from the caller's
+// already-resolved stopRadius so combat_in_range stays in sync), fetches
+// the per-(target, kind, radius, side) field via
+// nav_get_or_build_target_field, and sub-steps the entity along the
+// sampled flow. STATIC_ATTACK goals seed a 160-deg front-arc ribbon
+// oriented toward the attacker's own side (SIDE_BOTTOM faces up,
+// SIDE_TOP faces down). Mobile melee attackers seed a one-cell-thick
+// ring; ranged/support attackers seed a full disk so they can settle
+// anywhere inside their attack range.
+//
+// When the field cannot be built (overflow, target mid-snapshot gone,
+// goal kind unsupported) the stepper returns false and the caller falls
+// back to the old candidate-fan path.
+static bool pathfind_step_target_flow(Entity *e, NavFrame *nav,
+                                        const Battlefield *bf,
+                                        BattleSide ownerSide,
+                                        Vector2 facingGoal,
+                                        float stopRadius,
+                                        float deltaTime) {
+    if (e->movementTargetId < 0) return false;
+    Entity *target = bf_find_entity((Battlefield *)bf, e->movementTargetId);
+    if (!target || !target->alive) return false;
+    if (stopRadius <= 0.0f) return false;
+
+    bool isStatic = (target->navProfile == NAV_PROFILE_STATIC) ||
+                    (target->type == ENTITY_BUILDING);
+    bool isRanged = e->attackRange > e->bodyRadius + 48.0f;
+
+    NavTargetGoal goal = { 0 };
+    goal.targetX = target->position.x;
+    goal.targetY = target->position.y;
+    goal.outerRadius = stopRadius;
+    goal.targetBodyRadius = target->bodyRadius;
+    // Inner floor matches the stepper's target-body contact shell so
+    // the ribbon never seeds cells the stepper will refuse to enter.
+    goal.innerRadiusMin = target->bodyRadius + e->bodyRadius +
+                          (float)PATHFIND_CONTACT_GAP;
+    goal.targetId = target->id;
+    goal.perspectiveSide = (int16_t)ownerSide;
+
+    if (isStatic) {
+        goal.kind = NAV_GOAL_KIND_STATIC_ATTACK;
+        // Attackers approach from the enemy half, so the target's front
+        // arc faces away from its own spawn. Bottom-side targets face
+        // upward (-y, -90 deg), top-side targets face downward (+y, +90
+        // deg). 160-deg total arc -> half = 80.
+        BattleSide targetSide = bf_side_for_player(target->ownerID);
+        goal.arcCenterDeg = (targetSide == SIDE_BOTTOM) ? -90.0f : 90.0f;
+        goal.arcHalfDeg = 80.0f;
+    } else if (isRanged) {
+        goal.kind = NAV_GOAL_KIND_DIRECT_RANGE;
+    } else {
+        goal.kind = NAV_GOAL_KIND_MELEE_RING;
+    }
+
+    const NavField *field = nav_get_or_build_target_field(nav, bf, &goal);
+    if (!field) return false;
+
+    float fx = 0.0f, fy = 0.0f;
+    nav_sample_flow(field, e->position.x, e->position.y, &fx, &fy);
+    if (fx == 0.0f && fy == 0.0f) {
+        // Attacker is already on a seed cell (at engagement range) or
+        // no reachable flow. Stand still so combat_in_range can latch
+        // in the caller.
+        e->ticksSinceProgress++;
+        pathfind_face_goal(e, bf, facingGoal);
+        return true;
+    }
+
+    float totalStep = e->moveSpeed * deltaTime;
+    if (totalStep < 0.0f) totalStep = 0.0f;
+    float maxSub = (float)NAV_CELL_SIZE * 0.5f;
+    int32_t subCount = 1;
+    if (totalStep > maxSub) {
+        subCount = (int32_t)ceilf(totalStep / maxSub);
+    }
+    float subLen = (subCount > 0) ? totalStep / (float)subCount : 0.0f;
+
+    // Minimum separation from the target center: the attacker's body
+    // plus the target's body plus the contact gap. DIRECT_RANGE and
+    // MELEE_RING fields seed cells all the way to the target center
+    // (for mobile targets the target has no static footprint), so the
+    // stepper must enforce this here. STATIC targets already get the
+    // nav_stamp_static_entity mover-clearance shell, so this is a
+    // no-op for them -- but the check is cheap and catches all kinds.
+    float minSepTargetSq = target->bodyRadius + e->bodyRadius +
+                            (float)PATHFIND_CONTACT_GAP;
+    minSepTargetSq *= minSepTargetSq;
+
+    float posX = e->position.x;
+    float posY = e->position.y;
+    bool moved = false;
+    for (int32_t s = 0; s < subCount; ++s) {
+        float tryX = posX + fx * subLen;
+        float tryY = posY + fy * subLen;
+        int32_t tryCell = nav_cell_index_for_world(tryX, tryY);
+        // Target-field hardBlocked mirrors nav->staticBlockers plus any
+        // per-field mask; checking it keeps the attacker out of base
+        // footprints and the board-edge moat.
+        if (field->hardBlocked[tryCell]) break;
+        // Target-body contact shell. Refuse sub-steps that would pull
+        // the attacker center inside (attacker.body + target.body +
+        // gap). For STATIC targets this is already enforced by the
+        // static-entity stamp shell; for mobile targets it is the
+        // only thing keeping the attacker from walking into the
+        // target sprite.
+        float dxT = tryX - target->position.x;
+        float dyT = tryY - target->position.y;
+        if (dxT * dxT + dyT * dyT < minSepTargetSq) break;
+        posX = tryX;
+        posY = tryY;
+        moved = true;
+    }
+    if (!moved) {
+        e->ticksSinceProgress++;
+        return true;
+    }
+
+    if (posX < 0.0f) posX = 0.0f;
+    if (posY < 0.0f) posY = 0.0f;
+    if (posX > (float)BOARD_WIDTH)  posX = (float)BOARD_WIDTH;
+    if (posY > (float)BOARD_HEIGHT) posY = (float)BOARD_HEIGHT;
+
+    e->position.x = posX;
+    e->position.y = posY;
+    e->ticksSinceProgress = 0;
+    pathfind_face_goal(e, bf, facingGoal);
+    return true;
+}
+
+bool pathfind_step_entity(Entity *e, NavFrame *nav, const Battlefield *bf,
+                           float deltaTime) {
     // Debug assertion: entity position must be within canonical board bounds
     CanonicalPos posCheck = { e->position };
     BF_ASSERT_IN_BOUNDS(posCheck, BOARD_WIDTH, BOARD_HEIGHT);
@@ -1027,7 +1366,30 @@ bool pathfind_step_entity(Entity *e, const Battlefield *bf, float deltaTime) {
         return false;
     }
 
-    pathfind_try_step_toward(e, goal, stopRadius, bf, deltaTime, true, true);
+    // Phase 3b: for pure lane-march stepping (no pursuit target), route
+    // movement through the flow-field stepper. This bypasses the old
+    // candidate fan's hard lane corridor and ally-as-blocker rules in
+    // favor of the NavFrame snapshot: the 96 px home corridor is enforced
+    // by the lane field's hardBlocked mask, crowd shaping is density cost
+    // rolled into the integration, and the enemy half is free to route
+    // cross-lane to the seed. When nav is NULL (legacy tests that ride
+    // the Phase 3a compatibility macros) the old candidate-fan path runs
+    // unchanged.
+    bool handledByFlow = false;
+    if (nav && goalIsWaypoint && e->navProfile == NAV_PROFILE_LANE) {
+        // Phase 3b: lane-march flow stepper.
+        pathfind_step_lane_flow(e, nav, bf, ownerSide, goal, deltaTime);
+        handledByFlow = true;
+    } else if (nav && !goalIsWaypoint && e->movementTargetId >= 0) {
+        // Phase 3c: target-pursuit flow stepper (mobile melee, mobile
+        // ranged/support, static assault). Falls through to the old
+        // candidate fan if the target field cannot be built.
+        handledByFlow = pathfind_step_target_flow(e, nav, bf, ownerSide,
+                                                  goal, stopRadius, deltaTime);
+    }
+    if (!handledByFlow) {
+        pathfind_try_step_toward(e, goal, stopRadius, bf, deltaTime, true, true);
+    }
     pathfind_sync_lane_progress(e, bf);
 
     // --- Lane bookkeeping (only meaningful when lane-following) ---

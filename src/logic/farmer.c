@@ -52,7 +52,8 @@ static float farmer_base_wait_radius(const Entity *farmer, const Entity *base) {
 static bool farmer_move_with_steering(Entity *e, GameState *gs, Vector2 target,
                                       float radius, float deltaTime) {
     bool arrived = pathfind_move_toward_goal(e, target, radius,
-                                             &gs->battlefield, deltaTime);
+                                             &gs->nav, &gs->battlefield,
+                                             deltaTime);
     e->spriteRotationDegrees = farmer_sprite_rotation(e);
     return arrived;
 }

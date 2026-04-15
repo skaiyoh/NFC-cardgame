@@ -16,7 +16,6 @@ typedef struct {
     bool rangeCirlces;  // F5: attack range circles
     bool sustenanceNodes;      // F6: sustenance node state markers + claim lines
     bool sustenancePlacement;  // F7: placement-diagnostics grid
-    bool assaultGeometry;      // F8: base assault slots + reserved engagement points
     bool depositSlots;         // F9: base deposit slot rings (primary + queue)
     bool crowdShells;          // F10: hard blocker shell vs soft ally shell
 } DebugOverlayFlags;

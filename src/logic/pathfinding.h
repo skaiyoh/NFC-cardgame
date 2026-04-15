@@ -3,11 +3,17 @@
 
 #include "../core/types.h"
 #include "../core/battlefield.h"
+#include "nav_frame.h"
 
 // Advance entity one frame along the owning lane polyline using continuous
 // lane progress plus local steering. Returns true if the entity is still
 // walking, false if it reached the lane end (transitioned to IDLE).
-bool pathfind_step_entity(Entity *e, const Battlefield *bf, float deltaTime);
+//
+// `nav` is the frozen per-frame navigation snapshot (GameState.nav). Phase
+// 3a threads it through without touching behavior; later sub-phases consume
+// the flow fields it owns.
+bool pathfind_step_entity(Entity *e, NavFrame *nav, const Battlefield *bf,
+                           float deltaTime);
 
 // Apply waypoint-based facing to an animation state.
 // Troops now use only DIR_SIDE; pure vertical motion keeps a right-facing bias.
@@ -54,7 +60,8 @@ void pathfind_sync_lane_progress(Entity *e, const Battlefield *bf);
 // stopRadius), false while still moving. Used by farmer movement to re-use the
 // same obstacle avoidance without lane-bound crowd behavior.
 bool pathfind_move_toward_goal(Entity *e, Vector2 goal, float stopRadius,
-                               const Battlefield *bf, float deltaTime);
+                               NavFrame *nav, const Battlefield *bf,
+                               float deltaTime);
 
 // Apply troop-facing using the supplied side's perspective.
 // Troops always use DIR_SIDE; SIDE_TOP still inverts flipH because those

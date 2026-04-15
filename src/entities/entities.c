@@ -37,21 +37,11 @@ static bool entity_target_uses_static_assault_cloud(const Entity *target) {
     return target->type == ENTITY_BUILDING || target->navProfile == NAV_PROFILE_STATIC;
 }
 
-static void entity_clear_assault_reservation(Entity *e) {
-    if (!e) return;
-
-    e->reservedAssaultTargetId = -1;
-    e->reservedAssaultSlotIndex = -1;
-    e->reservedAssaultSlotKind = ASSAULT_SLOT_NONE;
-}
-
 static void entity_apply_enemy_pursuit(Entity *e, GameState *gs, Entity *pursuit) {
     if (!e || !gs) return;
 
     if (!pursuit) {
-        entity_clear_assault_reservation(e);
         e->movementTargetId = -1;
-        e->engagementType = COMBAT_ENGAGEMENT_NONE;
         e->lastSteerSideSign = 0;
         if (e->unitRole == UNIT_ROLE_COMBAT) {
             e->navProfile = NAV_PROFILE_LANE;
@@ -67,9 +57,6 @@ static void entity_apply_enemy_pursuit(Entity *e, GameState *gs, Entity *pursuit
     if (e->unitRole == UNIT_ROLE_COMBAT) {
         e->navProfile = NAV_PROFILE_ASSAULT;
     }
-
-    entity_clear_assault_reservation(e);
-    e->engagementType = COMBAT_ENGAGEMENT_PERIMETER;
 }
 
 static Entity *entity_find_enemy_base_objective(Entity *e, GameState *gs) {
@@ -274,10 +261,6 @@ Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
     e->reservedDepositSlotIndex = -1;
     e->reservedDepositSlotKind = DEPOSIT_SLOT_NONE;
     e->lastSteerSideSign = 0;
-    e->engagementType = COMBAT_ENGAGEMENT_NONE;
-    e->reservedAssaultTargetId = -1;
-    e->reservedAssaultSlotIndex = -1;
-    e->reservedAssaultSlotKind = ASSAULT_SLOT_NONE;
     // TODO: spriteScale is hardcoded to 2.0f here; troop_spawn overrides it correctly, but other
     // TODO: entity types that don't override this may inadvertently inherit the wrong scale.
     e->spriteScale = 2.0f;
@@ -418,7 +401,7 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
             // (c) Step. Phase 2 still uses waypoint stepping; Phase 3 makes
             // pathfind_step_entity goal-aware so it steers toward the
             // movementTarget when one is set.
-            pathfind_step_entity(e, bf, deltaTime);
+            pathfind_step_entity(e, &gs->nav, bf, deltaTime);
 
             // (d) Post-step attack check -- uses the heal-first combat_find_target
             // so healers can still heal an injured ally that just landed in

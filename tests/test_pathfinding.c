@@ -26,6 +26,9 @@
 #define NFC_CARDGAME_ENTITIES_H
 #define NFC_CARDGAME_BATTLEFIELD_H
 #define NFC_CARDGAME_BATTLEFIELD_MATH_H
+/* nav_frame.h is NOT blocked -- the real NavFrame / NavField types are
+ * needed so nav_frame.c and pathfinding.c agree on struct layout when
+ * both are #included directly below. */
 
 /* ---- Config defines (must match src/core/config.h) ---- */
 #define LANE_WAYPOINT_COUNT  8
@@ -117,12 +120,6 @@ typedef enum {
 } UnitNavProfile;
 
 typedef enum {
-    ASSAULT_SLOT_NONE = 0,
-    ASSAULT_SLOT_PRIMARY,
-    ASSAULT_SLOT_QUEUE
-} AssaultSlotKind;
-
-typedef enum {
     DEPOSIT_SLOT_NONE = 0,
     DEPOSIT_SLOT_PRIMARY,
     DEPOSIT_SLOT_QUEUE
@@ -165,9 +162,6 @@ struct Entity {
     int movementTargetId;
     int ticksSinceProgress;
     int lastSteerSideSign;
-    int reservedAssaultTargetId;
-    int reservedAssaultSlotIndex;
-    AssaultSlotKind reservedAssaultSlotKind;
     int reservedDepositSlotIndex;
     DepositSlotKind reservedDepositSlotKind;
 };
@@ -370,8 +364,16 @@ float combat_static_target_occupancy_radius(const Entity *attacker, const Entity
     return attackRadius + attacker->bodyRadius + PATHFIND_CONTACT_GAP;
 }
 
+/* ---- Include the real nav_frame module. It only needs `struct
+ *      Battlefield` (the stub above is sufficient) and config.h. Pulling
+ *      it in here lets every lane-march test run the real Phase 3b
+ *      stepper end-to-end instead of stubbing out flow sampling. ---- */
+#include "../src/logic/nav_frame.c"
+
 /* ---- Forward declarations for functions in pathfinding.c ---- */
-bool pathfind_step_entity(Entity *e, const Battlefield *bf, float deltaTime);
+bool pathfind_step_entity(Entity *e, NavFrame *nav, const Battlefield *bf, float deltaTime);
+bool pathfind_move_toward_goal(Entity *e, Vector2 goal, float stopRadius,
+                               NavFrame *nav, const Battlefield *bf, float deltaTime);
 void pathfind_apply_direction(AnimState *anim, Vector2 diff);
 BattleSide pathfind_presentation_side_for_position(Vector2 position, float seamY);
 void pathfind_sync_presentation(Entity *e, const Battlefield *bf);
@@ -384,6 +386,22 @@ float pathfind_sprite_rotation_for_side(SpriteDirection dir, BattleSide side);
 
 /* ---- Include production code under test ---- */
 #include "../src/logic/pathfinding.c"
+
+/* ---- Existing-test compatibility shims ----
+ *
+ * The legacy 45 tests were written against the pre-Phase-3b candidate-fan
+ * stepper and encode hard-ally-blocking behavior (e.g. "blocked on
+ * waypoint, do not advance") that Rev 3 of the plan explicitly retires.
+ * Rather than rewrite every legacy test in one commit, these macros
+ * inject a NULL NavFrame at the legacy call sites. When nav is NULL,
+ * pathfind_step_entity falls through to pathfind_try_step_toward, which
+ * preserves the old behavior. New Phase 3b tests live at the bottom of
+ * this file and bypass the macros via the parenthesized-name trick to
+ * call the real function with a real nav snapshot. */
+#define pathfind_step_entity(e, bf, dt) \
+    pathfind_step_entity((e), (NavFrame *)0, (bf), (dt))
+#define pathfind_move_toward_goal(e, goal, r, bf, dt) \
+    pathfind_move_toward_goal((e), (goal), (r), (NavFrame *)0, (bf), (dt))
 
 /* ---- Test helpers ---- */
 
@@ -1293,7 +1311,8 @@ static void test_body_radius_bounds_reject_edge_clipping_candidate(void) {
     unit.bodyRadius = 30.0f;
 
     Vector2 before = unit.position;
-    bool arrived = pathfind_move_toward_goal(&unit, (Vector2){ 0.0f, 0.0f }, 0.0f,
+    Vector2 zeroGoal = { 0.0f, 0.0f };
+    bool arrived = pathfind_move_toward_goal(&unit, zeroGoal, 0.0f,
                                              &bf, 1.0f / 60.0f);
 
     assert(arrived == false);
@@ -1480,7 +1499,8 @@ static void test_free_mover_respects_board_bounds(void) {
     bf_test_register(&bf, &unit);
 
     Vector2 before = unit.position;
-    pathfind_move_toward_goal(&unit, (Vector2){ 0.0f, 0.0f }, 0.0f,
+    Vector2 zeroGoal = { 0.0f, 0.0f };
+    pathfind_move_toward_goal(&unit, zeroGoal, 0.0f,
                               &bf, 1.0f / 60.0f);
 
     /* Unit cannot move: forward of (0,0) would clip the -x/-y edges. The
@@ -1911,6 +1931,614 @@ static void test_primary_deposit_contact_cloud_allows_overlap(void) {
     assert(dist < shell - 1.0f);
 }
 
+/* ==================================================================
+ *   PHASE 3B: FLOW-FIELD LANE-MARCH STEPPER TESTS
+ *
+ * These tests bypass the compatibility macros by invoking the real
+ * pathfind_step_entity via (pathfind_step_entity)(...) with a real
+ * NavFrame. They validate the new stepper's contract:
+ *   - Units are pulled through the lane by the flow field
+ *   - The 96 px home-half corridor is enforced by the lane field mask
+ *   - Allies are soft cost only (no hard rejection)
+ *   - Static building footprints remain hard blockers
+ * ================================================================== */
+
+/* Fully rebuild a NavFrame against bf: init, begin_frame, snapshot +
+ * density-stamp every live entity in the registry. Mirrors what
+ * src/core/game.c does at the top of each game_update tick. */
+static NavFrame g_phase3bNav;
+static NavFrame *phase3b_nav_begin(Battlefield *bf) {
+    nav_frame_init(&g_phase3bNav);
+    nav_begin_frame(&g_phase3bNav, bf);
+    for (int i = 0; i < bf->entityCount; i++) {
+        Entity *e = bf->entities[i];
+        if (!e) continue;
+        int side = (e->ownerID == 0) ? 0 : 1;
+        nav_snapshot_entity_position(&g_phase3bNav, e->id,
+                                     e->position.x, e->position.y);
+        if (e->navProfile == NAV_PROFILE_STATIC) {
+            float radius = (e->navRadius > 0.0f) ? e->navRadius : e->bodyRadius;
+            if (radius <= 0.0f) radius = 56.0f;
+            nav_stamp_static_entity(&g_phase3bNav, e->id,
+                                    e->position.x, e->position.y, radius);
+        } else {
+            nav_stamp_density(&g_phase3bNav, side,
+                              e->position.x, e->position.y);
+        }
+    }
+    return &g_phase3bNav;
+}
+
+static void test_phase3b_lane_flow_pulls_unit_toward_seed(void) {
+    Battlefield bf = make_test_battlefield();
+    /* Place a lane troop at the start of the lane (home half, near spawn)
+     * and step it under the real flow-field path. After a handful of
+     * ticks it must have advanced toward the lane end (y decreasing for
+     * SIDE_BOTTOM). */
+    Entity e = make_test_entity(1, 0, 300.0f);
+    e.position = bf.laneWaypoints[SIDE_BOTTOM][1][0].v;
+    e.navProfile = NAV_PROFILE_LANE;
+
+    bf_test_register(&bf, &e);
+    float startY = e.position.y;
+
+    NavFrame *nav = phase3b_nav_begin(&bf);
+    for (int i = 0; i < 10; i++) {
+        (pathfind_step_entity)(&e, nav, &bf, 1.0f / 60.0f);
+    }
+    /* Moved upward (toward smaller y) -- flow field is actually pulling. */
+    assert(e.position.y < startY);
+    printf("  PASS: test_phase3b_lane_flow_pulls_unit_toward_seed\n");
+}
+
+static void test_phase3b_home_corridor_rejects_off_lane_start(void) {
+    Battlefield bf = make_test_battlefield();
+    /* Place a lane-1 troop far from the center lane (x=540) in the home
+     * half. Distance > 96 px means the corridor mask hard-blocks its
+     * cell in the lane field. The new stepper should stall (no flow). */
+    Entity e = make_test_entity(1, 0, 300.0f);
+    e.position = (Vector2){ 50.0f, 1500.0f };
+    e.navProfile = NAV_PROFILE_LANE;
+
+    bf_test_register(&bf, &e);
+    Vector2 before = e.position;
+    NavFrame *nav = phase3b_nav_begin(&bf);
+    for (int i = 0; i < 10; i++) {
+        (pathfind_step_entity)(&e, nav, &bf, 1.0f / 60.0f);
+    }
+    /* Position must not have moved: outside corridor, no flow, stall. */
+    assert(e.position.x == before.x);
+    assert(e.position.y == before.y);
+    printf("  PASS: test_phase3b_home_corridor_rejects_off_lane_start\n");
+}
+
+static void test_phase3b_enemy_half_allows_cross_lane_routing(void) {
+    /* In the enemy half (y < SEAM_Y for SIDE_BOTTOM), the corridor mask
+     * does not apply. A lane-1 unit placed at an off-center x should
+     * still receive a non-zero flow vector and advance upward. */
+    Battlefield bf = make_test_battlefield();
+    Entity e = make_test_entity(1, 0, 300.0f);
+    e.position = (Vector2){ 200.0f, 400.0f };  /* enemy half, off center */
+    e.navProfile = NAV_PROFILE_LANE;
+    bf_test_register(&bf, &e);
+
+    float startY = e.position.y;
+    NavFrame *nav = phase3b_nav_begin(&bf);
+    for (int i = 0; i < 10; i++) {
+        (pathfind_step_entity)(&e, nav, &bf, 1.0f / 60.0f);
+    }
+    assert(e.position.y < startY);
+    printf("  PASS: test_phase3b_enemy_half_allows_cross_lane_routing\n");
+}
+
+static void test_phase3b_ally_overlap_is_soft_cost(void) {
+    /* Two allies standing exactly on top of each other under the new
+     * stepper. One steps forward; ally body-radius overlap must NOT
+     * block it (the new stepper has no candidate-fan ally rejection).
+     * Density shaping may slow it, but the unit must still advance. */
+    Battlefield bf = make_test_battlefield();
+    Entity mover = make_test_entity(1, 0, 300.0f);
+    mover.position = bf.laneWaypoints[SIDE_BOTTOM][1][1].v;  /* on lane */
+    mover.navProfile = NAV_PROFILE_LANE;
+
+    Entity blocker = make_test_entity(1, 0, 0.0f);
+    blocker.position = mover.position;  /* exact overlap */
+    blocker.bodyRadius = 30.0f;
+    blocker.navProfile = NAV_PROFILE_LANE;
+
+    bf_test_register(&bf, &mover);
+    bf_test_register(&bf, &blocker);
+    float startY = mover.position.y;
+
+    NavFrame *nav = phase3b_nav_begin(&bf);
+    for (int i = 0; i < 10; i++) {
+        (pathfind_step_entity)(&mover, nav, &bf, 1.0f / 60.0f);
+    }
+    /* Mover made forward progress despite the ally directly on top. */
+    assert(mover.position.y < startY);
+    printf("  PASS: test_phase3b_ally_overlap_is_soft_cost\n");
+}
+
+static void test_phase3b_static_blocker_routes_around(void) {
+    /* Stamp a static entity in front of a lane troop via
+     * nav_stamp_static_entity (which inflates by the mover shell so the
+     * cell-center check preserves the old radius-aware separation rule).
+     * The lane field integration re-routes the flow around the blocker,
+     * so the stepper drives the unit laterally before continuing upward.
+     * The unit must never come within the shell radius of the blocker. */
+    Battlefield bf = make_test_battlefield();
+    Entity e = make_test_entity(1, 0, 300.0f);
+    e.position = bf.laneWaypoints[SIDE_BOTTOM][1][2].v;
+    e.navProfile = NAV_PROFILE_LANE;
+    bf_test_register(&bf, &e);
+
+    NavFrame *nav = phase3b_nav_begin(&bf);
+    float blockerX = e.position.x;
+    float blockerY = e.position.y - 60.0f;
+    float blockerR = 48.0f;
+    nav_stamp_static_entity(nav, 9001, blockerX, blockerY, blockerR);
+
+    /* Shell that the stepper must respect: blockerR + mover bodyRadius. */
+    float shell = blockerR + e.bodyRadius;
+
+    Vector2 before = e.position;
+    for (int i = 0; i < 30; i++) {
+        (pathfind_step_entity)(&e, nav, &bf, 1.0f / 60.0f);
+        /* Per-step invariant: the mover CENTER may sit on the edge of
+         * the stamped (blockerR + shell) cells, but this assertion
+         * tightens the check to the authored blocker radius plus the
+         * mover's own bodyRadius so a regression that drops the shell
+         * is visibly failing. Allow one-cell float slack. */
+        float dx = e.position.x - blockerX;
+        float dy = e.position.y - blockerY;
+        float dist = sqrtf(dx * dx + dy * dy);
+        assert(dist >= shell - (float)NAV_CELL_SIZE);
+    }
+    /* Detour verification: the stepper routed around the blocker and
+     * made visible lateral displacement AND forward progress. */
+    assert(fabsf(e.position.x - before.x) > 8.0f);
+    assert(e.position.y < before.y);
+    printf("  PASS: test_phase3b_static_blocker_routes_around\n");
+}
+
+static void test_phase3b_mover_respects_blocker_shell(void) {
+    /* Direct regression for the stamp-shell fix: stamp a base-sized
+     * static entity (radius 56, matching BASE_NAV_RADIUS) and try to
+     * push a normal troop (bodyRadius 14) through it. The troop must
+     * stop at least blockerRadius + NAV_MAX_MOBILE_BODY_RADIUS + gap
+     * away from the blocker center, matching the old candidate fan's
+     * rejection rule. */
+    Battlefield bf = make_test_battlefield();
+    Entity e = make_test_entity(1, 0, 300.0f);
+    e.position = bf.laneWaypoints[SIDE_BOTTOM][1][3].v;
+    e.navProfile = NAV_PROFILE_LANE;
+    e.bodyRadius = 14.0f;
+    bf_test_register(&bf, &e);
+
+    NavFrame *nav = phase3b_nav_begin(&bf);
+    float baseX = e.position.x;
+    float baseY = e.position.y - 96.0f;
+    float baseR = 56.0f;  /* BASE_NAV_RADIUS */
+    nav_stamp_static_entity(nav, 9002, baseX, baseY, baseR);
+
+    /* Expected min separation = baseR + 18 (NAV_MAX_MOBILE_BODY_RADIUS)
+     * + 2 (PATHFIND_CONTACT_GAP) = 76. Allow one cell of bilinear
+     * slack. */
+    float minSep = 56.0f + 18.0f + 2.0f - (float)NAV_CELL_SIZE;
+
+    for (int i = 0; i < 60; i++) {
+        (pathfind_step_entity)(&e, nav, &bf, 1.0f / 60.0f);
+        float dx = e.position.x - baseX;
+        float dy = e.position.y - baseY;
+        float dist = sqrtf(dx * dx + dy * dy);
+        assert(dist >= minSep);
+    }
+    printf("  PASS: test_phase3b_mover_respects_blocker_shell\n");
+}
+
+/* ==================================================================
+ *   PHASE 3C: TARGET-PURSUIT FLOW STEPPER TESTS
+ *
+ * These cases exercise the mobile/static assault branches of the new
+ * target-flow stepper. They inherit the phase3b_nav_begin harness so
+ * static footprints use the mover-clearance shell and the nav snapshot
+ * reflects real entity positions.
+ * ================================================================== */
+
+static void test_phase3c_melee_pursues_moving_target(void) {
+    Battlefield bf = make_test_battlefield();
+    Entity attacker = make_test_entity(1, 0, 300.0f);
+    attacker.position = (Vector2){ 540.0f, 1500.0f };
+    attacker.navProfile = NAV_PROFILE_LANE;
+    attacker.bodyRadius = 14.0f;
+    attacker.attackRange = 20.0f;  /* melee */
+
+    Entity target = make_test_entity(1, 0, 0.0f);
+    target.position = (Vector2){ 540.0f, 1380.0f };
+    target.navProfile = NAV_PROFILE_LANE;
+    target.bodyRadius = 14.0f;
+    target.ownerID = 1;  /* enemy */
+    target.faction = FACTION_PLAYER2;
+
+    bf_test_register(&bf, &attacker);
+    bf_test_register(&bf, &target);
+    attacker.movementTargetId = target.id;
+
+    float startDist = fabsf(attacker.position.y - target.position.y);
+    NavFrame *nav = phase3b_nav_begin(&bf);
+    for (int i = 0; i < 15; i++) {
+        (pathfind_step_entity)(&attacker, nav, &bf, 1.0f / 60.0f);
+    }
+    float endDist = fabsf(attacker.position.y - target.position.y);
+    /* Attacker should have closed the gap. */
+    assert(endDist < startDist - 8.0f);
+    printf("  PASS: test_phase3c_melee_pursues_moving_target\n");
+}
+
+static void test_phase3c_ranged_stops_inside_attack_range(void) {
+    Battlefield bf = make_test_battlefield();
+    Entity attacker = make_test_entity(1, 0, 300.0f);
+    attacker.position = (Vector2){ 540.0f, 1700.0f };
+    attacker.navProfile = NAV_PROFILE_LANE;
+    attacker.bodyRadius = 14.0f;
+    attacker.attackRange = 180.0f;  /* clearly ranged */
+
+    Entity target = make_test_entity(1, 0, 0.0f);
+    target.position = (Vector2){ 540.0f, 1400.0f };
+    target.navProfile = NAV_PROFILE_LANE;
+    target.bodyRadius = 14.0f;
+    target.ownerID = 1;
+
+    bf_test_register(&bf, &attacker);
+    bf_test_register(&bf, &target);
+    attacker.movementTargetId = target.id;
+
+    NavFrame *nav = phase3b_nav_begin(&bf);
+    for (int i = 0; i < 60; i++) {
+        (pathfind_step_entity)(&attacker, nav, &bf, 1.0f / 60.0f);
+    }
+    /* Attacker should have moved close enough to attack without
+     * overshooting into the target body. */
+    float dist = fabsf(attacker.position.y - target.position.y);
+    assert(dist <= attacker.attackRange + (float)NAV_CELL_SIZE);
+    assert(dist >= target.bodyRadius + attacker.bodyRadius - 1.0f);
+    printf("  PASS: test_phase3c_ranged_stops_inside_attack_range\n");
+}
+
+static void test_phase3c_static_assault_uses_front_arc(void) {
+    Battlefield bf = make_test_battlefield();
+    /* Bottom-side attacker (P1 troop attacking a P2/top-side base).
+     * The base faces downward (+y direction -- that's where its
+     * attackers approach from). The static arc ribbon should seed
+     * cells south of the base, pulling the attacker in from below. */
+    Entity attacker = make_test_entity(1, 0, 300.0f);
+    attacker.position = (Vector2){ 540.0f, 600.0f };
+    attacker.navProfile = NAV_PROFILE_LANE;
+    attacker.bodyRadius = 14.0f;
+    attacker.attackRange = 20.0f;
+
+    Entity base = make_test_entity(1, 0, 0.0f);
+    base.position = (Vector2){ 540.0f, 300.0f };
+    base.type = ENTITY_BUILDING;
+    base.navProfile = NAV_PROFILE_STATIC;
+    base.navRadius = 56.0f;
+    base.bodyRadius = 16.0f;  /* matches production base geometry */
+    base.ownerID = 1;  /* top-side base */
+    base.faction = FACTION_PLAYER2;
+
+    bf_test_register(&bf, &attacker);
+    bf_test_register(&bf, &base);
+    attacker.movementTargetId = base.id;
+    attacker.attackRange = 100.0f;
+
+    float startY = attacker.position.y;
+    /* 80 ticks at moveSpeed=300/dt=1/60 covers ~400 px of straight
+     * approach -- enough for the attacker to cross the remaining
+     * ~250 px to the combat ring. */
+    for (int i = 0; i < 80; i++) {
+        NavFrame *nav = phase3b_nav_begin(&bf);
+        (pathfind_step_entity)(&attacker, nav, &bf, 1.0f / 60.0f);
+    }
+    /* The attacker should have advanced toward the base (smaller y)
+     * AND settled in combat range. With production base geometry
+     * (body=16, nav=56) and knight attackRange=100:
+     *   contact_radius = max(56-30, 16) = 26
+     *   stopR = 26 + 14 + 2 + 8 (max melee slack) = 50
+     *   minSep = 16 + 14 + 2 = 32
+     * The attacker center must be inside stopR of the base center,
+     * above the minSep contact shell, and in the front arc. */
+    assert(attacker.position.y < startY);
+    float adx = attacker.position.x - base.position.x;
+    float ady = attacker.position.y - base.position.y;
+    float adist = sqrtf(adx * adx + ady * ady);
+    float stopR = combat_static_target_attack_radius(&attacker, &base);
+    assert(adist <= stopR + 0.001f);
+    assert(adist >= 32.0f - 1.0f);
+    printf("  PASS: test_phase3c_static_assault_uses_front_arc\n");
+}
+
+static void test_phase3c_no_target_falls_back_to_lane_flow(void) {
+    /* If pathfind_compute_goal returns a non-waypoint goal but the
+     * target id is -1 (e.g. stale pursuit state), the Phase 3c gate
+     * should not fire and the caller must still advance the entity
+     * via either the lane-flow or candidate-fan fallback. */
+    Battlefield bf = make_test_battlefield();
+    Entity e = make_test_entity(1, 0, 300.0f);
+    e.position = bf.laneWaypoints[SIDE_BOTTOM][1][1].v;
+    e.navProfile = NAV_PROFILE_LANE;
+    e.movementTargetId = -1;
+    bf_test_register(&bf, &e);
+
+    float startY = e.position.y;
+    NavFrame *nav = phase3b_nav_begin(&bf);
+    for (int i = 0; i < 10; i++) {
+        (pathfind_step_entity)(&e, nav, &bf, 1.0f / 60.0f);
+    }
+    assert(e.position.y < startY);
+    printf("  PASS: test_phase3c_no_target_falls_back_to_lane_flow\n");
+}
+
+/* ==================================================================
+ *   PHASE 3D: FREE-GOAL FLOW STEPPER TESTS (farmers + helpers)
+ * ================================================================== */
+
+static void test_phase3d_farmer_reaches_free_goal(void) {
+    Battlefield bf = make_test_battlefield();
+    Entity farmer = make_test_entity(1, 0, 300.0f);
+    farmer.position = (Vector2){ 540.0f, 1500.0f };
+    farmer.navProfile = NAV_PROFILE_FREE_GOAL;
+    farmer.bodyRadius = 14.0f;
+    bf_test_register(&bf, &farmer);
+
+    Vector2 goal = { 540.0f, 1100.0f };
+    float stopRadius = 16.0f;
+
+    NavFrame *nav = phase3b_nav_begin(&bf);
+    bool arrived = false;
+    for (int i = 0; i < 200 && !arrived; i++) {
+        arrived = (pathfind_move_toward_goal)(&farmer, goal, stopRadius, nav, &bf, 1.0f / 60.0f);
+    }
+    assert(arrived);
+    float dx = farmer.position.x - goal.x;
+    float dy = farmer.position.y - goal.y;
+    assert(sqrtf(dx * dx + dy * dy) <= stopRadius + 1.0f);
+    printf("  PASS: test_phase3d_farmer_reaches_free_goal\n");
+}
+
+static void test_phase3d_farmer_avoids_static_blocker(void) {
+    /* Farmer has to detour around a static entity between it and its
+     * deposit goal. The free-goal field routes around the shell, and
+     * the farmer must never cross into it. */
+    Battlefield bf = make_test_battlefield();
+    Entity farmer = make_test_entity(1, 0, 300.0f);
+    farmer.position = (Vector2){ 540.0f, 1600.0f };
+    farmer.navProfile = NAV_PROFILE_FREE_GOAL;
+    farmer.bodyRadius = 14.0f;
+    bf_test_register(&bf, &farmer);
+
+    Vector2 goal = { 540.0f, 1200.0f };
+    float stopRadius = 16.0f;
+
+    NavFrame *nav = phase3b_nav_begin(&bf);
+    float blockerX = 540.0f;
+    float blockerY = 1400.0f;
+    float blockerR = 48.0f;
+    nav_stamp_static_entity(nav, 9003, blockerX, blockerY, blockerR);
+
+    float shell = blockerR + farmer.bodyRadius;
+    bool arrived = false;
+    for (int i = 0; i < 400 && !arrived; i++) {
+        arrived = (pathfind_move_toward_goal)(&farmer, goal, stopRadius, nav, &bf, 1.0f / 60.0f);
+        float dx = farmer.position.x - blockerX;
+        float dy = farmer.position.y - blockerY;
+        float dist = sqrtf(dx * dx + dy * dy);
+        assert(dist >= shell - (float)NAV_CELL_SIZE);
+    }
+    assert(arrived);
+    printf("  PASS: test_phase3d_farmer_avoids_static_blocker\n");
+}
+
+static void test_phase3d_farmer_arrival_is_idempotent(void) {
+    /* When already inside the stopRadius, move_toward_goal returns
+     * true without taking a step. */
+    Battlefield bf = make_test_battlefield();
+    Entity farmer = make_test_entity(1, 0, 300.0f);
+    Vector2 goal = { 540.0f, 1200.0f };
+    farmer.position = (Vector2){ 540.0f, 1210.0f };  /* within 16 */
+    farmer.navProfile = NAV_PROFILE_FREE_GOAL;
+    farmer.bodyRadius = 14.0f;
+    bf_test_register(&bf, &farmer);
+
+    NavFrame *nav = phase3b_nav_begin(&bf);
+    Vector2 before = farmer.position;
+    bool arrived = (pathfind_move_toward_goal)(&farmer, goal, 16.0f, nav, &bf, 1.0f / 60.0f);
+    assert(arrived);
+    assert(farmer.position.x == before.x);
+    assert(farmer.position.y == before.y);
+    printf("  PASS: test_phase3d_farmer_arrival_is_idempotent\n");
+}
+
+static void test_phase3b_corridor_hardblocked_cells_refused(void) {
+    /* Place a lane-1 troop just inside the 96 px home-half corridor and
+     * manually flip an adjacent cell to hardBlocked on the lane field
+     * between nav_begin_frame and the first step. The stepper must
+     * refuse to enter that cell even if the bilinear-sampled flow
+     * points across the edge. */
+    Battlefield bf = make_test_battlefield();
+    Entity e = make_test_entity(1, 0, 300.0f);
+    /* Inside corridor: x = 540 + 60, y = 1500 (home half). */
+    e.position = (Vector2){ 600.0f, 1500.0f };
+    e.navProfile = NAV_PROFILE_LANE;
+    bf_test_register(&bf, &e);
+
+    NavFrame *nav = phase3b_nav_begin(&bf);
+
+    /* Prime the lane field, then paint a local hard-blocker cap just
+     * forward of the entity's cell. We intentionally bypass the lane
+     * corridor mask by marking a custom field cell hardBlocked after
+     * the integration has completed. */
+    const NavField *laneFieldConst =
+        nav_get_or_build_lane_field(nav, &bf, SIDE_BOTTOM, e.lane);
+    assert(laneFieldConst != NULL);
+    /* Cast away const to install the extra blocker: this is test-only
+     * surgery to prove the stepper consults field->hardBlocked. */
+    NavField *laneField = (NavField *)laneFieldConst;
+
+    /* Mark the cell directly north of the entity (one row up) as
+     * hard-blocked. */
+    int32_t entityCell = nav_cell_index_for_world(e.position.x, e.position.y);
+    NavCellCoord ec = nav_cell_coord(entityCell);
+    int32_t northCell = nav_index(ec.col, ec.row - 1);
+    laneField->hardBlocked[northCell] = 1;
+
+    /* Also block the two diagonals so the stepper cannot squeeze past
+     * via NE/NW sub-steps. */
+    laneField->hardBlocked[nav_index(ec.col - 1, ec.row - 1)] = 1;
+    laneField->hardBlocked[nav_index(ec.col + 1, ec.row - 1)] = 1;
+
+    for (int i = 0; i < 10; i++) {
+        (pathfind_step_entity)(&e, nav, &bf, 1.0f / 60.0f);
+        /* Cell-level invariant: the mover never enters the forcibly-
+         * blocked north row. Sub-pixel drift within its own cell is
+         * expected as the bilinear sample pulls it toward the blocked
+         * edge, but the stepper must reject any cell transition into
+         * the blocked row. */
+        int32_t curCell = nav_cell_index_for_world(e.position.x, e.position.y);
+        NavCellCoord curCoord = nav_cell_coord(curCell);
+        assert(curCoord.row >= ec.row);
+    }
+    printf("  PASS: test_phase3b_corridor_hardblocked_cells_refused\n");
+}
+
+/* ==================================================================
+ *   PHASE 6: STRESS REGRESSION
+ *
+ * 32 knight-class lane troops pre-aggro'd on a top-side base, run for
+ * 600 ticks through the real Phase 3 flow-field path. Asserts:
+ *   1. No NaN positions; no position outside board bounds.
+ *   2. Zero entities spend more than 120 consecutive ticks alternating
+ *      between exactly two cells (ping-pong guard).
+ *   3. At the final tick, >=80% of the 32 knights sit inside the
+ *      enemy base's static-attack ribbon (within
+ *      NAV_GOAL_RIBBON_HALF_THICKNESS of the stop radius, inside the
+ *      160-degree front arc).
+ * ================================================================== */
+
+static void test_phase6_stress_32_knights_converge_on_front_arc(void) {
+    Battlefield bf = make_test_battlefield();
+
+    /* Top-side base: static, near the top of the board. Geometry
+     * matches production: bodyRadius = troop_default_body_radius(BASE)
+     * = 16, navRadius = BASE_NAV_RADIUS = 56. These are distinct: the
+     * nav footprint is the authored pathing shell, the body radius is
+     * the authored combat contact center. */
+    Entity base = make_test_entity(1, 0, 0.0f);
+    base.position = (Vector2){ 540.0f, 240.0f };
+    base.type = ENTITY_BUILDING;
+    base.navProfile = NAV_PROFILE_STATIC;
+    base.navRadius = 56.0f;
+    base.bodyRadius = 16.0f;
+    base.ownerID = 1;
+    base.faction = FACTION_PLAYER2;
+    base.alive = true;
+    bf_test_register(&bf, &base);
+
+    /* 32 bottom-side knights spread across the three lanes in the
+     * home half. Each pre-acquires the base as its pursuit target so
+     * pathfind_compute_goal returns a static-assault goal on tick 1. */
+    const int KNIGHT_COUNT = 32;
+    Entity knights[KNIGHT_COUNT];
+    for (int i = 0; i < KNIGHT_COUNT; i++) {
+        int lane = i % 3;
+        int slot = i / 3;  /* 0..10 */
+        knights[i] = make_test_entity(lane, 0, 240.0f);
+        float laneX = 180.0f + (float)lane * 360.0f;
+        float spawnY = 1700.0f - (float)slot * 16.0f;
+        knights[i].position = (Vector2){ laneX, spawnY };
+        knights[i].bodyRadius = 14.0f;
+        /* attackRange > (target contact + own body + gap) so the stub's
+         * combat_melee_reach_distance returns non-zero slack, giving
+         * the attack ring a measurable (~8 px) thickness. Real-game
+         * melee troops typically have attackRange >> contact distance
+         * for this reason. */
+        knights[i].attackRange = 100.0f;
+        knights[i].navProfile = NAV_PROFILE_ASSAULT;
+        knights[i].movementTargetId = base.id;
+        knights[i].ownerID = 0;
+        knights[i].faction = FACTION_PLAYER1;
+        knights[i].alive = true;
+        bf_test_register(&bf, &knights[i]);
+    }
+
+    /* Ping-pong tracking: last-cell and last-last-cell per knight. */
+    int32_t lastCell[KNIGHT_COUNT];
+    int32_t lastLastCell[KNIGHT_COUNT];
+    int32_t pingpongRun[KNIGHT_COUNT];
+    for (int i = 0; i < KNIGHT_COUNT; i++) {
+        lastCell[i] = -1;
+        lastLastCell[i] = -1;
+        pingpongRun[i] = 0;
+    }
+
+    const int TICKS = 600;
+    const float dt = 1.0f / 60.0f;
+
+    for (int tick = 0; tick < TICKS; tick++) {
+        NavFrame *nav = phase3b_nav_begin(&bf);
+        for (int i = 0; i < KNIGHT_COUNT; i++) {
+            Entity *k = &knights[i];
+            (pathfind_step_entity)(k, nav, &bf, dt);
+
+            /* Assertion 1: finite position inside board bounds. */
+            assert(isfinite(k->position.x));
+            assert(isfinite(k->position.y));
+            assert(k->position.x >= 0.0f && k->position.x <= (float)BOARD_WIDTH);
+            assert(k->position.y >= 0.0f && k->position.y <= (float)BOARD_HEIGHT);
+
+            /* Assertion 2: ping-pong guard. */
+            int32_t cur = nav_cell_index_for_world(k->position.x, k->position.y);
+            if (cur != lastCell[i] && cur == lastLastCell[i]) {
+                pingpongRun[i]++;
+                assert(pingpongRun[i] <= 120);
+            } else if (cur != lastCell[i]) {
+                pingpongRun[i] = 0;
+            }
+            lastLastCell[i] = lastCell[i];
+            lastCell[i] = cur;
+        }
+    }
+
+    /* Assertion 3: >=80% of knights are actually attack-ready against
+     * the base at the final tick. "Attack-ready" uses the same rule as
+     * combat_in_range for static targets:
+     *     centerDist <= combat_static_target_attack_radius(k, &base)
+     * plus the knight must sit inside the 160-degree front arc (the
+     * static-attack flow field only seeds that arc, so all legitimate
+     * converged knights are in it). This is strictly tighter than the
+     * "within NAV_GOAL_RIBBON_HALF_THICKNESS of stopR" proxy: a knight
+     * sitting slightly outside stopR cannot apply hits to the base. */
+    int attackReady = 0;
+    for (int i = 0; i < KNIGHT_COUNT; i++) {
+        const Entity *k = &knights[i];
+        float stopR = combat_static_target_attack_radius(k, &base);
+        float dx = k->position.x - base.position.x;
+        float dy = k->position.y - base.position.y;
+        float dist = sqrtf(dx * dx + dy * dy);
+        float bearing = atan2f(dy, dx) * 180.0f / PI_F;
+        float bearingDelta = bearing - 90.0f;
+        while (bearingDelta > 180.0f) bearingDelta -= 360.0f;
+        while (bearingDelta < -180.0f) bearingDelta += 360.0f;
+
+        bool inCombatRange = dist <= stopR + 0.001f;
+        bool inArc         = fabsf(bearingDelta) <= 80.0f;
+        if (inCombatRange && inArc) attackReady++;
+    }
+    /* 80% of 32 = 25.6 -> 26. */
+    assert(attackReady >= 26);
+    printf("  PASS: test_phase6_stress_32_knights_converge_on_front_arc (%d/%d attack-ready)\n",
+           attackReady, KNIGHT_COUNT);
+}
+
 /* ---- CORE-01 bonus: Invalid lane produces IDLE ---- */
 static void test_invalid_lane_idles(void) {
     Battlefield bf = make_test_battlefield();
@@ -2011,6 +2639,24 @@ int main(void) {
     test_primary_deposit_contact_cloud_allows_overlap();
     printf("  PASS: test_primary_deposit_contact_cloud_allows_overlap\n");
 
-    printf("\nAll 45 tests passed!\n");
+    /* Phase 3b flow-field lane-march stepper tests */
+    test_phase3b_lane_flow_pulls_unit_toward_seed();
+    test_phase3b_home_corridor_rejects_off_lane_start();
+    test_phase3b_enemy_half_allows_cross_lane_routing();
+    test_phase3b_ally_overlap_is_soft_cost();
+    test_phase3b_static_blocker_routes_around();
+    test_phase3b_mover_respects_blocker_shell();
+    test_phase3b_corridor_hardblocked_cells_refused();
+    test_phase3c_melee_pursues_moving_target();
+    test_phase3c_ranged_stops_inside_attack_range();
+    test_phase3c_static_assault_uses_front_arc();
+    test_phase3c_no_target_falls_back_to_lane_flow();
+    test_phase3d_farmer_reaches_free_goal();
+    test_phase3d_farmer_avoids_static_blocker();
+    test_phase3d_farmer_arrival_is_idempotent();
+
+    test_phase6_stress_32_knights_converge_on_front_arc();
+
+    printf("\nAll 60 tests passed!\n");
     return 0;
 }

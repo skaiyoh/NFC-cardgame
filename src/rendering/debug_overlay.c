@@ -8,7 +8,6 @@
 #include "../core/battlefield.h"
 #include "../core/config.h"
 #include "../entities/entity_animation.h"
-#include "../logic/assault_slots.h"
 #include "../logic/combat.h"
 #include "../logic/deposit_slots.h"
 #include <math.h>
@@ -358,84 +357,6 @@ static float debug_soft_shell_radius(const Entity *e) {
     return (softRadius > 0.0f) ? softRadius : 0.0f;
 }
 
-static bool debug_target_uses_assault_slots(const Entity *target) {
-    if (!target) return false;
-    return target->type == ENTITY_BUILDING || target->navProfile == NAV_PROFILE_STATIC;
-}
-
-static void draw_assault_slot_ring(const Entity *base, const Battlefield *bf) {
-    if (!base || !base->assaultSlots.initialized) return;
-
-    DrawCircleLinesV(base->position, debug_nav_radius(base), Fade(ORANGE, 0.65f));
-
-    int primaryCount = assault_slots_primary_count(base);
-    for (int i = 0; i < primaryCount; i++) {
-        const AssaultSlot *slot = assault_slots_primary_at(base, i);
-        if (!slot) continue;
-
-        bool claimed = (slot->claimedByEntityId >= 0);
-        Color outline = claimed ? RED : GREEN;
-        DrawCircleLinesV(slot->worldPos, 7.0f, Fade(outline, 0.9f));
-
-        if (claimed) {
-            Entity *claimer = bf_find_entity((Battlefield *)bf, slot->claimedByEntityId);
-            if (claimer && claimer->alive && !claimer->markedForRemoval) {
-                DrawLineEx(claimer->position, slot->worldPos, 1.5f, Fade(RED, 0.45f));
-            }
-        }
-    }
-
-    int queueCount = assault_slots_queue_count(base);
-    for (int i = 0; i < queueCount; i++) {
-        const AssaultSlot *slot = assault_slots_queue_at(base, i);
-        if (!slot) continue;
-
-        bool claimed = (slot->claimedByEntityId >= 0);
-        Color outline = claimed ? ORANGE : YELLOW;
-        DrawCircleLinesV(slot->worldPos, 6.0f, Fade(outline, 0.8f));
-
-        if (claimed) {
-            Entity *claimer = bf_find_entity((Battlefield *)bf, slot->claimedByEntityId);
-            if (claimer && claimer->alive && !claimer->markedForRemoval) {
-                DrawLineEx(claimer->position, slot->worldPos, 1.0f, Fade(ORANGE, 0.35f));
-            }
-        }
-    }
-}
-
-static void draw_assault_geometry(const Battlefield *bf) {
-    for (int i = 0; i < bf->entityCount; i++) {
-        const Entity *base = bf->entities[i];
-        if (!base || base->markedForRemoval) continue;
-        if (base->type != ENTITY_BUILDING && base->navProfile != NAV_PROFILE_STATIC) continue;
-        if (!base->assaultSlots.initialized) continue;
-        draw_assault_slot_ring(base, bf);
-    }
-
-    for (int i = 0; i < bf->entityCount; i++) {
-        const Entity *e = bf->entities[i];
-        if (!e || e->markedForRemoval || !e->alive) continue;
-        if (e->type != ENTITY_TROOP) continue;
-        if (e->movementTargetId < 0) continue;
-
-        Entity *target = bf_find_entity((Battlefield *)bf, e->movementTargetId);
-        if (!target || !target->alive || target->markedForRemoval) continue;
-
-        Vector2 goal;
-        float stopRadius = 0.0f;
-        if (!combat_engagement_goal(e, target, bf, &goal, &stopRadius)) continue;
-
-        Color color = debug_target_uses_assault_slots(target)
-            ? Fade(RED, 0.75f)
-            : Fade(SKYBLUE, 0.8f);
-        DrawLineEx(e->position, goal, 1.25f, Fade(color, 0.4f));
-        DrawCircleLinesV(goal, 4.0f, color);
-        if (stopRadius > 0.0f) {
-            DrawCircleLinesV(goal, stopRadius, Fade(color, 0.25f));
-        }
-    }
-}
-
 static void draw_crowd_shells(const Battlefield *bf) {
     for (int i = 0; i < bf->entityCount; i++) {
         const Entity *e = bf->entities[i];
@@ -465,7 +386,6 @@ void debug_overlay_draw(const Battlefield *bf, const GameState *gs,
 
     if (flags.sustenancePlacement)  draw_sustenance_placement(bf);
     if (flags.sustenanceNodes)      draw_sustenance_nodes(bf);
-    if (flags.assaultGeometry)      draw_assault_geometry(bf);
     if (flags.depositSlots)         draw_deposit_slots(bf);
     if (flags.crowdShells)          draw_crowd_shells(bf);
     if (flags.eventFlashes)  draw_event_flashes();

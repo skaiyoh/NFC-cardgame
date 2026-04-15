@@ -129,19 +129,6 @@ typedef enum {
 } UnitNavProfile;
 
 typedef enum {
-    ASSAULT_SLOT_NONE = 0,
-    ASSAULT_SLOT_PRIMARY,
-    ASSAULT_SLOT_QUEUE
-} AssaultSlotKind;
-
-typedef enum {
-    COMBAT_ENGAGEMENT_NONE = 0,
-    COMBAT_ENGAGEMENT_ASSAULT_SLOT,
-    COMBAT_ENGAGEMENT_PERIMETER,
-    COMBAT_ENGAGEMENT_DIRECT
-} CombatEngagementType;
-
-typedef enum {
     DEPOSIT_SLOT_NONE = 0,
     DEPOSIT_SLOT_PRIMARY,
     DEPOSIT_SLOT_QUEUE
@@ -202,10 +189,6 @@ struct Entity {
     int movementTargetId;
     int ticksSinceProgress;
     int lastSteerSideSign;
-    CombatEngagementType engagementType;
-    int reservedAssaultTargetId;
-    int reservedAssaultSlotIndex;
-    AssaultSlotKind reservedAssaultSlotKind;
     int reservedDepositSlotIndex;
     DepositSlotKind reservedDepositSlotKind;
     DepositSlotRing depositSlots;
@@ -223,9 +206,15 @@ struct Player {
     Entity *base;
 };
 
+/* Phase 3a: entities.c reads &gs->nav when calling pathfind_step_entity.
+ * Stub NavFrame as a complete (but empty-ish) struct so a by-value member
+ * works in GameState and &gs->nav yields a NavFrame*. The stub below never
+ * dereferences the pointer. */
+typedef struct NavFrame { int _phase3a_placeholder; } NavFrame;
 struct GameState {
     Battlefield battlefield;
     Player players[2];
+    NavFrame nav;
 };
 
 /* ---- Test globals ---- */
@@ -252,29 +241,6 @@ void farmer_update(Entity *e, GameState *gs, float deltaTime) {
     (void)e;
     (void)gs;
     (void)deltaTime;
-}
-
-AssaultSlotKind assault_slots_reserve_for(Entity *base, int entityId,
-                                          Vector2 fromPos, int *outSlotIndex) {
-    (void)base;
-    (void)entityId;
-    (void)fromPos;
-    if (outSlotIndex) *outSlotIndex = -1;
-    return ASSAULT_SLOT_NONE;
-}
-
-bool assault_slots_try_promote(Entity *base, int entityId, int queueSlotIndex,
-                               int *outPrimarySlotIndex) {
-    (void)base;
-    (void)entityId;
-    (void)queueSlotIndex;
-    (void)outPrimarySlotIndex;
-    return false;
-}
-
-void assault_slots_release_for_entity(Entity *base, int entityId) {
-    (void)base;
-    (void)entityId;
 }
 
 static float distance_between(Vector2 a, Vector2 b) {
@@ -332,10 +298,15 @@ void combat_apply_king_burst(Entity *base, float radius, int damage, GameState *
     g_lastKingBurstDamage = damage;
 }
 
-void pathfind_step_entity(Entity *e, const Battlefield *bf, float deltaTime) {
+/* Phase 3a: signature gained a NavFrame* parameter. The test harness does
+ * not exercise nav, so the stub just ignores it. Also corrects a stale
+ * lie-stub that used to declare void where the real signature returns bool. */
+bool pathfind_step_entity(Entity *e, NavFrame *nav, const Battlefield *bf, float deltaTime) {
     (void)e;
+    (void)nav;
     (void)bf;
     (void)deltaTime;
+    return false;
 }
 
 void pathfind_commit_presentation(Entity *e, const Battlefield *bf) {

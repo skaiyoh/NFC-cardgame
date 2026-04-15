@@ -50,10 +50,10 @@ set(SRC_SYSTEMS    src/systems/player.c
                    src/systems/match.c
                    src/systems/progression.c)
 set(SRC_LOGIC      src/logic/card_effects.c
-                   src/logic/assault_slots.c
                    src/logic/combat.c
                    src/logic/deposit_slots.c
                    src/logic/farmer.c
+                   src/logic/nav_frame.c
                    src/logic/pathfinding.c
                    src/logic/win_condition.c)
 set(SRC_HARDWARE   src/hardware/nfc_reader.c
@@ -144,10 +144,10 @@ add_executable(test_deposit_slots
 target_link_libraries(test_deposit_slots ${MATH_LIB})
 add_test(NAME deposit_slots COMMAND test_deposit_slots)
 
-add_executable(test_assault_slots
-    tests/test_assault_slots.c)
-target_link_libraries(test_assault_slots ${MATH_LIB})
-add_test(NAME assault_slots COMMAND test_assault_slots)
+add_executable(test_nav_frame
+    tests/test_nav_frame.c)
+target_link_libraries(test_nav_frame ${MATH_LIB})
+add_test(NAME nav_frame COMMAND test_nav_frame)
 
 add_executable(test_status_bars
     tests/test_status_bars.c)
