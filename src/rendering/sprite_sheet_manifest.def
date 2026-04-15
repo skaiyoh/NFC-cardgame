@@ -5,7 +5,7 @@ SPRITE_SHEET(base_basic_hurt,   true,  SPRITE_TYPE_COUNT,   ANIM_HURT,   "src/as
 SPRITE_SHEET(base_basic_death,  true,  SPRITE_TYPE_COUNT,   ANIM_DEATH,  "src/assets/characters/Base/Basic/death.png",  6, 3, true)
 SPRITE_SHEET(base_attack_sword, true,  SPRITE_TYPE_COUNT,   ANIM_ATTACK, "src/assets/characters/Base/Attack/sword.png", 6, 3, true)
 
-SPRITE_SHEET(king_idle,         false, SPRITE_TYPE_BASE,    ANIM_IDLE,   "src/assets/characters/King/idle.png",         4, 3, true)
+SPRITE_SHEET(king_idle,         false, SPRITE_TYPE_BASE,    ANIM_IDLE,   "src/assets/characters/King/king_idle_sheet.png", 8, 1, true)
 SPRITE_SHEET(king_hurt,         false, SPRITE_TYPE_BASE,    ANIM_HURT,   "src/assets/characters/King/hurt.png",         4, 3, true)
 SPRITE_SHEET(king_death,        false, SPRITE_TYPE_BASE,    ANIM_DEATH,  "src/assets/characters/King/death.png",        6, 3, true)
 SPRITE_SHEET(king_attack,       false, SPRITE_TYPE_BASE,    ANIM_ATTACK, "src/assets/characters/King/sword.png",        6, 3, true)

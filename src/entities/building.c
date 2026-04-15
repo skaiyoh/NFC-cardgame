@@ -37,7 +37,7 @@ Entity *building_create_base(Player *owner, Vector2 position, const SpriteAtlas 
     // Sprite
     e->spriteType = SPRITE_TYPE_BASE;
     e->sprite = sprite_atlas_get(atlas, SPRITE_TYPE_BASE);
-    e->spriteScale = 3.0f;
+    e->spriteScale = 2.0f;
     e->bodyRadius = troop_default_body_radius(SPRITE_TYPE_BASE);
 
     // Navigation: the base is a static blocker whose pathfinding footprint

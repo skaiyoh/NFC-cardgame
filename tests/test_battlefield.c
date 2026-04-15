@@ -25,7 +25,7 @@
 #define BOARD_WIDTH        1080
 #define BOARD_HEIGHT       1920
 #define SEAM_Y             960
-#define BASE_SPAWN_GAP     32.0f
+#define BASE_SPAWN_GAP     16.0f
 #define LANE_WAYPOINT_COUNT  8
 #define LANE_BOW_INTENSITY   0.3f
 #define LANE_OUTER_INSET_RATIO 0.25f
@@ -400,26 +400,26 @@ static void test_bf_seam_screen_placement(void) {
 
 /* ---- Test: bf_base_anchor_bottom ---- */
 /* Verify P1 (SIDE_BOTTOM) base anchor is behind spawn by BASE_SPAWN_GAP.
- * Center lane spawn Y = 960 + 780*0.8 = 1584; base = 1584 + 32 = 1616. */
+ * Center lane spawn Y = 960 + 780*0.8 = 1584; base = 1584 + 16 = 1600. */
 static void test_bf_base_anchor_bottom(void) {
     Battlefield bf = create_test_battlefield();
     CanonicalPos anchor = bf_base_anchor(&bf, SIDE_BOTTOM);
 
     assert(approx_eq(anchor.v.x, 540.0f, 5.0f));
-    assert(approx_eq(anchor.v.y, 1616.0f, 5.0f));
+    assert(approx_eq(anchor.v.y, 1600.0f, 5.0f));
 
     printf("  PASS: test_bf_base_anchor_bottom\n");
 }
 
 /* ---- Test: bf_base_anchor_top ---- */
 /* Verify P2 (SIDE_TOP) base anchor is behind spawn by BASE_SPAWN_GAP.
- * Center lane spawn Y = 180 + 780*0.2 = 336; base = 336 - 32 = 304. */
+ * Center lane spawn Y = 180 + 780*0.2 = 336; base = 336 - 16 = 320. */
 static void test_bf_base_anchor_top(void) {
     Battlefield bf = create_test_battlefield();
     CanonicalPos anchor = bf_base_anchor(&bf, SIDE_TOP);
 
     assert(approx_eq(anchor.v.x, 540.0f, 5.0f));
-    assert(approx_eq(anchor.v.y, 304.0f, 5.0f));
+    assert(approx_eq(anchor.v.y, 320.0f, 5.0f));
 
     printf("  PASS: test_bf_base_anchor_top\n");
 }

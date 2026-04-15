@@ -357,6 +357,48 @@ static void test_sheet_lookup_resolves_walk_to_idle_when_needed(void) {
     assert(sprite_sheet_get(&cs, ANIM_RUN) == &cs.anims[ANIM_IDLE]);
 }
 
+static void test_single_row_sheet_reuses_row_zero_for_all_directions(void) {
+    SpriteSheet sheet = {0};
+    sheet.frameCount = 8;
+    sheet.sourceRowCount = 1;
+
+    assert(sheet_source_row(&sheet, DIR_SIDE) == 0);
+    assert(sheet_source_row(&sheet, DIR_DOWN) == 0);
+    assert(sheet_source_row(&sheet, DIR_UP) == 0);
+}
+
+static void test_king_idle_manifest_and_atlas_match_new_sheet(void) {
+    const SpriteSheetManifestEntry *manifestEntry = NULL;
+    const SpriteSheetAtlasEntry *atlasEntry = NULL;
+
+    for (int i = 0; i < kSpriteSheetManifestCount; i++) {
+        const SpriteSheetManifestEntry *entry = &kSpriteSheetManifest[i];
+        if (!entry->isBaseFallback &&
+            entry->spriteType == SPRITE_TYPE_BASE &&
+            entry->anim == ANIM_IDLE) {
+            manifestEntry = entry;
+            break;
+        }
+    }
+
+    assert(manifestEntry != NULL);
+    assert(strcmp(manifestEntry->path, "src/assets/characters/King/king_idle_sheet.png") == 0);
+    assert(manifestEntry->frameCount == 8);
+    assert(manifestEntry->sourceRowCount == 1);
+
+    for (int i = 0; i < kSpriteSheetAtlasCount; i++) {
+        const SpriteSheetAtlasEntry *entry = &kSpriteSheetAtlas[i];
+        if (strcmp(entry->path, "src/assets/characters/King/king_idle_sheet.png") == 0) {
+            atlasEntry = entry;
+            break;
+        }
+    }
+
+    assert(atlasEntry != NULL);
+    assert(atlasEntry->frameCount == 8);
+    assert(atlasEntry->sourceRowCount == 1);
+}
+
 /* ==== Cycle calculation tests ==== */
 
 static void test_walk_cycle_calculation(void) {
@@ -732,6 +774,8 @@ int main(void) {
     RUN_TEST(test_sheet_lookup_resolves_death_to_hurt);
     RUN_TEST(test_sheet_lookup_prefers_authored_clip);
     RUN_TEST(test_sheet_lookup_resolves_walk_to_idle_when_needed);
+    RUN_TEST(test_single_row_sheet_reuses_row_zero_for_all_directions);
+    RUN_TEST(test_king_idle_manifest_and_atlas_match_new_sheet);
 
     // Cycle calculations
     RUN_TEST(test_walk_cycle_calculation);

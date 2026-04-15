@@ -36,7 +36,7 @@
 #define DEFAULT_CARD_SCALE 2.5f
 
 // Base geometry
-#define BASE_SPAWN_GAP 32.0f
+#define BASE_SPAWN_GAP 16.0f
 #define BASE_NAV_RADIUS 56.0f   // authored pathfinding footprint, independent of sprite size
 #define DEFAULT_MELEE_BODY_RADIUS         14.0f
 
