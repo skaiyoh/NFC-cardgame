@@ -357,6 +357,15 @@ float pathfind_sprite_rotation_for_side(SpriteDirection dir, BattleSide side) {
     return 0.0f;
 }
 
+void pathfind_face_goal(Entity *e, const Battlefield *bf, Vector2 goal) {
+    (void)bf;
+    if (!e) return;
+    Vector2 diff = { goal.x - e->position.x, goal.y - e->position.y };
+    pathfind_apply_direction_for_side(&e->anim, diff, e->presentationSide);
+    e->spriteRotationDegrees = pathfind_sprite_rotation_for_side(e->anim.dir,
+                                                                 e->presentationSide);
+}
+
 void pathfind_update_walk_facing(Entity *e, const Battlefield *bf) {
     (void)e;
     (void)bf;

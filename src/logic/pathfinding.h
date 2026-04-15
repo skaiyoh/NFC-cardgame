@@ -39,7 +39,9 @@ void pathfind_update_walk_facing(Entity *e, const Battlefield *bf);
 
 // Recompute facing using an arbitrary goal position (waypoint, engagement
 // point, sustenance node, base, etc.). Replaces pathfind_update_walk_facing
-// for goal-based callers like local steering and farmer movement.
+// for goal-based callers like local steering and farmer movement. Crossed-over
+// combat troops keep presentation-side rotation but use owner-side horizontal
+// facing so left/right reads correctly in enemy territory.
 void pathfind_face_goal(Entity *e, const Battlefield *bf, Vector2 goal);
 
 // Project an arbitrary position onto the entity's owning lane polyline and

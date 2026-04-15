@@ -46,6 +46,19 @@ static BattleSide pathfind_resolved_presentation_side(const Entity *e, const Bat
     return resolvedSide;
 }
 
+static BattleSide pathfind_resolved_facing_side(const Entity *e) {
+    if (!e) return SIDE_BOTTOM;
+
+    BattleSide ownerSide = bf_side_for_player(e->ownerID);
+    if (e->type == ENTITY_TROOP &&
+        e->unitRole == UNIT_ROLE_COMBAT &&
+        ownerSide != e->presentationSide) {
+        return ownerSide;
+    }
+
+    return e->presentationSide;
+}
+
 void pathfind_sync_presentation(Entity *e, const Battlefield *bf) {
     if (!e || !bf) return;
     e->spriteRotationDegrees = pathfind_sprite_rotation_for_side(e->anim.dir, e->presentationSide);
@@ -67,7 +80,7 @@ void pathfind_face_goal(Entity *e, const Battlefield *bf, Vector2 goal) {
                                                                      e->presentationSide);
         return;
     }
-    pathfind_apply_direction_for_side(&e->anim, diff, e->presentationSide);
+    pathfind_apply_direction_for_side(&e->anim, diff, pathfind_resolved_facing_side(e));
     e->spriteRotationDegrees = pathfind_sprite_rotation_for_side(e->anim.dir,
                                                                  e->presentationSide);
 }

@@ -23,13 +23,8 @@ static int s_nextEntityID = 1;
 
 // Orient entity's animation facing toward a target position.
 static void entity_face_toward(Entity *e, const Battlefield *bf, Vector2 targetPos) {
-    float dx = targetPos.x - e->position.x;
-    float dy = targetPos.y - e->position.y;
-    Vector2 diff = { dx, dy };
     pathfind_commit_presentation(e, bf);
-    pathfind_apply_direction_for_side(&e->anim, diff, e->presentationSide);
-    e->spriteRotationDegrees = pathfind_sprite_rotation_for_side(e->anim.dir,
-                                                                 e->presentationSide);
+    pathfind_face_goal(e, bf, targetPos);
 }
 
 static bool entity_target_uses_static_assault_cloud(const Entity *target) {

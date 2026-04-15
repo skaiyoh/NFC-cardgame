@@ -427,6 +427,7 @@ BattleSide pathfind_presentation_side_for_position(Vector2 position, float seamY
 void pathfind_sync_presentation(Entity *e, const Battlefield *bf);
 void pathfind_commit_presentation(Entity *e, const Battlefield *bf);
 void pathfind_update_walk_facing(Entity *e, const Battlefield *bf);
+void pathfind_face_goal(Entity *e, const Battlefield *bf, Vector2 goal);
 float pathfind_lane_progress_for_position(const Entity *e, const Battlefield *bf, Vector2 position);
 void pathfind_sync_lane_progress(Entity *e, const Battlefield *bf);
 void pathfind_apply_direction_for_side(AnimState *anim, Vector2 diff, BattleSide side);
@@ -814,6 +815,35 @@ static void test_sprite_rotation_for_side(void) {
     assert(approx_eq(pathfind_sprite_rotation_for_side(DIR_DOWN, SIDE_TOP), 180.0f, 0.001f));
 }
 
+static void test_crossed_over_combat_troop_uses_owner_side_horizontal_facing(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity bottomInvader = make_test_entity(1, 4, 0.0f);
+    bottomInvader.position = (Vector2){ 540.0f, 915.0f };
+    bottomInvader.presentationSide = SIDE_TOP;
+    pathfind_face_goal(&bottomInvader, &bf, (Vector2){ 640.0f, 915.0f });
+    assert(bottomInvader.anim.dir == DIR_SIDE);
+    assert(bottomInvader.anim.flipH == false);
+    assert(approx_eq(bottomInvader.spriteRotationDegrees, 180.0f, 0.001f));
+    pathfind_face_goal(&bottomInvader, &bf, (Vector2){ 440.0f, 915.0f });
+    assert(bottomInvader.anim.dir == DIR_SIDE);
+    assert(bottomInvader.anim.flipH == true);
+    assert(approx_eq(bottomInvader.spriteRotationDegrees, 180.0f, 0.001f));
+
+    Entity topInvader = make_test_entity(1, 4, 0.0f);
+    topInvader.ownerID = 1;
+    topInvader.presentationSide = SIDE_BOTTOM;
+    topInvader.position = (Vector2){ 540.0f, 1005.0f };
+    pathfind_face_goal(&topInvader, &bf, (Vector2){ 640.0f, 1005.0f });
+    assert(topInvader.anim.dir == DIR_SIDE);
+    assert(topInvader.anim.flipH == true);
+    assert(approx_eq(topInvader.spriteRotationDegrees, 0.0f, 0.001f));
+    pathfind_face_goal(&topInvader, &bf, (Vector2){ 440.0f, 1005.0f });
+    assert(topInvader.anim.dir == DIR_SIDE);
+    assert(topInvader.anim.flipH == false);
+    assert(approx_eq(topInvader.spriteRotationDegrees, 0.0f, 0.001f));
+}
+
 /* ---- CORE-01i: Seam overlap preserves previous presentation side ---- */
 static void test_seam_overlap_preserves_presentation_bottom_to_top(void) {
     Battlefield bf = make_test_battlefield();
@@ -861,7 +891,7 @@ static void test_walk_loop_commit_swaps_presentation_bottom_to_top(void) {
 
     assert(e.presentationSide == SIDE_TOP);
     assert(e.anim.dir == DIR_SIDE);
-    assert(e.anim.flipH == true);
+    assert(e.anim.flipH == false);
     assert(approx_eq(e.spriteRotationDegrees, 180.0f, 0.001f));
 }
 
@@ -918,7 +948,7 @@ static void test_walk_loop_commit_swaps_presentation_top_to_bottom(void) {
 
     assert(e.presentationSide == SIDE_BOTTOM);
     assert(e.anim.dir == DIR_SIDE);
-    assert(e.anim.flipH == false);
+    assert(e.anim.flipH == true);
     assert(approx_eq(e.spriteRotationDegrees, 0.0f, 0.001f));
 }
 
@@ -1340,7 +1370,7 @@ static void test_lane_end_without_pursuit_idles_and_faces_enemy_base(void) {
     assert(unit.state == ESTATE_IDLE);
     assert(unit.presentationSide == SIDE_TOP);
     assert(unit.anim.dir == DIR_SIDE);
-    assert(unit.anim.flipH == true);
+    assert(unit.anim.flipH == false);
     assert(approx_eq(unit.spriteRotationDegrees, 180.0f, 0.001f));
 }
 
@@ -2863,6 +2893,8 @@ int main(void) {
     test_sprite_direction_for_side();             printf("  PASS: test_sprite_direction_for_side\n");
     test_presentation_side_for_position();        printf("  PASS: test_presentation_side_for_position\n");
     test_sprite_rotation_for_side();              printf("  PASS: test_sprite_rotation_for_side\n");
+    test_crossed_over_combat_troop_uses_owner_side_horizontal_facing();
+    printf("  PASS: test_crossed_over_combat_troop_uses_owner_side_horizontal_facing\n");
     test_seam_overlap_preserves_presentation_bottom_to_top();
     printf("  PASS: test_seam_overlap_preserves_presentation_bottom_to_top\n");
     test_seam_clear_defers_presentation_bottom_to_top();
