@@ -26,7 +26,8 @@ The in-memory model is:
 |--------|------|-------|
 | `card_id` | `TEXT PRIMARY KEY` | runtime lookup key |
 | `name` | `TEXT NOT NULL` | display name |
-| `cost` | `INTEGER NOT NULL DEFAULT 0` | energy cost |
+| `cost` | `INTEGER NOT NULL DEFAULT 0` | cost amount |
+| `cost_resource` | `TEXT NOT NULL DEFAULT 'energy'` | `energy` or `sustenance` |
 | `type` | `TEXT NOT NULL` | dispatch key for `card_action_play()` |
 | `rules_text` | `TEXT` | descriptive text |
 | `data` | `TEXT` | JSON blob consumed by gameplay and card rendering |

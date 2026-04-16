@@ -276,6 +276,9 @@ struct Player {
     float maxEnergy;
     float energyRegenRate;
 
+    // Spendable sustenance resource used by sustenance-cost cards.
+    int sustenanceBank;
+
     // Non-owning: Battlefield entity registry owns the base entity.
     // NULL if destroyed or not yet spawned.
     Entity *base;
@@ -287,7 +290,8 @@ struct Player {
     int baseHudMaxHP;
     int baseHudLevel;
 
-    // Sustenance scoring (incremented on deposit or carrying-farmer death)
+    // Lifetime sustenance gathered across the match. This drives progression
+    // and never decreases when sustenance is spent on cards.
     int sustenanceCollected;
 };
 

@@ -83,8 +83,8 @@ void ui_draw_sustenance_counter(const Player *p, Rectangle viewport,
                                 float rotation, Texture2D letteringTexture) {
     char bitmapLabel[32];
     char fallbackLabel[32];
-    snprintf(bitmapLabel, sizeof(bitmapLabel), "SUSTENANCE:%d", p->sustenanceCollected);
-    snprintf(fallbackLabel, sizeof(fallbackLabel), "SUSTENANCE: %d", p->sustenanceCollected);
+    snprintf(bitmapLabel, sizeof(bitmapLabel), "SUSTENANCE:%d", p->sustenanceBank);
+    snprintf(fallbackLabel, sizeof(fallbackLabel), "SUSTENANCE: %d", p->sustenanceBank);
 
     const char *label = (letteringTexture.id != 0) ? bitmapLabel : fallbackLabel;
 

@@ -37,6 +37,10 @@ typedef struct { Vector2 v; } CanonicalPos;
 typedef enum { SIDE_BOTTOM, SIDE_TOP } BattleSide;
 typedef enum { TARGET_NEAREST, TARGET_BUILDING, TARGET_SPECIFIC_TYPE } TargetingMode;
 typedef enum {
+    CARD_COST_RESOURCE_ENERGY = 0,
+    CARD_COST_RESOURCE_SUSTENANCE
+} CardCostResource;
+typedef enum {
     SPRITE_TYPE_KNIGHT,
     SPRITE_TYPE_HEALER,
     SPRITE_TYPE_ASSASSIN,
@@ -55,10 +59,15 @@ typedef struct Card {
     char *card_id;
     char *name;
     int cost;
+    CardCostResource costResource;
     char *type;
     char *rules_text;
     char *data;
 } Card;
+
+static inline const char *card_cost_resource_name(CardCostResource resource) {
+    return (resource == CARD_COST_RESOURCE_SUSTENANCE) ? "sustenance" : "energy";
+}
 
 typedef struct SpriteAtlas {
     int unused;
@@ -90,6 +99,7 @@ typedef struct Player {
     float energy;
     float maxEnergy;
     float energyRegenRate;
+    int sustenanceBank;
     Entity *base;
     CardSlot slots[NUM_CARD_SLOTS];
 } Player;
@@ -143,7 +153,7 @@ void player_hand_restart_animation_for_card(Player *p, const Card *card) {
     g_last_hand_restart_card = card;
 }
 
-bool energy_can_afford(Player *p, int cost) {
+bool energy_can_afford(const Player *p, int cost) {
     return p && p->energy >= (float)cost;
 }
 
@@ -151,6 +161,26 @@ bool energy_consume(Player *p, int cost) {
     if (!energy_can_afford(p, cost)) return false;
     p->energy -= (float)cost;
     return true;
+}
+
+bool player_can_afford_cost(const Player *p, int amount, CardCostResource resource) {
+    if (!p) return false;
+    if (amount <= 0) return true;
+    if (resource == CARD_COST_RESOURCE_SUSTENANCE) {
+        return p->sustenanceBank >= amount;
+    }
+    return energy_can_afford(p, amount);
+}
+
+bool player_consume_cost(Player *p, int amount, CardCostResource resource) {
+    if (!p) return false;
+    if (amount <= 0) return true;
+    if (!player_can_afford_cost(p, amount, resource)) return false;
+    if (resource == CARD_COST_RESOURCE_SUSTENANCE) {
+        p->sustenanceBank -= amount;
+        return true;
+    }
+    return energy_consume(p, amount);
 }
 
 BattleSide bf_side_for_player(int playerIndex) {
@@ -239,8 +269,10 @@ static GameState make_game_state(void) {
     memset(&gs, 0, sizeof(gs));
     gs.players[0].energy = 10.0f;
     gs.players[0].maxEnergy = 10.0f;
+    gs.players[0].sustenanceBank = 0;
     gs.players[1].energy = 10.0f;
     gs.players[1].maxEnergy = 10.0f;
+    gs.players[1].sustenanceBank = 0;
     return gs;
 }
 
@@ -259,7 +291,18 @@ static Card make_king_card(void) {
     card.card_id = "KING_01";
     card.name = "King";
     card.cost = 4;
+    card.costResource = CARD_COST_RESOURCE_ENERGY;
     card.type = "king";
+    return card;
+}
+
+static Card make_knight_card(void) {
+    Card card = {0};
+    card.card_id = "KNIGHT_01";
+    card.name = "Knight";
+    card.cost = 4;
+    card.costResource = CARD_COST_RESOURCE_ENERGY;
+    card.type = "knight";
     return card;
 }
 
@@ -452,6 +495,62 @@ static void test_king_restarts_clip_when_base_already_attacking(void) {
     assert(g_spawn_register_calls == 0);
 }
 
+static void test_king_can_consume_sustenance_without_touching_energy(void) {
+    GameState gs = make_game_state();
+    Entity base = make_base(ESTATE_IDLE);
+    Card king = make_king_card();
+    king.costResource = CARD_COST_RESOURCE_SUSTENANCE;
+    gs.players[0].base = &base;
+    gs.players[0].sustenanceBank = 9;
+
+    bool ok = card_action_play(&king, &gs, 0, 0);
+
+    assert(ok);
+    assert(gs.players[0].energy == 10.0f);
+    assert(gs.players[0].sustenanceBank == 5);
+    assert(base.basePendingKingBurst == true);
+    assert(base.basePendingKingBurstDamage == 28);
+    assert(g_entity_set_state_calls == 1);
+    assert(g_player_hand_restart_calls == 1);
+}
+
+static void test_troop_sustenance_cost_consumes_bank_only(void) {
+    GameState gs = make_game_state();
+    Card knight = make_knight_card();
+    knight.costResource = CARD_COST_RESOURCE_SUSTENANCE;
+    gs.players[0].energy = 1.0f;
+    gs.players[0].sustenanceBank = 6;
+
+    bool ok = card_action_play(&knight, &gs, 0, 0);
+
+    assert(ok);
+    assert(gs.players[0].energy == 1.0f);
+    assert(gs.players[0].sustenanceBank == 2);
+    assert(g_spawn_find_calls == 1);
+    assert(g_troop_create_data_calls == 1);
+    assert(g_troop_spawn_calls == 1);
+    assert(g_spawn_register_calls == 1);
+    assert(g_player_hand_restart_calls == 1);
+}
+
+static void test_troop_sustenance_cost_gates_on_bank_not_energy(void) {
+    GameState gs = make_game_state();
+    Card knight = make_knight_card();
+    knight.costResource = CARD_COST_RESOURCE_SUSTENANCE;
+    gs.players[0].energy = 10.0f;
+    gs.players[0].sustenanceBank = 2;
+
+    bool ok = card_action_play(&knight, &gs, 0, 0);
+
+    assert(ok);
+    assert(gs.players[0].energy == 10.0f);
+    assert(gs.players[0].sustenanceBank == 2);
+    assert(g_spawn_find_calls == 0);
+    assert(g_troop_create_data_calls == 0);
+    assert(g_troop_spawn_calls == 0);
+    assert(g_spawn_register_calls == 0);
+}
+
 static void test_catalog_type_resolution_allows_known_card_id_without_db_type(void) {
     GameState gs = make_game_state();
     Entity base = make_base(ESTATE_IDLE);
@@ -483,6 +582,9 @@ int main(void) {
     RUN_TEST(test_king_invalid_slot_blocks_without_side_effects);
     RUN_TEST(test_king_missing_dead_or_marked_base_blocks_without_energy_spend);
     RUN_TEST(test_king_restarts_clip_when_base_already_attacking);
+    RUN_TEST(test_king_can_consume_sustenance_without_touching_energy);
+    RUN_TEST(test_troop_sustenance_cost_consumes_bank_only);
+    RUN_TEST(test_troop_sustenance_cost_gates_on_bank_not_energy);
     RUN_TEST(test_catalog_type_resolution_allows_known_card_id_without_db_type);
     printf("\nAll card_effects tests passed!\n");
     return 0;

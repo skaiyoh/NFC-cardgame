@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS cards (
     card_id    TEXT PRIMARY KEY,
     name       TEXT NOT NULL,
     cost       INTEGER NOT NULL DEFAULT 0,
+    cost_resource TEXT NOT NULL DEFAULT 'energy',
     type       TEXT NOT NULL,
     rules_text TEXT,
     data       TEXT

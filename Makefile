@@ -1,4 +1,4 @@
-.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding test_combat test_entities test_troop test_projectiles test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_deposit_slots test_nav_frame test_farmer test_status_bars test_win_condition test_sustenance test_hand_ui test_card_effects test_uvulite_font test_progression test_debug_overlay test_game_debug_input sprite-frame-atlas
+.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding test_combat test_entities test_troop test_projectiles test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_deposit_slots test_nav_frame test_farmer test_status_bars test_win_condition test_sustenance test_hand_ui test_card_effects test_uvulite_font test_progression test_player test_debug_overlay test_game_debug_input sprite-frame-atlas
 
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
@@ -113,13 +113,16 @@ test_uvulite_font: tests/test_uvulite_font.c src/rendering/uvulite_font.c
 test_progression: tests/test_progression.c src/systems/progression.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_progression.c -o test_progression -lm
 
+test_player: tests/test_player.c src/systems/player.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_player.c -o test_player -lm
+
 test_debug_overlay: tests/test_debug_overlay.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_debug_overlay.c -o test_debug_overlay -lm
 
 test_game_debug_input: tests/test_game_debug_input.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_game_debug_input.c -o test_game_debug_input -lm
 
-test: test_pathfinding test_combat test_entities test_troop test_projectiles test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_deposit_slots test_nav_frame test_farmer test_status_bars test_win_condition test_sustenance test_hand_ui test_card_effects test_uvulite_font test_progression test_debug_overlay test_game_debug_input
+test: test_pathfinding test_combat test_entities test_troop test_projectiles test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_deposit_slots test_nav_frame test_farmer test_status_bars test_win_condition test_sustenance test_hand_ui test_card_effects test_uvulite_font test_progression test_player test_debug_overlay test_game_debug_input
 	./test_pathfinding
 	./test_combat
 	./test_entities
@@ -141,6 +144,7 @@ test: test_pathfinding test_combat test_entities test_troop test_projectiles tes
 	./test_card_effects
 	./test_uvulite_font
 	./test_progression
+	./test_player
 	./test_debug_overlay
 	./test_game_debug_input
 
@@ -148,4 +152,4 @@ sprite-frame-atlas:
 	python3 tools/generate_sprite_frame_atlas.py
 
 clean:
-	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding test_combat test_entities test_troop test_projectiles test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_deposit_slots test_nav_frame test_farmer test_status_bars test_win_condition test_sustenance test_hand_ui test_card_effects test_uvulite_font test_progression test_debug_overlay test_game_debug_input test_ore
+	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding test_combat test_entities test_troop test_projectiles test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_deposit_slots test_nav_frame test_farmer test_status_bars test_win_condition test_sustenance test_hand_ui test_card_effects test_uvulite_font test_progression test_player test_debug_overlay test_game_debug_input test_ore

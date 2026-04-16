@@ -195,6 +195,11 @@ add_executable(test_progression
 target_link_libraries(test_progression ${MATH_LIB})
 add_test(NAME progression COMMAND test_progression)
 
+add_executable(test_player
+    tests/test_player.c)
+target_link_libraries(test_player ${MATH_LIB})
+add_test(NAME player COMMAND test_player)
+
 add_executable(test_debug_overlay
     tests/test_debug_overlay.c)
 target_link_libraries(test_debug_overlay ${MATH_LIB})

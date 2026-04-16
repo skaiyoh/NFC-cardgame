@@ -18,6 +18,7 @@ void player_init(Player *p, int id, BattleSide side,
                  float cameraRotation, const Battlefield *bf) {
     memset(p, 0, sizeof(Player));
     p->id = id;
+    p->sustenanceBank = 0;
     p->sustenanceCollected = 0;
     p->side = side;
     p->screenArea = screenArea;
@@ -150,8 +151,37 @@ void player_hand_restart_animation_for_card(Player *p, const Card *card) {
     }
 }
 
+bool player_can_afford_cost(const Player *p, int amount, CardCostResource resource) {
+    if (!p) return false;
+    if (amount <= 0) return true;
+
+    switch (resource) {
+        case CARD_COST_RESOURCE_SUSTENANCE:
+            return p->sustenanceBank >= amount;
+        case CARD_COST_RESOURCE_ENERGY:
+        default:
+            return energy_can_afford(p, amount);
+    }
+}
+
+bool player_consume_cost(Player *p, int amount, CardCostResource resource) {
+    if (!p) return false;
+    if (amount <= 0) return true;
+    if (!player_can_afford_cost(p, amount, resource)) return false;
+
+    switch (resource) {
+        case CARD_COST_RESOURCE_SUSTENANCE:
+            p->sustenanceBank -= amount;
+            return true;
+        case CARD_COST_RESOURCE_ENERGY:
+        default:
+            return energy_consume(p, amount);
+    }
+}
+
 void player_award_sustenance(GameState *gs, int playerIndex, int amount) {
     if (!gs || playerIndex < 0 || playerIndex > 1 || amount <= 0) return;
+    gs->players[playerIndex].sustenanceBank += amount;
     gs->players[playerIndex].sustenanceCollected += amount;
     progression_sync_player(gs, playerIndex);
 }

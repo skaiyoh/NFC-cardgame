@@ -27,6 +27,7 @@ typedef struct Entity {
 typedef struct Player {
     float energyRegenRate;
     Entity *base;
+    int sustenanceBank;
     int sustenanceCollected;
 } Player;
 
@@ -123,6 +124,20 @@ static void test_sync_player_updates_base_level_and_regen(void) {
     assert(approx_eq(gs.players[0].energyRegenRate, 2.0f, 0.0001f));
 }
 
+static void test_sync_player_ignores_spendable_sustenance_bank(void) {
+    GameState gs;
+    memset(&gs, 0, sizeof(gs));
+    Entity base = { .alive = true, .markedForRemoval = false, .baseLevel = 1 };
+    gs.players[0].base = &base;
+    gs.players[0].sustenanceCollected = 30;
+    gs.players[0].sustenanceBank = 0;
+
+    progression_sync_player(&gs, 0);
+    assert(base.baseLevel == 4);
+    assert(approx_eq(gs.players[0].energyRegenRate,
+                     progression_regen_rate_for_level(4), 0.0001f));
+}
+
 static void test_sync_player_without_live_base_still_updates_regen(void) {
     GameState gs;
     memset(&gs, 0, sizeof(gs));
@@ -163,6 +178,7 @@ int main(void) {
     RUN_TEST(test_regen_rate_curve);
     RUN_TEST(test_king_burst_damage_curve);
     RUN_TEST(test_sync_player_updates_base_level_and_regen);
+    RUN_TEST(test_sync_player_ignores_spendable_sustenance_bank);
     RUN_TEST(test_sync_player_without_live_base_still_updates_regen);
     RUN_TEST(test_sync_player_skips_dead_base);
     RUN_TEST(test_sync_player_ignores_bad_index);

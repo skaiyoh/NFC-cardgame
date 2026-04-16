@@ -361,8 +361,9 @@ static void farmer_deposit(Entity *e, GameState *gs, float deltaTime) {
     // Deposit complete — funnel through the helper so progression stays in
     // sync on the same frame the counter increases.
     player_award_sustenance(gs, e->ownerID, e->carriedSustenanceValue);
-    printf("[FARMER] Entity %d deposited %d sustenance (player %d total: %d)\n",
+    printf("[FARMER] Entity %d deposited %d sustenance (player %d bank: %d, lifetime: %d)\n",
            e->id, e->carriedSustenanceValue, e->ownerID,
+           gs->players[e->ownerID].sustenanceBank,
            gs->players[e->ownerID].sustenanceCollected);
 
     // Release the primary deposit slot so the next waiting farmer can promote.

@@ -1,12 +1,13 @@
 -- Card seed data for SQLite
 -- Run after schema: sqlite3 cardgame.db < sqlite/seed.sql
 
-INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
+INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) VALUES
 
 (
   'KNIGHT_01',
   'Knight',
   4,
+  'energy',
   'knight',
   'A heavily armored warrior that charges toward the nearest enemy.',
   '{
@@ -50,6 +51,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
   'ASSASSIN_01',
   'Assassin',
   4,
+  'energy',
   'assassin',
   'A swift killer that strikes hard and fades before the enemy can react.',
   '{
@@ -93,8 +95,9 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
   'BRUTE_01',
   'Brute',
   6,
+  'sustenance',
   'brute',
-  'An unstoppable force of destruction. Nothing stands between it and your towers.',
+  'An unstoppable force of destruction fueled by your gathered sustenance.',
   '{
     "visual": {
       "border_color":       "red",
@@ -136,6 +139,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
   'FARMER_01',
   'Farmer',
   3,
+  'energy',
   'farmer',
   'A hardworking farmer who gathers sustenance from the battlefield and returns it to base.',
   '{
@@ -174,6 +178,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
   'HEALER_01',
   'Healer',
   5,
+  'energy',
   'healer',
   'A battlefield medic that keeps allies fighting long after they should have fallen.',
   '{
@@ -218,6 +223,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
   'BIRD_01',
   'Bird',
   5,
+  'energy',
   'bird',
   'A swift flier that harries enemies from above.',
   '{
@@ -261,6 +267,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
   'FISHFING_01',
   'Fishfing',
   4,
+  'energy',
   'fishfing',
   'A slippery scrapper raised in the reeds.',
   '{
@@ -304,8 +311,9 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
   'KING_01',
   'King',
   8,
+  'sustenance',
   'king',
-  'Channel the crown''s wrath through your base.',
+  'Spend stored sustenance to channel the crown''s wrath through your base.',
   '{
     "visual": {
       "border_color":       "yellow",
@@ -338,6 +346,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 ON CONFLICT (card_id) DO UPDATE SET
   name       = excluded.name,
   cost       = excluded.cost,
+  cost_resource = excluded.cost_resource,
   type       = excluded.type,
   rules_text = excluded.rules_text,
   data       = excluded.data;

@@ -14,7 +14,7 @@ Primary development target: Linux. The setup and run instructions below assume a
 - **Tile-based biome rendering** — procedural tilemaps with multiple biome themes (plains, cursed lands, undead, etc.)
 - **Entity system** — troops and stationary bases with combat, pathfinding, death animations, and base-destruction win handling
 - **Match result overlay** — lethal base hits freeze gameplay and render `VICTORY`, `DEFEAT`, or `DRAW` for both players
-- **Energy system** — card plays cost energy that regenerates over time
+- **Energy + sustenance economy** — cards can cost regenerating energy or spendable sustenance gathered during the match
 - **Card data from SQLite** — card stats, sprites, and metadata stored in a local `cardgame.db` file and loaded at runtime
 - **Standalone dev tools** — card preview, biome preview, and card enrollment utilities
 

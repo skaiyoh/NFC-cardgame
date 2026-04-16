@@ -12,7 +12,8 @@ Cards are stored in the `cards` table with the following columns:
 |--------|------|----------|-------------|
 | `card_id` | TEXT (PK) | Yes | Unique identifier, used to link NFC tags to cards |
 | `name` | TEXT | Yes | Display name shown on the card |
-| `cost` | INTEGER | Yes | Energy cost to play |
+| `cost` | INTEGER | Yes | Cost amount to play |
+| `cost_resource` | TEXT | Yes | Resource used to pay the cost: `energy` or `sustenance` |
 | `type` | TEXT | Yes | Card type — determines which effect handler runs (see [Card Types](#card-types)) |
 | `rules_text` | TEXT | No | Flavor or rules text shown in the card description area |
 | `data` | TEXT | No | Visual styling and gameplay stats as JSON (see [Data JSON](#data-json)); runtime code falls back to defaults when it is absent |
@@ -37,6 +38,9 @@ The following types are registered in `src/logic/card_effects.c`. Using an unreg
 All troop types (`knight`, `healer`, `assassin`, `brute`, `farmer`, `bird`,
 `fishfing`) read their stats from the same troop fields in the JSON `data`
 column. `king` does not read troop stats — only the `visual` block is required.
+
+`cost_resource` defaults to `energy` in the schema, so older rows can keep
+omitting it until they are re-seeded or edited.
 
 Lookups are case-sensitive: `cards_find()` uses `strcmp()` on `card_id`. Keep
 `cards.card_id` and `nfc_tags.card_id` casing consistent across your database.
@@ -151,11 +155,12 @@ Applies to all troop types: `knight`, `healer`, `assassin`, `brute`, `farmer`.
 ## SQL Insert
 
 ```sql
-INSERT INTO cards (card_id, name, cost, type, rules_text, data)
+INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data)
 VALUES (
   'KNIGHT_01',
   'Knight',
   4,
+  'energy',
   'knight',
   'A heavily armored warrior that charges toward the nearest enemy.',
   '{
@@ -241,6 +246,20 @@ VALUES (
   "attackRange": 35.0,
   "moveSpeed": 95.0,
   "targeting": "nearest"
+}
+```
+
+### Brute — Late-game sustenance spender
+
+```json
+{
+  "cost_resource": "sustenance",
+  "hp": 380,
+  "attack": 55,
+  "attackSpeed": 0.5,
+  "attackRange": 48.0,
+  "moveSpeed": 28.0,
+  "targeting": "building"
 }
 ```
 

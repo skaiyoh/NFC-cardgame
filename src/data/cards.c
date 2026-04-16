@@ -7,13 +7,23 @@
 #include <stdlib.h>
 #include <string.h>
 
+static CardCostResource card_cost_resource_from_db_value(const char *value) {
+    if (value && strcmp(value, "sustenance") == 0) {
+        return CARD_COST_RESOURCE_SUSTENANCE;
+    }
+    return CARD_COST_RESOURCE_ENERGY;
+}
+
 bool cards_load(Deck *deck, DB *db) {
     if (!deck || !db) return false;
 
     memset(deck, 0, sizeof(Deck));
 
-    DBResult *res = db_query(db,
-                             "SELECT card_id, name, cost, type, rules_text, data FROM cards");
+    const bool hasCostResource = db_table_has_column(db, "cards", "cost_resource");
+    const char *sql = hasCostResource
+        ? "SELECT card_id, name, cost, COALESCE(cost_resource, 'energy'), type, rules_text, data FROM cards"
+        : "SELECT card_id, name, cost, type, rules_text, data FROM cards";
+    DBResult *res = db_query(db, sql);
 
     if (!res) {
         fprintf(stderr, "Failed to load cards from database\n");
@@ -40,9 +50,15 @@ bool cards_load(Deck *deck, DB *db) {
         c->card_id = strdup(db_result_value(res, i, 0));
         c->name = strdup(db_result_value(res, i, 1));
         c->cost = atoi(db_result_value(res, i, 2));
-        c->type = strdup(db_result_value(res, i, 3));
-        c->rules_text = db_result_isnull(res, i, 4) ? NULL : strdup(db_result_value(res, i, 4));
-        c->data = db_result_isnull(res, i, 5) ? NULL : strdup(db_result_value(res, i, 5));
+        c->costResource = hasCostResource
+            ? card_cost_resource_from_db_value(db_result_value(res, i, 3))
+            : CARD_COST_RESOURCE_ENERGY;
+        int typeCol = hasCostResource ? 4 : 3;
+        int rulesCol = hasCostResource ? 5 : 4;
+        int dataCol = hasCostResource ? 6 : 5;
+        c->type = strdup(db_result_value(res, i, typeCol));
+        c->rules_text = db_result_isnull(res, i, rulesCol) ? NULL : strdup(db_result_value(res, i, rulesCol));
+        c->data = db_result_isnull(res, i, dataCol) ? NULL : strdup(db_result_value(res, i, dataCol));
     }
 
     db_result_free(res);

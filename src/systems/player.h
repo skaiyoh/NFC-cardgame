@@ -44,8 +44,12 @@ int player_hand_occupied_count(const Player *p);
 
 void player_hand_restart_animation_for_card(Player *p, const Card *card);
 
+bool player_can_afford_cost(const Player *p, int amount, CardCostResource resource);
+
+bool player_consume_cost(Player *p, int amount, CardCostResource resource);
+
 // Single choke point for all sustenance grants. Adds to the player's counter
-// and re-syncs progression-dependent state (base level, energy regen).
+// and spendable bank, then re-syncs progression-dependent state.
 void player_award_sustenance(GameState *gs, int playerIndex, int amount);
 
 #endif //NFC_CARDGAME_PLAYER_H

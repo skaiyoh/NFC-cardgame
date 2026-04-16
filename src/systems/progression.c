@@ -1,5 +1,5 @@
 //
-// Base level progression driven by Player.sustenanceCollected.
+// Base level progression driven by lifetime Player.sustenanceCollected.
 //
 
 #include "progression.h"

@@ -31,6 +31,11 @@ typedef struct {
 static CardHandler handlers[MAX_HANDLERS];
 static int handler_count = 0;
 
+static const char *card_cost_label(const Card *card) {
+    if (!card) return card_cost_resource_name(CARD_COST_RESOURCE_ENERGY);
+    return card_cost_resource_name(card->costResource);
+}
+
 void card_action_register(const char *type, CardPlayFn fn) {
     if (handler_count >= MAX_HANDLERS) {
         fprintf(stderr, "[card_action] handler registry full, cannot register '%s'\n", type);
@@ -68,8 +73,8 @@ bool card_action_play(const Card *card, GameState *state, int playerIndex, int s
 // systems mid-frame (regen tick, future multi-cost spells, etc.).
 static void spawn_troop_from_card(const Card *card, GameState *state, int playerIndex, int slotIndex) {
     if (!state) {
-        printf("[%s] %s (cost %d): no game state, skipping spawn\n",
-               card->type, card->name, card->cost);
+        printf("[%s] %s (cost %d %s): no game state, skipping spawn\n",
+               card->type, card->name, card->cost, card_cost_label(card));
         return;
     }
 
@@ -81,10 +86,15 @@ static void spawn_troop_from_card(const Card *card, GameState *state, int player
         return;
     }
 
-    // 1. Energy affordability check (no consume yet).
-    if (!energy_can_afford(player, card->cost)) {
-        printf("[PLAY] Not enough energy for '%s' (need %d, have %.1f)\n",
-               card->name, card->cost, player->energy);
+    // 1. Resource affordability check (no consume yet).
+    if (!player_can_afford_cost(player, card->cost, card->costResource)) {
+        if (card->costResource == CARD_COST_RESOURCE_SUSTENANCE) {
+            printf("[PLAY] Not enough sustenance for '%s' (need %d, have %d)\n",
+                   card->name, card->cost, player->sustenanceBank);
+        } else {
+            printf("[PLAY] Not enough energy for '%s' (need %d, have %.1f)\n",
+                   card->name, card->cost, player->energy);
+        }
         return;
     }
 
@@ -104,11 +114,12 @@ static void spawn_troop_from_card(const Card *card, GameState *state, int player
         return;
     }
 
-    // 4. Commit: consume energy, spawn, register.
-    if (!energy_consume(player, card->cost)) {
+    // 4. Commit: consume the resolved resource, spawn, register.
+    if (!player_consume_cost(player, card->cost, card->costResource)) {
         // Defensive: affordability was just checked -- this should never fire,
-        // but guard against concurrent energy drains or race conditions.
-        printf("[PLAY] Energy consume failed unexpectedly for '%s'\n", card->name);
+        // but guard against concurrent resource drains or future side effects.
+        printf("[PLAY] %s consume failed unexpectedly for '%s'\n",
+               card_cost_label(card), card->name);
         if (data.targetType) free((char *)data.targetType);
         return;
     }
@@ -175,12 +186,17 @@ static void play_king(const Card *card, GameState *state, int playerIndex, int s
         return;
     }
 
-    if (!energy_can_afford(player, card->cost)) {
-        printf("[PLAY] Not enough energy for '%s' (need %d, have %.1f)\n",
-               card->name, card->cost, player->energy);
+    if (!player_can_afford_cost(player, card->cost, card->costResource)) {
+        if (card->costResource == CARD_COST_RESOURCE_SUSTENANCE) {
+            printf("[PLAY] Not enough sustenance for '%s' (need %d, have %d)\n",
+                   card->name, card->cost, player->sustenanceBank);
+        } else {
+            printf("[PLAY] Not enough energy for '%s' (need %d, have %.1f)\n",
+                   card->name, card->cost, player->energy);
+        }
         return;
     }
-    if (!energy_consume(player, card->cost)) return;
+    if (!player_consume_cost(player, card->cost, card->costResource)) return;
 
     int level = (base->baseLevel > 0) ? base->baseLevel : 1;
     base->basePendingKingBurst = true;
@@ -195,8 +211,9 @@ static void play_king(const Card *card, GameState *state, int playerIndex, int s
     base->attackTargetId = -1;
 
     player_hand_restart_animation_for_card(player, card);
-    printf("[PLAY] king '%s' activated base burst for player %d (level %d, dmg %d)\n",
-           card->name, playerIndex, level, base->basePendingKingBurstDamage);
+    printf("[PLAY] king '%s' activated base burst for player %d (level %d, dmg %d, paid %d %s)\n",
+           card->name, playerIndex, level, base->basePendingKingBurstDamage,
+           card->cost, card_cost_label(card));
 }
 
 void card_action_init(void) {
