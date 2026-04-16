@@ -308,12 +308,19 @@ static bool combat_is_healer_profile(const Entity *entity) {
     return entity->combatProfileId == COMBAT_PROFILE_HEALER;
 }
 
+static bool combat_healer_profile_rejects_farmer_target(CombatProfileId attackerProfile,
+                                                        const Entity *target) {
+    if (!target) return false;
+    if (attackerProfile != COMBAT_PROFILE_HEALER) return false;
+    return target->unitRole == UNIT_ROLE_FARMER;
+}
+
 static bool combat_healer_profile_rejects_heal_target(CombatProfileId attackerProfile,
                                                       const Entity *target) {
     if (!target) return false;
     if (attackerProfile != COMBAT_PROFILE_HEALER) return false;
     return combat_is_healer_profile(target) ||
-           target->unitRole == UNIT_ROLE_FARMER;
+           combat_healer_profile_rejects_farmer_target(attackerProfile, target);
 }
 
 bool combat_can_heal_target(const Entity *attacker, const Entity *target) {
@@ -332,8 +339,8 @@ bool combat_can_heal_target(const Entity *attacker, const Entity *target) {
 }
 
 // Support priority: nearest injured friendly troop already inside attack range.
-// Healer-profile units exclude healer-profile and farmer-role allies via
-// combat_can_heal_target().
+// Healer-profile units exclude healer-profile allies and all farmer-role
+// units via combat_can_heal_target() / combat_can_damage_target().
 // Returns NULL if no eligible ally exists; the caller then falls back to enemy targeting.
 static Entity *combat_find_heal_target(Entity *attacker, GameState *gs) {
     Battlefield *bf = &gs->battlefield;
@@ -413,6 +420,10 @@ bool combat_can_damage_target(const Entity *attacker, const Entity *target) {
     if (!target->alive || target->markedForRemoval) return false;
     if (target->ownerID == attacker->ownerID) return false;
     if (target->type == ENTITY_PROJECTILE) return false;
+    if (combat_healer_profile_rejects_farmer_target(attacker->combatProfileId,
+                                                    target)) {
+        return false;
+    }
     if (combat_target_is_airborne(target) &&
         !combat_attacker_can_hit_air(attacker)) {
         return false;

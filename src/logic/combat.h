@@ -52,7 +52,8 @@ bool combat_engagement_goal(const Entity *attacker, const Entity *target,
 Entity *combat_find_target(Entity *attacker, GameState *gs);
 
 // Returns true if attacker can deal hostile damage to target. This enforces
-// special cases like anti-air restrictions and skips invalid enemy types.
+// special cases like anti-air restrictions, skips invalid enemy types, and
+// blocks healer-profile units from hostile farmer-role targets.
 bool combat_can_damage_target(const Entity *attacker, const Entity *target);
 
 // Compare two enemy candidates using the attacker's targeting policy. Returns

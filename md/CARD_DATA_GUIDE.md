@@ -144,7 +144,7 @@ Applies to all troop types: `knight`, `healer`, `assassin`, `brute`, `farmer`.
 | `maxHP` | int | `hp` | Maximum health (only needed if different from `hp`) |
 | `attack` | int | `10` | Damage dealt per hit |
 | `bonusDamageVsFarmers` | int | `0` | Extra hostile damage added only when the current target has the farmer runtime role |
-| `healAmount` | int | `0` | HP restored per hit when the target is a friendly troop. Any value > 0 turns the unit into a supporter that prefers injured allies in range over enemies. Healer-profile units cannot heal healer-profile allies or farmer-role allies. For `type: "healer"` cards, omitting this field falls back to the `attack` value so older databases stay functional. |
+| `healAmount` | int | `0` | HP restored per hit when the target is a friendly troop. Any value > 0 turns the unit into a supporter that prefers injured allies in range over enemies. Healer-profile units ignore farmer-role units on both sides and also cannot heal healer-profile allies. For `type: "healer"` cards, omitting this field falls back to the `attack` value so older databases stay functional. |
 | `attackSpeed` | float | `1.0` | Attacks per second |
 | `attackRange` | float | `40.0` | Melee range in pixels |
 | `moveSpeed` | float | `60.0` | Movement speed in pixels per second |
