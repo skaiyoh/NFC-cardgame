@@ -14,6 +14,7 @@ typedef struct {
     const char *path;
     int frameCount;
     int sourceRowCount;
+    int framesPerRow;
     const Rectangle *visibleBounds;
 } SpriteSheetAtlasEntry;
 
@@ -24,14 +25,15 @@ typedef struct {
     const char *path;
     int frameCount;
     int sourceRowCount;
+    int framesPerRow;
     bool required;
 } SpriteSheetManifestEntry;
 
 #include "sprite_frame_atlas.h"
 
 static const SpriteSheetManifestEntry kSpriteSheetManifest[] = {
-#define SPRITE_SHEET(name, isBaseFallback, spriteType, anim, path, frameCount, sourceRowCount, required) \
-    { isBaseFallback, spriteType, anim, path, frameCount, sourceRowCount, required },
+#define SPRITE_SHEET(name, isBaseFallback, spriteType, anim, path, frameCount, sourceRowCount, framesPerRow, required) \
+    { isBaseFallback, spriteType, anim, path, frameCount, sourceRowCount, framesPerRow, required },
 #include "sprite_sheet_manifest.def"
 #undef SPRITE_SHEET
 };
@@ -41,6 +43,25 @@ static const int kSpriteSheetManifestCount =
 
 static int sheet_bounds_index(const SpriteSheet *sheet, SpriteDirection dir, int frame) {
     return dir * sheet->frameCount + frame;
+}
+
+static int sheet_frames_per_row(const SpriteSheet *sheet) {
+    if (!sheet || sheet->frameCount <= 0) return 1;
+    int framesPerRow = (sheet->framesPerRow > 0) ? sheet->framesPerRow : sheet->frameCount;
+    if (framesPerRow > sheet->frameCount) return sheet->frameCount;
+    return framesPerRow;
+}
+
+static int sheet_rows_per_direction(const SpriteSheet *sheet) {
+    if (!sheet || sheet->frameCount <= 0) return 1;
+    int framesPerRow = sheet_frames_per_row(sheet);
+    return (sheet->frameCount + framesPerRow - 1) / framesPerRow;
+}
+
+static int sheet_total_row_count(const SpriteSheet *sheet) {
+    if (!sheet) return 1;
+    int sourceRowCount = (sheet->sourceRowCount > 0) ? sheet->sourceRowCount : DIR_COUNT;
+    return sourceRowCount * sheet_rows_per_direction(sheet);
 }
 
 static bool sheet_has_content(const SpriteSheet *sheet) {
@@ -62,6 +83,18 @@ static int sheet_source_row(const SpriteSheet *sheet, SpriteDirection dir) {
     if (row < 0) return 0;
     if (row >= sourceRowCount) return sourceRowCount - 1;
     return row;
+}
+
+static void sheet_source_cell(const SpriteSheet *sheet, SpriteDirection dir, int frame,
+                              int *outCol, int *outRow) {
+    int framesPerRow = sheet_frames_per_row(sheet);
+    int rowsPerDirection = sheet_rows_per_direction(sheet);
+    int baseRow = sheet_source_row(sheet, dir) * rowsPerDirection;
+    int col = frame % framesPerRow;
+    int row = baseRow + (frame / framesPerRow);
+
+    if (outCol) *outCol = col;
+    if (outRow) *outRow = row;
 }
 
 static int anim_visual_loops(const AnimState *state) {
@@ -120,11 +153,13 @@ static Rectangle compute_visible_bounds(const Color *pixels, int imageWidth,
 }
 
 static const SpriteSheetAtlasEntry *find_sheet_atlas_entry(const char *path, int frameCount,
-                                                           int sourceRowCount) {
+                                                           int sourceRowCount,
+                                                           int framesPerRow) {
     for (int i = 0; i < kSpriteSheetAtlasCount; i++) {
         const SpriteSheetAtlasEntry *entry = &kSpriteSheetAtlas[i];
         if (entry->frameCount == frameCount &&
             entry->sourceRowCount == sourceRowCount &&
+            entry->framesPerRow == framesPerRow &&
             strcmp(entry->path, path) == 0) {
             return entry;
         }
@@ -146,8 +181,11 @@ static void populate_visible_bounds_from_image(SpriteSheet *sheet, const char *p
     if (pixels) {
         for (int dir = 0; dir < DIR_COUNT; dir++) {
             for (int frame = 0; frame < sheet->frameCount; frame++) {
-                int frameX = frame * sheet->frameWidth;
-                int frameY = sheet_source_row(sheet, (SpriteDirection) dir) * sheet->frameHeight;
+                int frameCol = 0;
+                int frameRow = 0;
+                sheet_source_cell(sheet, (SpriteDirection) dir, frame, &frameCol, &frameRow);
+                int frameX = frameCol * sheet->frameWidth;
+                int frameY = frameRow * sheet->frameHeight;
                 sheet->visibleBounds[sheet_bounds_index(sheet, (SpriteDirection) dir, frame)] =
                     compute_visible_bounds(pixels, image.width, frameX, frameY,
                                            sheet->frameWidth, sheet->frameHeight);
@@ -161,14 +199,16 @@ static void populate_visible_bounds_from_image(SpriteSheet *sheet, const char *p
 
 // Helper: load one animation sheet and compute frame dimensions
 static SpriteSheet load_sheet_with_rows(const char *path, int frameCount, int sourceRowCount,
+                                        int framesPerRow,
                                         bool required) {
     SpriteSheet s = {0};
     const char *sheetKind = required ? "required" : "optional";
 
-    if (!path || frameCount < 1 || sourceRowCount < 1) {
+    if (!path || frameCount < 1 || sourceRowCount < 1 || framesPerRow < 1 ||
+        framesPerRow > frameCount) {
         fprintf(stderr,
-                "[sprite] Invalid %s sheet manifest entry: path=%s frames=%d rows=%d\n",
-                sheetKind, path ? path : "(null)", frameCount, sourceRowCount);
+                "[sprite] Invalid %s sheet manifest entry: path=%s frames=%d rows=%d cols=%d\n",
+                sheetKind, path ? path : "(null)", frameCount, sourceRowCount, framesPerRow);
         return s;
     }
 
@@ -180,24 +220,29 @@ static SpriteSheet load_sheet_with_rows(const char *path, int frameCount, int so
 
     SetTextureFilter(s.texture, TEXTURE_FILTER_POINT);
 
+    s.frameCount = frameCount;
+    s.sourceRowCount = sourceRowCount;
+    s.framesPerRow = framesPerRow;
+
     if (s.texture.width <= 0 || s.texture.height <= 0 ||
-        s.texture.width % frameCount != 0 ||
-        s.texture.height % sourceRowCount != 0) {
+        s.texture.width % s.framesPerRow != 0 ||
+        s.texture.height % sheet_total_row_count(&s) != 0) {
         fprintf(stderr,
                 "[sprite] Invalid %s sheet dimensions for %s "
-                "(got %dx%d, frames=%d, rows=%d)\n",
-                sheetKind, path, s.texture.width, s.texture.height, frameCount, sourceRowCount);
+                "(got %dx%d, frames=%d, rows=%d, cols=%d)\n",
+                sheetKind, path, s.texture.width, s.texture.height,
+                frameCount, sourceRowCount, framesPerRow);
         UnloadTexture(s.texture);
         return (SpriteSheet){0};
     }
 
-    s.frameCount = frameCount;
-    s.frameWidth = s.texture.width / frameCount;
-    s.sourceRowCount = sourceRowCount;
-    s.frameHeight = s.texture.height / s.sourceRowCount;
+    s.frameWidth = s.texture.width / s.framesPerRow;
+    s.frameHeight = s.texture.height / sheet_total_row_count(&s);
     s.visibleBounds = alloc_visible_bounds(s.frameCount);
 
-    const SpriteSheetAtlasEntry *entry = find_sheet_atlas_entry(path, frameCount, sourceRowCount);
+    const SpriteSheetAtlasEntry *entry = find_sheet_atlas_entry(path, frameCount,
+                                                                sourceRowCount,
+                                                                framesPerRow);
     if (s.visibleBounds && entry) {
         memcpy(s.visibleBounds, entry->visibleBounds,
                (size_t) (s.frameCount * DIR_COUNT) * sizeof(Rectangle));
@@ -211,7 +256,7 @@ static SpriteSheet load_sheet_with_rows(const char *path, int frameCount, int so
 static SpriteSheet load_sheet_manifest(const SpriteSheetManifestEntry *entry) {
     if (!entry) return (SpriteSheet){0};
     return load_sheet_with_rows(entry->path, entry->frameCount, entry->sourceRowCount,
-                                entry->required);
+                                entry->framesPerRow, entry->required);
 }
 
 void sprite_atlas_init(SpriteAtlas *atlas) {
@@ -350,7 +395,8 @@ void sprite_draw(const CharacterSprite *cs, const AnimState *state,
     if (!sheet || sheet->texture.id == 0) return;
 
     int col = anim_frame_index(state, sheet);
-    int row = sheet_source_row(sheet, state->dir);
+    int row = 0;
+    sheet_source_cell(sheet, state->dir, col, &col, &row);
 
     float fw = (float) sheet->frameWidth;
     float fh = (float) sheet->frameHeight;

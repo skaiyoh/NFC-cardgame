@@ -18,6 +18,7 @@ ENTRY_RE = re.compile(
     r'\s*"([^"]+)"\s*,'
     r'\s*(\d+)\s*,'
     r'\s*(\d+)\s*,'
+    r'\s*(\d+)\s*,'
     r'\s*(true|false)\s*'
     r'\)$'
 )
@@ -34,34 +35,44 @@ def manifest_entries():
         if not match:
             raise ValueError(f"Unsupported manifest syntax at {MANIFEST}:{lineno}: {raw_line}")
 
-        name, _is_base_fallback, _sprite_type, _anim, path, frame_count, source_row_count, required = match.groups()
+        name, _is_base_fallback, _sprite_type, _anim, path, frame_count, source_row_count, frames_per_row, required = match.groups()
         entries.append({
             "name": name,
             "path": path,
             "frame_count": int(frame_count),
             "source_row_count": int(source_row_count),
+            "frames_per_row": int(frames_per_row),
             "required": (required == "true"),
         })
 
     return entries
 
 
-def compute_bounds(path: str, frame_count: int, source_row_count: int):
+def compute_bounds(path: str, frame_count: int, source_row_count: int, frames_per_row: int):
     image = Image.open(ROOT / path).convert("RGBA")
     source_row_count = max(1, source_row_count)
-    if image.height % source_row_count != 0:
-        raise ValueError(f"{path} height {image.height} is not divisible by row count {source_row_count}")
+    frames_per_row = max(1, min(frame_count, frames_per_row))
+    rows_per_direction = (frame_count + frames_per_row - 1) // frames_per_row
+    total_row_count = source_row_count * rows_per_direction
+    if image.height % total_row_count != 0:
+        raise ValueError(
+            f"{path} height {image.height} is not divisible by total row count {total_row_count}"
+        )
+    if image.width % frames_per_row != 0:
+        raise ValueError(
+            f"{path} width {image.width} is not divisible by frame columns {frames_per_row}"
+        )
 
-    frame_width = image.width // frame_count
-    frame_height = image.height // source_row_count
+    frame_width = image.width // frames_per_row
+    frame_height = image.height // total_row_count
     alpha = image.getchannel("A")
     bounds = []
 
     for row in range(DIR_COUNT):
         source_row = min(row, source_row_count - 1)
         for col in range(frame_count):
-            left = col * frame_width
-            top = source_row * frame_height
+            left = (col % frames_per_row) * frame_width
+            top = (source_row * rows_per_direction + (col // frames_per_row)) * frame_height
             bbox = alpha.crop((left, top, left + frame_width, top + frame_height)).getbbox()
             if bbox is None:
                 bounds.append((0, 0, 0, 0))
@@ -97,7 +108,8 @@ def main():
     lines.append("")
 
     for entry in entries:
-        bounds = compute_bounds(entry["path"], entry["frame_count"], entry["source_row_count"])
+        bounds = compute_bounds(entry["path"], entry["frame_count"],
+                                entry["source_row_count"], entry["frames_per_row"])
         name = entry["name"]
         lines.append(f"static const Rectangle s_{name}_bounds[] = {{")
         lines.extend(rect_line(rect) for rect in bounds)
@@ -108,7 +120,7 @@ def main():
     for entry in entries:
         lines.append(
             f'    {{ "{entry["path"]}", {entry["frame_count"]}, '
-            f'{entry["source_row_count"]}, s_{entry["name"]}_bounds }},'
+            f'{entry["source_row_count"]}, {entry["frames_per_row"]}, s_{entry["name"]}_bounds }},'
         )
     lines.append("};")
     lines.append("")

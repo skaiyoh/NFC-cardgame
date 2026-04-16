@@ -478,6 +478,35 @@ static void test_single_row_sheet_reuses_row_zero_for_all_directions(void) {
     assert(sheet_source_row(&sheet, DIR_UP) == 0);
 }
 
+static void test_packed_sheet_maps_frames_across_rows(void) {
+    SpriteSheet sheet = {0};
+    sheet.frameCount = 25;
+    sheet.sourceRowCount = 1;
+    sheet.framesPerRow = 5;
+
+    int col = -1;
+    int row = -1;
+
+    assert(sheet_rows_per_direction(&sheet) == 5);
+    assert(sheet_total_row_count(&sheet) == 5);
+
+    sheet_source_cell(&sheet, DIR_DOWN, 0, &col, &row);
+    assert(col == 0);
+    assert(row == 0);
+
+    sheet_source_cell(&sheet, DIR_DOWN, 4, &col, &row);
+    assert(col == 4);
+    assert(row == 0);
+
+    sheet_source_cell(&sheet, DIR_DOWN, 5, &col, &row);
+    assert(col == 0);
+    assert(row == 1);
+
+    sheet_source_cell(&sheet, DIR_DOWN, 24, &col, &row);
+    assert(col == 4);
+    assert(row == 4);
+}
+
 static void test_knight_attack_manifest_and_atlas_match_uvulite_sheet(void) {
     const SpriteSheetManifestEntry *manifestEntry = NULL;
     const SpriteSheetAtlasEntry *atlasEntry = NULL;
@@ -796,6 +825,40 @@ static void test_king_idle_manifest_and_atlas_match_new_sheet(void) {
     assert(atlasEntry != NULL);
     assert(atlasEntry->frameCount == 8);
     assert(atlasEntry->sourceRowCount == 1);
+}
+
+static void test_king_attack_manifest_and_atlas_use_packed_rows(void) {
+    const SpriteSheetManifestEntry *manifestEntry = NULL;
+    const SpriteSheetAtlasEntry *atlasEntry = NULL;
+
+    for (int i = 0; i < kSpriteSheetManifestCount; i++) {
+        const SpriteSheetManifestEntry *entry = &kSpriteSheetManifest[i];
+        if (!entry->isBaseFallback &&
+            entry->spriteType == SPRITE_TYPE_BASE &&
+            entry->anim == ANIM_ATTACK) {
+            manifestEntry = entry;
+            break;
+        }
+    }
+
+    assert(manifestEntry != NULL);
+    assert(strcmp(manifestEntry->path, "src/assets/characters/King/king_attack.png") == 0);
+    assert(manifestEntry->frameCount == 25);
+    assert(manifestEntry->sourceRowCount == 1);
+    assert(manifestEntry->framesPerRow == 5);
+
+    for (int i = 0; i < kSpriteSheetAtlasCount; i++) {
+        const SpriteSheetAtlasEntry *entry = &kSpriteSheetAtlas[i];
+        if (strcmp(entry->path, "src/assets/characters/King/king_attack.png") == 0) {
+            atlasEntry = entry;
+            break;
+        }
+    }
+
+    assert(atlasEntry != NULL);
+    assert(atlasEntry->frameCount == 25);
+    assert(atlasEntry->sourceRowCount == 1);
+    assert(atlasEntry->framesPerRow == 5);
 }
 
 /* ==== Cycle calculation tests ==== */
@@ -1148,6 +1211,29 @@ static void test_visual_loops_repeat_frames_within_one_shot(void) {
     assert(approx_eq(g_lastDrawSource.x, 30.0f, 0.001f));
 }
 
+static void test_packed_sheet_draw_uses_wrapped_source_row(void) {
+    CharacterSprite cs = {0};
+    cs.anims[ANIM_ATTACK].texture = (Texture2D){ .id = 1 };
+    cs.anims[ANIM_ATTACK].frameCount = 25;
+    cs.anims[ANIM_ATTACK].frameWidth = 192;
+    cs.anims[ANIM_ATTACK].frameHeight = 192;
+    cs.anims[ANIM_ATTACK].sourceRowCount = 1;
+    cs.anims[ANIM_ATTACK].framesPerRow = 5;
+
+    AnimState s;
+    anim_state_init(&s, ANIM_ATTACK, DIR_DOWN, 1.0f, true);
+    s.normalizedTime = 0.25f; // frame 6: col 1, row 1 in a 5x5 packed sheet
+
+    g_drawTextureProCalls = 0;
+    sprite_draw(&cs, &s, (Vector2){0.0f, 0.0f}, 1.0f, 0.0f);
+
+    assert(g_drawTextureProCalls == 1);
+    assert(approx_eq(g_lastDrawSource.x, 192.0f, 0.001f));
+    assert(approx_eq(g_lastDrawSource.y, 192.0f, 0.001f));
+    assert(approx_eq(g_lastDrawSource.width, 192.0f, 0.001f));
+    assert(approx_eq(g_lastDrawSource.height, 192.0f, 0.001f));
+}
+
 /* ---- Main ---- */
 int main(void) {
     printf("Running animation tests...\n");
@@ -1182,6 +1268,7 @@ int main(void) {
     RUN_TEST(test_sheet_lookup_prefers_authored_clip);
     RUN_TEST(test_sheet_lookup_resolves_walk_to_idle_when_needed);
     RUN_TEST(test_single_row_sheet_reuses_row_zero_for_all_directions);
+    RUN_TEST(test_packed_sheet_maps_frames_across_rows);
     RUN_TEST(test_knight_attack_manifest_and_atlas_match_uvulite_sheet);
     RUN_TEST(test_brute_walk_manifest_and_atlas_match_nostril_sheet);
     RUN_TEST(test_brute_attack_manifest_and_atlas_match_nostril_attack_sheet);
@@ -1192,6 +1279,7 @@ int main(void) {
     RUN_TEST(test_fishfing_walk_manifest_and_atlas_match_new_sheet);
     RUN_TEST(test_fishfing_attack_manifest_and_atlas_match_new_sheet);
     RUN_TEST(test_king_idle_manifest_and_atlas_match_new_sheet);
+    RUN_TEST(test_king_attack_manifest_and_atlas_use_packed_rows);
 
     // Cycle calculations
     RUN_TEST(test_walk_cycle_calculation);
@@ -1218,6 +1306,7 @@ int main(void) {
     RUN_TEST(test_bounds_90_rotation);
     RUN_TEST(test_bounds_flipped_plus_rotated);
     RUN_TEST(test_visual_loops_repeat_frames_within_one_shot);
+    RUN_TEST(test_packed_sheet_draw_uses_wrapped_source_row);
 
     printf("\nAll %d tests passed!\n", tests_passed);
     return 0;

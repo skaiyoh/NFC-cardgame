@@ -36,8 +36,9 @@ typedef struct {
     Texture2D texture;
     int frameWidth;
     int frameHeight;
-    int frameCount; // number of columns (frames per direction)
+    int frameCount; // number of logical animation frames per direction
     int sourceRowCount; // number of authored directional rows in the source sheet
+    int framesPerRow; // number of logical frames laid out horizontally per source row
     Rectangle *visibleBounds; // frame-local opaque bounds, indexed by dir * frameCount + frame
 } SpriteSheet;
 
