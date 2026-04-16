@@ -25,7 +25,7 @@
 #define BOARD_WIDTH        1080
 #define BOARD_HEIGHT       1920
 #define SEAM_Y             960
-#define BASE_SPAWN_GAP     16.0f
+#define BASE_HOME_OFFSET_FROM_SPAWN -48.0f
 #define LANE_WAYPOINT_COUNT  8
 #define LANE_BOW_INTENSITY   0.3f
 #define LANE_OUTER_INSET_RATIO 0.25f

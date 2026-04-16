@@ -52,7 +52,9 @@ static float lane_spawn_y_from_play(Rectangle play, BattleSide side) {
 
 static float base_anchor_y_from_play(Rectangle play, BattleSide side) {
     float spawnY = lane_spawn_y_from_play(play, side);
-    return spawnY + ((side == SIDE_TOP) ? -BASE_SPAWN_GAP : BASE_SPAWN_GAP);
+    return spawnY + ((side == SIDE_TOP)
+        ? -BASE_HOME_OFFSET_FROM_SPAWN
+        : BASE_HOME_OFFSET_FROM_SPAWN);
 }
 
 static float outer_lane_base_approach(int lane, float t) {
@@ -311,9 +313,9 @@ CanonicalPos bf_base_anchor(const Battlefield *bf, BattleSide side) {
     CanonicalPos spawn = bf->laneWaypoints[side][1][0];
     CanonicalPos base = spawn;
     if (side == SIDE_TOP) {
-        base.v.y = spawn.v.y - BASE_SPAWN_GAP;
+        base.v.y = spawn.v.y - BASE_HOME_OFFSET_FROM_SPAWN;
     } else {
-        base.v.y = spawn.v.y + BASE_SPAWN_GAP;
+        base.v.y = spawn.v.y + BASE_HOME_OFFSET_FROM_SPAWN;
     }
     return base;
 }

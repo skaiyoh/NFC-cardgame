@@ -201,6 +201,31 @@ static void test_dead_blockers_are_ignored(void) {
     assert(fabsf(out.y - 1700.0f) < 0.001f);
 }
 
+static void test_base_near_anchor_keeps_center_spawn_legal(void) {
+    GameState gs;
+    memset(&gs, 0, sizeof(gs));
+    gs.battlefield = make_bf();
+
+    /* Match the live game: the home base sits 48 px inward from the raw
+     * center-slot spawn depth, which leaves the exact anchor just legal. */
+    Entity base = make_blocker((Vector2){ 540.0f, 1652.0f }, 16.0f);
+    base.type = ENTITY_BUILDING;
+    bf_add(&gs.battlefield, &base);
+
+    Vector2 out = {0};
+    bool found = spawn_find_free_anchor(&gs, SIDE_BOTTOM, 0, 14.0f, &out);
+
+    assert(found == true);
+    assert(fabsf(out.x - 540.0f) < 0.001f);
+    assert(fabsf(out.y - 1700.0f) < 0.001f);
+
+    float dx = out.x - base.position.x;
+    float dy = out.y - base.position.y;
+    float dist = sqrtf(dx * dx + dy * dy);
+    float minDist = 14.0f + 16.0f + PATHFIND_CONTACT_GAP;
+    assert(dist >= minDist);
+}
+
 static void test_null_safety(void) {
     GameState gs;
     memset(&gs, 0, sizeof(gs));
@@ -224,8 +249,10 @@ int main(void) {
     printf("  PASS: test_first_two_rows_blocked_finds_deeper_row\n");
     test_dead_blockers_are_ignored();
     printf("  PASS: test_dead_blockers_are_ignored\n");
+    test_base_near_anchor_keeps_center_spawn_legal();
+    printf("  PASS: test_base_near_anchor_keeps_center_spawn_legal\n");
     test_null_safety();
     printf("  PASS: test_null_safety\n");
-    printf("\nAll 6 tests passed!\n");
+    printf("\nAll 7 tests passed!\n");
     return 0;
 }

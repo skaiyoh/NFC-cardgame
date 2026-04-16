@@ -41,7 +41,10 @@
 #define DEFAULT_CARD_SCALE 2.5f
 
 // Base geometry
-#define BASE_SPAWN_GAP 16.0f
+// Negative values pull the home base inward toward the seam relative to the
+// center-lane spawn depth. Troops spawned from the center slot already resolve
+// to the nearest legal offset if the base overlaps that anchor.
+#define BASE_HOME_OFFSET_FROM_SPAWN -48.0f
 #define BASE_INTERACTION_BACK_OFFSET 48.0f
 #define BASE_NAV_RADIUS 56.0f   // authored pathfinding footprint, independent of sprite size
 #define DEFAULT_MELEE_BODY_RADIUS         14.0f
