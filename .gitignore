@@ -28,3 +28,4 @@ test_progression
 test_uvulite_font
 test_debug_overlay
 test_game_debug_input
+/test_projectiles
