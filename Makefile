@@ -31,7 +31,11 @@ init-db:
 	@echo "cardgame.db initialized"
 
 run: clean cardgame
-	NFC_PORT_P1="/dev/ttyUSB1" NFC_PORT_P2="/dev/ttyUSB0" ./cardgame
+	@if [ -z "$(NFC_PORT_P1)" ] || [ -z "$(NFC_PORT_P2)" ]; then \
+		echo "Set NFC_PORT_P1 and NFC_PORT_P2 before running 'make run'."; \
+		exit 1; \
+	fi
+	NFC_PORT_P1="$(NFC_PORT_P1)" NFC_PORT_P2="$(NFC_PORT_P2)" ./cardgame
 
 preview-run: preview
 	./card_preview
@@ -46,7 +50,11 @@ card_enroll: tools/card_enroll.c src/data/db.c src/data/cards.c src/hardware/nfc
 	$(CC) $(CFLAGS) $(CPPFLAGS) tools/card_enroll.c src/data/db.c src/data/cards.c src/hardware/nfc_reader.c src/hardware/arduino_protocol.c third_party/cjson/cJSON.c -o card_enroll $(MACFLAGS) -lsqlite3 -lm
 
 card-enroll-run: card_enroll
-	NFC_PORT="/dev/ttyUSB1" ./card_enroll
+	@if [ -z "$(NFC_PORT)" ]; then \
+		echo "Set NFC_PORT before running 'make card-enroll-run'."; \
+		exit 1; \
+	fi
+	NFC_PORT="$(NFC_PORT)" ./card_enroll
 
 # Test targets
 test_pathfinding: tests/test_pathfinding.c src/logic/pathfinding.c

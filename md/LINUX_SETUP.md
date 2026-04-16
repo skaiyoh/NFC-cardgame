@@ -39,6 +39,23 @@ cmake --build build -j"$(nproc)"
 ctest --test-dir build --output-on-failure
 ```
 
+If you want CMake to launch the binaries with fixed NFC device paths, set them
+at configure time and use the run targets:
+
+```bash
+cmake -S . -B build \
+  -DNFC_PORT_P1=/dev/ttyACM0 \
+  -DNFC_PORT_P2=/dev/ttyACM1
+cmake --build build --target run-cardgame
+```
+
+For single-Arduino enrollment or testing:
+
+```bash
+cmake -S . -B build -DNFC_PORT=/dev/ttyACM0
+cmake --build build --target run-card-enroll
+```
+
 If `cardgame.db` is missing, or you want a clean reset after deleting the old
 file first:
 
@@ -77,6 +94,9 @@ Most Linux serial devices will appear as `/dev/ttyACM*` or `/dev/ttyUSB*`:
 ```bash
 ls /dev/ttyACM* /dev/ttyUSB* 2>/dev/null
 ```
+
+The CMake configure step will warn if any configured `NFC_PORT*` path does not
+exist when you run `cmake -S . -B build`.
 
 If your user cannot open the device, add it to the serial-access group and log in again:
 

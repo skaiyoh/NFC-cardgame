@@ -2,7 +2,7 @@
 // card_enroll — NFC card enrollment tool
 // Maps physical NFC card UIDs to game card IDs in the nfc_tags table.
 //
-// Usage: NFC_PORT=/dev/ttyACM0 DB_CONNECTION="host=localhost ..." ./card_enroll
+// Usage: NFC_PORT=/dev/ttyACM0 [DB_PATH=cardgame.db] ./card_enroll
 //
 
 #include "../src/hardware/nfc_reader.h"

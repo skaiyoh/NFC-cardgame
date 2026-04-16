@@ -85,6 +85,22 @@ cmake --build build --target init-db
 ./build/cardgame
 ```
 
+To run through CMake with explicit NFC ports, pass them at configure time:
+
+```bash
+cmake -S . -B build \
+  -DNFC_PORT_P1=/dev/ttyACM0 \
+  -DNFC_PORT_P2=/dev/ttyACM1
+cmake --build build --target run-cardgame
+```
+
+For single-Arduino testing or enrollment:
+
+```bash
+cmake -S . -B build -DNFC_PORT=/dev/ttyACM0
+cmake --build build --target run-card-enroll
+```
+
 If you prefer the `Makefile`, the equivalent local entrypoints are `make cardgame`,
 `make preview`, `make biome_preview`, `make card_enroll`, and `make test`.
 
@@ -114,6 +130,8 @@ tail -f ~/NFC-cardgame/game.log
 | `cmake --build build --target card_preview` | Build the card preview tool                     |
 | `cmake --build build --target biome_preview` | Build the biome preview tool                   |
 | `cmake --build build --target card_enroll`  | Build the card enrollment tool                  |
+| `cmake --build build --target run-cardgame` | Run the game with `DB_PATH` / `NFC_PORT*` from the CMake cache |
+| `cmake --build build --target run-card-enroll` | Run the enrollment tool with `DB_PATH` / `NFC_PORT` from the CMake cache |
 | `ctest --test-dir build --output-on-failure` | Run the test suite                             |
 | `rm -rf build`                            | Remove the CMake build directory                  |
 
@@ -205,6 +223,10 @@ To browse the database, use [DB Browser for SQLite](https://sqlitebrowser.org/) 
 | `NFC_PORT_P2` | Player 2 Arduino serial port           | —               |
 
 On Linux, serial ports usually look like `/dev/ttyACM0` or `/dev/ttyUSB0`. Run `ls /dev/ttyACM* /dev/ttyUSB* 2>/dev/null` to find yours. If permissions block access, see [Linux Setup](md/LINUX_SETUP.md).
+
+If you use the CMake run targets, the configure step will warn when a specified
+`NFC_PORT`, `NFC_PORT_P1`, or `NFC_PORT_P2` path does not exist on the current
+machine.
 
 ## AI Disclosure
 
