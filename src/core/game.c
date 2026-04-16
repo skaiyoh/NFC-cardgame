@@ -370,6 +370,7 @@ void game_render(GameState *g) {
     sustenance_renderer_draw(&bf->sustenanceField, SIDE_TOP, g->sustenanceTexture, 0.0f);
     spawn_fx_draw(&g->spawnFx, 180.0f);
     game_draw_canonical_entities(bf);
+    spawn_fx_draw_overlay(&g->spawnFx, 180.0f);
     projectile_system_draw(g);
     debug_overlay_draw(bf, g, s_debugFlags, &p1NavState);
     viewport_end();
@@ -409,6 +410,7 @@ void game_render(GameState *g) {
     sustenance_renderer_draw(&bf->sustenanceField, SIDE_TOP, g->sustenanceTexture, 180.0f);
     spawn_fx_draw(&g->spawnFx, 0.0f);
     game_draw_canonical_entities(bf);
+    spawn_fx_draw_overlay(&g->spawnFx, 0.0f);
     projectile_system_draw(g);
     debug_overlay_draw(bf, g, s_debugFlags, &p2NavState);
     EndMode2D();

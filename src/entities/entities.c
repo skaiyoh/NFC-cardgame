@@ -271,6 +271,7 @@ Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
     e->projectileVisualType = PROJECTILE_VISUAL_NONE;
     e->projectileSpeed = 0.0f;
     e->projectileHitRadius = 0.0f;
+    e->projectileSplashRadius = 0.0f;
     e->projectileRenderScale = 1.0f;
     e->projectileLaunchOffset = (Vector2){ 0.0f, 0.0f };
 

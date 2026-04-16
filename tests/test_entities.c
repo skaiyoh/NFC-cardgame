@@ -65,12 +65,14 @@ typedef enum {
 typedef enum {
     PROJECTILE_VISUAL_NONE = 0,
     PROJECTILE_VISUAL_FISH,
-    PROJECTILE_VISUAL_HEALER_BLOB
+    PROJECTILE_VISUAL_HEALER_BLOB,
+    PROJECTILE_VISUAL_BIRD_BOMB
 } ProjectileVisualType;
 typedef enum {
     COMBAT_PROFILE_DEFAULT_MELEE = 0,
     COMBAT_PROFILE_HEALER,
-    COMBAT_PROFILE_FISHFING
+    COMBAT_PROFILE_FISHFING,
+    COMBAT_PROFILE_BIRD
 } CombatProfileId;
 typedef enum { TARGET_NEAREST, TARGET_BUILDING, TARGET_SPECIFIC_TYPE } TargetingMode;
 typedef enum { UNIT_ROLE_COMBAT, UNIT_ROLE_FARMER } UnitRole;
@@ -214,6 +216,7 @@ struct Entity {
     ProjectileVisualType projectileVisualType;
     float projectileSpeed;
     float projectileHitRadius;
+    float projectileSplashRadius;
     float projectileRenderScale;
     Vector2 projectileLaunchOffset;
     AnimState anim;
@@ -438,10 +441,12 @@ const EntityAnimSpec *anim_spec_get(SpriteType spriteType, AnimationType animTyp
     static const EntityAnimSpec s_base_idle = { ANIM_IDLE, ANIM_PLAY_IDLE_BURST, 1.0f, -1.0f, false, false, 1, 0.75f, 1.5f, -1.0f };
     static const EntityAnimSpec s_walk = { ANIM_WALK, ANIM_PLAY_LOOP, 0.8f, -1.0f, false, false, 1, 0.0f, 0.0f, 0.0f };
     static const EntityAnimSpec s_attack = { ANIM_ATTACK, ANIM_PLAY_ONCE, 1.0f, 0.5f, true, false, 1, 0.0f, 0.0f, 0.0f };
+    static const EntityAnimSpec s_bird_attack = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.60f, 5.0f / 9.0f, true, false, 1, 0.0f, 0.0f, 0.0f };
     static const EntityAnimSpec s_death = { ANIM_DEATH, ANIM_PLAY_ONCE, 0.75f, -1.0f, false, true, 1, 0.0f, 0.0f, 0.0f };
 
     switch (animType) {
-        case ANIM_ATTACK: return &s_attack;
+        case ANIM_ATTACK:
+            return (spriteType == SPRITE_TYPE_BIRD) ? &s_bird_attack : &s_attack;
         case ANIM_WALK: return &s_walk;
         case ANIM_DEATH: return &s_death;
         case ANIM_IDLE:
@@ -712,6 +717,7 @@ static Entity make_entity(int id, int ownerID, EntityType type, Vector2 pos) {
     e.projectileVisualType = PROJECTILE_VISUAL_NONE;
     e.projectileSpeed = 0.0f;
     e.projectileHitRadius = 0.0f;
+    e.projectileSplashRadius = 0.0f;
     e.projectileRenderScale = 1.0f;
     e.projectileLaunchOffset = (Vector2){0};
     e.presentationSide = SIDE_BOTTOM;
@@ -743,6 +749,25 @@ static Entity make_healer(int id, Vector2 pos) {
     healer.anim.elapsed = 0.49f;
     healer.anim.normalizedTime = 0.49f;
     return healer;
+}
+
+static Entity make_bird(int id, Vector2 pos) {
+    Entity bird = make_entity(id, 0, ENTITY_TROOP, pos);
+    bird.state = ESTATE_ATTACKING;
+    bird.spriteType = SPRITE_TYPE_BIRD;
+    bird.combatProfileId = COMBAT_PROFILE_BIRD;
+    bird.engagementMode = ATTACK_ENGAGEMENT_DIRECT_RANGE;
+    bird.deliveryMode = ATTACK_DELIVERY_PROJECTILE;
+    bird.projectileVisualType = PROJECTILE_VISUAL_BIRD_BOMB;
+    bird.projectileSpeed = 240.0f;
+    bird.projectileHitRadius = 12.0f;
+    bird.projectileSplashRadius = 48.0f;
+    bird.projectileRenderScale = 1.0f;
+    bird.projectileLaunchOffset = (Vector2){8.0f, -8.0f};
+    anim_state_init(&bird.anim, ANIM_ATTACK, DIR_SIDE, 0.60f, true);
+    bird.anim.elapsed = 0.32f;
+    bird.anim.normalizedTime = 0.32f / 0.60f;
+    return bird;
 }
 
 static Entity make_base_building(int id, int ownerID, Vector2 pos) {
@@ -1214,6 +1239,27 @@ static void test_projectile_attacker_spawns_projectile_on_release(void) {
     assert(g_applyHitCalls == 0);
 }
 
+static void test_bird_spawns_bomb_on_frame_six_release_without_direct_hit(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity bird = make_bird(1, (Vector2){0.0f, 0.0f});
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){10.0f, 0.0f});
+    bird.attackTargetId = enemy.id;
+
+    battlefield_add(&gs.battlefield, &enemy);
+
+    entity_update(&bird, &gs, 0.02f);
+
+    assert(bird.state == ESTATE_ATTACKING);
+    assert(bird.attackTargetId == enemy.id);
+    assert(g_projectileSpawnCalls == 1);
+    assert(g_lastProjectileAttacker == &bird);
+    assert(g_lastProjectileTarget == &enemy);
+    assert(g_applyHitCalls == 0);
+    assert(bird.attackReleaseFired);
+}
+
 static void test_projectile_spawn_failure_falls_back_to_direct_hit(void) {
     reset_globals();
     GameState gs = make_game_state();
@@ -1328,6 +1374,7 @@ int main(void) {
     RUN_TEST(test_healer_cancels_stale_heal_and_walks_without_replacement);
     RUN_TEST(test_non_healer_enemy_hit_flow_unchanged);
     RUN_TEST(test_projectile_attacker_spawns_projectile_on_release);
+    RUN_TEST(test_bird_spawns_bomb_on_frame_six_release_without_direct_hit);
     RUN_TEST(test_projectile_spawn_failure_falls_back_to_direct_hit);
     RUN_TEST(test_building_attack_clip_finishes_and_returns_to_idle);
     RUN_TEST(test_building_attack_hit_marker_dispatches_queued_king_burst_once);

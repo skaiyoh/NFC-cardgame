@@ -455,29 +455,30 @@ void combat_apply_hit(Entity *attacker, Entity *target, GameState *gs) {
     combat_apply_effect_payload(&payload, target, gs);
 }
 
-void combat_apply_king_burst(Entity *base, float radius, int damage, GameState *gs) {
-    if (!base || !gs) return;
+void combat_apply_enemy_burst(Vector2 center, float radius, int damage,
+                              int sourceEntityId, int sourceOwnerId,
+                              GameState *gs) {
+    if (!gs) return;
     if (damage <= 0 || radius <= 0.0f) return;
 
     Battlefield *bf = &gs->battlefield;
-    CanonicalPos basePos = { base->position };
+    CanonicalPos burstPos = { center };
 
     for (int i = 0; i < bf->entityCount; i++) {
         Entity *target = bf->entities[i];
         if (!target) continue;
-        if (target == base) continue;
         if (!target->alive || target->markedForRemoval) continue;
         if (target->type == ENTITY_PROJECTILE) continue;
-        if (target->ownerID == base->ownerID) continue;
+        if (target->ownerID == sourceOwnerId) continue;
 
         CanonicalPos targetPos = { target->position };
-        float dist = bf_distance(basePos, targetPos);
+        float dist = bf_distance(burstPos, targetPos);
         if (dist > radius) continue;
 
         bool killed = entity_take_damage(target, damage);
         debug_event_emit_xy(target->position.x, target->position.y, DEBUG_EVT_HIT);
-        printf("[COMBAT] King burst from base %d dealt %d damage to entity %d (hp: %d/%d)\n",
-               base->id, damage, target->id, target->hp, target->maxHP);
+        printf("[COMBAT] Burst from entity %d dealt %d damage to entity %d (hp: %d/%d)\n",
+               sourceEntityId, damage, target->id, target->hp, target->maxHP);
 
         if (killed) {
             combat_on_kill(target, gs);
@@ -486,6 +487,12 @@ void combat_apply_king_burst(Entity *base, float radius, int damage, GameState *
             }
         }
     }
+}
+
+void combat_apply_king_burst(Entity *base, float radius, int damage, GameState *gs) {
+    if (!base || !gs) return;
+    if (damage <= 0 || radius <= 0.0f) return;
+    combat_apply_enemy_burst(base->position, radius, damage, base->id, base->ownerID, gs);
 }
 
 void combat_resolve(Entity *attacker, Entity *target, GameState *gs, float deltaTime) {

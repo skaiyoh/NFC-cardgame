@@ -30,7 +30,7 @@ The following types are registered in `src/logic/card_effects.c`. Using an unreg
 | `assassin` | Spawns a troop using the shared troop pipeline; no assassin-specific ability yet |
 | `brute` | Spawns a troop using the shared troop pipeline; gameplay difference currently comes from JSON stats and targeting |
 | `farmer` | Spawns a troop using the shared troop pipeline; no farmer-specific ability yet |
-| `bird` | Spawns a troop using the shared troop pipeline; starts from Knight baseline stats |
+| `bird` | Spawns a ranged troop that releases a bomb projectile on attack; the bomb deals enemy-only splash damage on activation |
 | `fishfing` | Spawns a troop using the shared troop pipeline; starts from Knight baseline stats |
 | `king` | Plays on the owning base and restarts its attack clip; no spawn, animation-only in this pass |
 

@@ -82,9 +82,9 @@ Last verified: 2026-04-13
 
 ### Bird
 
-- Current state: shared troop pipeline only; no unique bird logic yet.
+- Current state: ranged Bird now releases a bomb projectile from its beak, and the bomb deals enemy-only splash damage on activation.
 - [ ] Finalize walk and attack art and make sure the movement language fits the intended Bird role.
-- [ ] Implement Bird-specific gameplay behavior so it is not just another melee clone.
+- [ ] Tune Bird bomb splash radius, speed, and release timing against live gameplay.
 - [ ] Add a hurt reaction that still reads clearly at Bird scale/speed.
 - [ ] Replace temporary hand-card row reuse once final card-sheet art exists.
 - [ ] Smoke check: verify Bird feels visually and mechanically distinct from Knight/Assassin.

@@ -47,7 +47,7 @@ SPRITE_SHEET(farmer_full_attack, false, SPRITE_TYPE_FARMER_FULL, ANIM_ATTACK, "s
 // Bird movement art is authored as a single side-facing row and reused for all directions.
 SPRITE_SHEET(bird_walk,         false, SPRITE_TYPE_BIRD,    ANIM_WALK,   "src/assets/characters/Bird/birdman_fly.png",  8, 1, true)
 SPRITE_SHEET(bird_hurt,         false, SPRITE_TYPE_BIRD,    ANIM_HURT,   "src/assets/characters/Bird/hurt.png",         4, 3, true)
-SPRITE_SHEET(bird_attack,       false, SPRITE_TYPE_BIRD,    ANIM_ATTACK, "src/assets/characters/Bird/sword.png",        6, 3, true)
+SPRITE_SHEET(bird_attack,       false, SPRITE_TYPE_BIRD,    ANIM_ATTACK, "src/assets/characters/Bird/bird_attack.png",  9, 1, true)
 
 SPRITE_SHEET(fishfing_walk,     false, SPRITE_TYPE_FISHFING, ANIM_WALK,  "src/assets/characters/Fishfing/fishfing_walk.png", 8, 1, true)
 SPRITE_SHEET(fishfing_hurt,     false, SPRITE_TYPE_FISHFING, ANIM_HURT,  "src/assets/characters/Fishfing/hurt.png",     4, 3, true)

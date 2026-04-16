@@ -21,6 +21,7 @@
 #define PROJECTILE_CAPACITY (MAX_ENTITIES * 2)
 #define PROJECTILE_FISH_PATH "fish.png"
 #define PROJECTILE_HEALER_BLOB_PATH "blob.png"
+#define PROJECTILE_BIRD_BOMB_PATH "bird_bomb.png"
 #define PI_F 3.14159265f
 
 typedef struct { float x; float y; } Vector2;
@@ -50,7 +51,8 @@ typedef enum {
 typedef enum {
     PROJECTILE_VISUAL_NONE = 0,
     PROJECTILE_VISUAL_FISH,
-    PROJECTILE_VISUAL_HEALER_BLOB
+    PROJECTILE_VISUAL_HEALER_BLOB,
+    PROJECTILE_VISUAL_BIRD_BOMB
 } ProjectileVisualType;
 
 typedef struct {
@@ -75,6 +77,7 @@ typedef struct {
     Vector2 snapshotTargetPos;
     float speed;
     float hitRadius;
+    float splashRadius;
     ProjectileVisualType visualType;
     float renderScale;
     float animElapsed;
@@ -83,11 +86,18 @@ typedef struct {
 typedef struct {
     Texture2D fishTexture;
     Texture2D healerBlobTexture;
+    Texture2D birdBombTexture;
 } ProjectileAssets;
 
 typedef struct {
     Projectile projectiles[PROJECTILE_CAPACITY];
 } ProjectileSystem;
+
+typedef struct {
+    int explosionEmitCount;
+    Vector2 lastExplosionPos;
+    float lastExplosionScale;
+} SpawnFxSystem;
 
 typedef struct Entity {
     int id;
@@ -105,6 +115,7 @@ typedef struct Entity {
     Vector2 projectileLaunchOffset;
     float projectileSpeed;
     float projectileHitRadius;
+    float projectileSplashRadius;
     float projectileRenderScale;
     ProjectileVisualType projectileVisualType;
     AttackDeliveryMode deliveryMode;
@@ -118,6 +129,7 @@ typedef struct Battlefield {
 
 typedef struct GameState {
     bool gameOver;
+    SpawnFxSystem spawnFx;
     ProjectileAssets projectileAssets;
     ProjectileSystem projectileSystem;
     Battlefield battlefield;
@@ -128,10 +140,17 @@ static Rectangle g_lastDrawDest;
 static float g_lastDrawRotation = 0.0f;
 static int g_drawCalls = 0;
 static int g_applyCalls = 0;
+static int g_burstCalls = 0;
+static int g_explosionEmitCalls = 0;
 static const CombatEffectPayload *g_lastPayload = NULL;
 static Entity *g_lastAppliedTarget = NULL;
 static bool g_nextImpactEndsGame = false;
 static bool g_forceBuildPayloadFailure = false;
+static Vector2 g_lastBurstCenter;
+static float g_lastBurstRadius = 0.0f;
+static int g_lastBurstDamage = 0;
+static Vector2 g_lastExplosionPos;
+static float g_lastExplosionScale = 0.0f;
 
 static Texture2D LoadTexture(const char *fileName) {
     if (strcmp(fileName, PROJECTILE_FISH_PATH) == 0) {
@@ -139,6 +158,9 @@ static Texture2D LoadTexture(const char *fileName) {
     }
     if (strcmp(fileName, PROJECTILE_HEALER_BLOB_PATH) == 0) {
         return (Texture2D){ .id = 2, .width = 64, .height = 32 };
+    }
+    if (strcmp(fileName, PROJECTILE_BIRD_BOMB_PATH) == 0) {
+        return (Texture2D){ .id = 3, .width = 160, .height = 32 };
     }
     return (Texture2D){0};
 }
@@ -218,6 +240,50 @@ static bool combat_apply_effect_payload(const CombatEffectPayload *payload,
     return true;
 }
 
+static void combat_apply_enemy_burst(Vector2 center, float radius, int damage,
+                                     int sourceEntityId, int sourceOwnerId,
+                                     GameState *gs) {
+    if (!gs) return;
+    if (damage <= 0 || radius <= 0.0f) return;
+
+    g_burstCalls++;
+    g_lastBurstCenter = center;
+    g_lastBurstRadius = radius;
+    g_lastBurstDamage = damage;
+
+    for (int i = 0; i < gs->battlefield.entityCount; i++) {
+        Entity *target = gs->battlefield.entities[i];
+        if (!target) continue;
+        if (!target->alive || target->markedForRemoval) continue;
+        if (target->type == ENTITY_PROJECTILE) continue;
+        if (target->ownerID == sourceOwnerId) continue;
+
+        float dx = target->position.x - center.x;
+        float dy = target->position.y - center.y;
+        float dist = sqrtf(dx * dx + dy * dy);
+        if (dist > radius) continue;
+
+        CombatEffectPayload payload = {
+            .kind = PROJECTILE_EFFECT_DAMAGE,
+            .amount = damage,
+            .sourceEntityId = sourceEntityId,
+            .sourceOwnerId = sourceOwnerId,
+        };
+        combat_apply_effect_payload(&payload, target, gs);
+    }
+}
+
+static void spawn_fx_emit_explosion(SpawnFxSystem *fx, Vector2 position, float scale) {
+    if (!fx) return;
+
+    fx->explosionEmitCount++;
+    fx->lastExplosionPos = position;
+    fx->lastExplosionScale = scale;
+    g_explosionEmitCalls++;
+    g_lastExplosionPos = position;
+    g_lastExplosionScale = scale;
+}
+
 #include "../src/entities/projectile.c"
 
 static void reset_observers(void) {
@@ -226,10 +292,17 @@ static void reset_observers(void) {
     g_lastDrawRotation = 0.0f;
     g_drawCalls = 0;
     g_applyCalls = 0;
+    g_burstCalls = 0;
+    g_explosionEmitCalls = 0;
     g_lastPayload = NULL;
     g_lastAppliedTarget = NULL;
     g_nextImpactEndsGame = false;
     g_forceBuildPayloadFailure = false;
+    g_lastBurstCenter = (Vector2){0};
+    g_lastBurstRadius = 0.0f;
+    g_lastBurstDamage = 0;
+    g_lastExplosionPos = (Vector2){0};
+    g_lastExplosionScale = 0.0f;
 }
 
 static GameState make_game_state(void) {
@@ -237,6 +310,7 @@ static GameState make_game_state(void) {
     memset(&gs, 0, sizeof(gs));
     gs.projectileAssets.fishTexture = (Texture2D){ .id = 1, .width = 66, .height = 19 };
     gs.projectileAssets.healerBlobTexture = (Texture2D){ .id = 2, .width = 64, .height = 32 };
+    gs.projectileAssets.birdBombTexture = (Texture2D){ .id = 3, .width = 160, .height = 32 };
     return gs;
 }
 
@@ -254,6 +328,7 @@ static Entity make_entity(int id, int ownerID, EntityType type, Vector2 position
     e.spriteScale = 1.0f;
     e.projectileSpeed = 20.0f;
     e.projectileHitRadius = 1.0f;
+    e.projectileSplashRadius = 0.0f;
     e.projectileRenderScale = 1.0f;
     e.projectileVisualType = PROJECTILE_VISUAL_FISH;
     e.deliveryMode = ATTACK_DELIVERY_PROJECTILE;
@@ -303,6 +378,7 @@ static void test_update_uses_swept_collision_against_live_target(void) {
 
     assert(g_applyCalls == 1);
     assert(g_lastAppliedTarget == &target);
+    assert(g_explosionEmitCalls == 0);
     assert(!gs.projectileSystem.projectiles[0].active);
     printf("  PASS: test_update_uses_swept_collision_against_live_target\n");
 }
@@ -326,6 +402,27 @@ static void test_heal_projectile_noops_when_target_is_full(void) {
     printf("  PASS: test_heal_projectile_noops_when_target_is_full\n");
 }
 
+static void test_bird_bomb_spawn_uses_beak_offset(void) {
+    reset_observers();
+    GameState gs = make_game_state();
+    Entity attacker = make_entity(1, 0, ENTITY_TROOP, (Vector2){50.0f, 70.0f});
+    Entity target = make_entity(2, 1, ENTITY_TROOP, (Vector2){100.0f, 70.0f});
+    attacker.projectileVisualType = PROJECTILE_VISUAL_BIRD_BOMB;
+    attacker.projectileLaunchOffset = (Vector2){8.0f, -8.0f};
+    attacker.projectileSpeed = 240.0f;
+    attacker.projectileHitRadius = 12.0f;
+    attacker.projectileSplashRadius = 48.0f;
+
+    assert(projectile_spawn_for_attack(&gs, &attacker, &target));
+    Projectile *p = &gs.projectileSystem.projectiles[0];
+    assert(p->active);
+    assert(fabsf(p->currentPos.x - 58.0f) < 0.001f);
+    assert(fabsf(p->currentPos.y - 62.0f) < 0.001f);
+    assert(p->visualType == PROJECTILE_VISUAL_BIRD_BOMB);
+    assert(fabsf(p->splashRadius - 48.0f) < 0.001f);
+    printf("  PASS: test_bird_bomb_spawn_uses_beak_offset\n");
+}
+
 static void test_dead_target_despawns_without_effect(void) {
     reset_observers();
     GameState gs = make_game_state();
@@ -339,6 +436,7 @@ static void test_dead_target_despawns_without_effect(void) {
     projectile_system_update(&gs, 1.0f);
 
     assert(g_applyCalls == 0);
+    assert(g_explosionEmitCalls == 0);
     assert(!gs.projectileSystem.projectiles[0].active);
     printf("  PASS: test_dead_target_despawns_without_effect\n");
 }
@@ -392,6 +490,132 @@ static void test_static_target_uses_combat_contact_shell(void) {
     printf("  PASS: test_static_target_uses_combat_contact_shell\n");
 }
 
+static void test_bird_bomb_splash_damages_multiple_enemies_on_impact(void) {
+    reset_observers();
+    GameState gs = make_game_state();
+    Entity attacker = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    Entity target = make_entity(2, 1, ENTITY_TROOP, (Vector2){20.0f, 0.0f});
+    Entity nearbyEnemy = make_entity(3, 1, ENTITY_TROOP, (Vector2){45.0f, 0.0f});
+
+    attacker.projectileVisualType = PROJECTILE_VISUAL_BIRD_BOMB;
+    attacker.projectileSpeed = 20.0f;
+    attacker.projectileHitRadius = 1.0f;
+    attacker.projectileSplashRadius = 48.0f;
+    target.bodyRadius = 1.0f;
+    nearbyEnemy.bodyRadius = 1.0f;
+
+    battlefield_add(&gs.battlefield, &target);
+    battlefield_add(&gs.battlefield, &nearbyEnemy);
+    assert(projectile_spawn_for_attack(&gs, &attacker, &target));
+
+    projectile_system_update(&gs, 1.0f);
+
+    assert(g_burstCalls == 1);
+    assert(g_explosionEmitCalls == 1);
+    assert(g_applyCalls == 2);
+    assert(target.hp == 13);
+    assert(nearbyEnemy.hp == 13);
+    assert(fabsf(g_lastBurstCenter.x - 20.0f) < 0.001f);
+    assert(fabsf(g_lastBurstCenter.y - 0.0f) < 0.001f);
+    assert(fabsf(g_lastBurstRadius - 48.0f) < 0.001f);
+    assert(g_lastBurstDamage == 7);
+    assert(fabsf(g_lastExplosionPos.x - 20.0f) < 0.001f);
+    assert(fabsf(g_lastExplosionPos.y - 0.0f) < 0.001f);
+    assert(fabsf(g_lastExplosionScale - 2.0f) < 0.001f);
+    assert(!gs.projectileSystem.projectiles[0].active);
+    printf("  PASS: test_bird_bomb_splash_damages_multiple_enemies_on_impact\n");
+}
+
+static void test_bird_bomb_splash_ignores_friendlies(void) {
+    reset_observers();
+    GameState gs = make_game_state();
+    Entity attacker = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    Entity target = make_entity(2, 1, ENTITY_TROOP, (Vector2){20.0f, 0.0f});
+    Entity friendly = make_entity(3, 0, ENTITY_TROOP, (Vector2){25.0f, 0.0f});
+
+    attacker.projectileVisualType = PROJECTILE_VISUAL_BIRD_BOMB;
+    attacker.projectileSpeed = 20.0f;
+    attacker.projectileHitRadius = 1.0f;
+    attacker.projectileSplashRadius = 48.0f;
+    target.bodyRadius = 1.0f;
+    friendly.bodyRadius = 1.0f;
+
+    battlefield_add(&gs.battlefield, &target);
+    battlefield_add(&gs.battlefield, &friendly);
+    assert(projectile_spawn_for_attack(&gs, &attacker, &target));
+
+    projectile_system_update(&gs, 1.0f);
+
+    assert(g_burstCalls == 1);
+    assert(g_explosionEmitCalls == 1);
+    assert(g_applyCalls == 1);
+    assert(target.hp == 13);
+    assert(friendly.hp == 20);
+    printf("  PASS: test_bird_bomb_splash_ignores_friendlies\n");
+}
+
+static void test_bird_bomb_splash_damages_enemy_buildings(void) {
+    reset_observers();
+    GameState gs = make_game_state();
+    Entity attacker = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    Entity target = make_entity(2, 1, ENTITY_TROOP, (Vector2){20.0f, 0.0f});
+    Entity building = make_entity(3, 1, ENTITY_BUILDING, (Vector2){35.0f, 0.0f});
+
+    attacker.projectileVisualType = PROJECTILE_VISUAL_BIRD_BOMB;
+    attacker.projectileSpeed = 20.0f;
+    attacker.projectileHitRadius = 1.0f;
+    attacker.projectileSplashRadius = 48.0f;
+    target.bodyRadius = 1.0f;
+    building.bodyRadius = 6.0f;
+    building.navRadius = 6.0f;
+
+    battlefield_add(&gs.battlefield, &target);
+    battlefield_add(&gs.battlefield, &building);
+    assert(projectile_spawn_for_attack(&gs, &attacker, &target));
+
+    projectile_system_update(&gs, 1.0f);
+
+    assert(g_burstCalls == 1);
+    assert(g_explosionEmitCalls == 1);
+    assert(g_applyCalls == 2);
+    assert(target.hp == 13);
+    assert(building.hp == 13);
+    printf("  PASS: test_bird_bomb_splash_damages_enemy_buildings\n");
+}
+
+static void test_bird_bomb_reaches_snapshot_and_still_explodes_when_target_is_dead(void) {
+    reset_observers();
+    GameState gs = make_game_state();
+    Entity attacker = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    Entity deadTarget = make_entity(2, 1, ENTITY_TROOP, (Vector2){20.0f, 0.0f});
+    Entity nearbyEnemy = make_entity(3, 1, ENTITY_TROOP, (Vector2){25.0f, 0.0f});
+
+    attacker.projectileVisualType = PROJECTILE_VISUAL_BIRD_BOMB;
+    attacker.projectileSpeed = 20.0f;
+    attacker.projectileHitRadius = 1.0f;
+    attacker.projectileSplashRadius = 48.0f;
+    deadTarget.alive = false;
+    deadTarget.hp = 0;
+
+    battlefield_add(&gs.battlefield, &deadTarget);
+    battlefield_add(&gs.battlefield, &nearbyEnemy);
+    assert(projectile_spawn_for_attack(&gs, &attacker, &deadTarget));
+
+    projectile_system_update(&gs, 1.0f);
+
+    assert(g_burstCalls == 1);
+    assert(g_explosionEmitCalls == 1);
+    assert(g_applyCalls == 1);
+    assert(deadTarget.hp == 0);
+    assert(nearbyEnemy.hp == 13);
+    assert(fabsf(g_lastBurstCenter.x - 20.0f) < 0.001f);
+    assert(fabsf(g_lastExplosionPos.x - 20.0f) < 0.001f);
+    assert(fabsf(g_lastExplosionPos.y - 0.0f) < 0.001f);
+    assert(fabsf(g_lastExplosionScale - 2.0f) < 0.001f);
+    assert(!gs.projectileSystem.projectiles[0].active);
+    printf("  PASS: test_bird_bomb_reaches_snapshot_and_still_explodes_when_target_is_dead\n");
+}
+
 static void test_draw_uses_fish_animation_frames(void) {
     reset_observers();
     GameState gs = make_game_state();
@@ -414,15 +638,44 @@ static void test_draw_uses_fish_animation_frames(void) {
     printf("  PASS: test_draw_uses_fish_animation_frames\n");
 }
 
+static void test_draw_uses_bird_bomb_animation_frames(void) {
+    reset_observers();
+    GameState gs = make_game_state();
+    Projectile *p = &gs.projectileSystem.projectiles[0];
+    *p = (Projectile){
+        .active = true,
+        .prevPos = {0.0f, 0.0f},
+        .currentPos = {12.0f, 0.0f},
+        .snapshotTargetPos = {24.0f, 0.0f},
+        .visualType = PROJECTILE_VISUAL_BIRD_BOMB,
+        .renderScale = 1.0f,
+        .animElapsed = 0.10f,
+    };
+
+    projectile_system_draw(&gs);
+
+    assert(g_drawCalls == 1);
+    assert(fabsf(g_lastDrawSource.x - 32.0f) < 0.001f);
+    assert(fabsf(g_lastDrawSource.width - 32.0f) < 0.001f);
+    assert(fabsf(g_lastDrawSource.height - 32.0f) < 0.001f);
+    printf("  PASS: test_draw_uses_bird_bomb_animation_frames\n");
+}
+
 int main(void) {
     printf("Running projectile tests...\n");
     test_spawn_uses_launch_offset_and_snapshot_target();
     test_update_uses_swept_collision_against_live_target();
     test_heal_projectile_noops_when_target_is_full();
+    test_bird_bomb_spawn_uses_beak_offset();
     test_dead_target_despawns_without_effect();
     test_gameover_breaks_remaining_projectile_updates();
     test_static_target_uses_combat_contact_shell();
+    test_bird_bomb_splash_damages_multiple_enemies_on_impact();
+    test_bird_bomb_splash_ignores_friendlies();
+    test_bird_bomb_splash_damages_enemy_buildings();
+    test_bird_bomb_reaches_snapshot_and_still_explodes_when_target_is_dead();
     test_draw_uses_fish_animation_frames();
+    test_draw_uses_bird_bomb_animation_frames();
     printf("\nAll projectile tests passed!\n");
     return 0;
 }

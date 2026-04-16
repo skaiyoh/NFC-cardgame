@@ -15,8 +15,10 @@
 #define UNDEAD_TILESET_PATH "src/assets/environment/Undead-Tileset-Top-Down-Pixel-Art/Tiled_files/Ground_rocks.png"
 #define UNDEAD_DETAIL_PATH  "src/assets/environment/Undead-Tileset-Top-Down-Pixel-Art/Tiled_files/details.png"
 #define FX_SMOKE_PATH       "src/assets/fx/smoke.png"
+#define FX_EXPLOSION_PATH   "src/assets/fx/explosion.png"
 #define PROJECTILE_FISH_PATH "src/assets/environment/Objects/fish_idle.png"
 #define PROJECTILE_HEALER_BLOB_PATH "src/assets/environment/Objects/uvulite_blob.png"
+#define PROJECTILE_BIRD_BOMB_PATH "src/assets/environment/Objects/bomba.png"
 #define STATUS_BARS_PATH    "src/assets/environment/Objects/health_energy_bars_sheet.png"
 #define TROOP_HEALTH_BAR_PATH "src/assets/environment/Objects/troop_health_bar_sheet.png"
 

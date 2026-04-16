@@ -17,6 +17,7 @@ typedef struct {
     ProjectileVisualType projectileVisualType;
     float projectileSpeed;
     float projectileHitRadius;
+    float projectileSplashRadius;
     float projectileRenderScale;
     Vector2 projectileLaunchOffset;
 } CombatProfile;
@@ -28,6 +29,7 @@ static const CombatProfile kDefaultMeleeCombatProfile = {
     .projectileVisualType = PROJECTILE_VISUAL_NONE,
     .projectileSpeed = 0.0f,
     .projectileHitRadius = 0.0f,
+    .projectileSplashRadius = 0.0f,
     .projectileRenderScale = 1.0f,
     .projectileLaunchOffset = { 0.0f, 0.0f },
 };
@@ -39,6 +41,7 @@ static const CombatProfile kHealerCombatProfile = {
     .projectileVisualType = PROJECTILE_VISUAL_HEALER_BLOB,
     .projectileSpeed = 240.0f,
     .projectileHitRadius = 14.0f,
+    .projectileSplashRadius = 0.0f,
     .projectileRenderScale = 1.0f,
     .projectileLaunchOffset = { 12.0f, -8.0f },
 };
@@ -50,14 +53,28 @@ static const CombatProfile kFishfingCombatProfile = {
     .projectileVisualType = PROJECTILE_VISUAL_FISH,
     .projectileSpeed = 280.0f,
     .projectileHitRadius = 12.0f,
+    .projectileSplashRadius = 0.0f,
     .projectileRenderScale = 1.5f,
     .projectileLaunchOffset = { 16.0f, 2.0f },
+};
+
+static const CombatProfile kBirdCombatProfile = {
+    .id = COMBAT_PROFILE_BIRD,
+    .engagementMode = ATTACK_ENGAGEMENT_DIRECT_RANGE,
+    .deliveryMode = ATTACK_DELIVERY_PROJECTILE,
+    .projectileVisualType = PROJECTILE_VISUAL_BIRD_BOMB,
+    .projectileSpeed = 240.0f,
+    .projectileHitRadius = 12.0f,
+    .projectileSplashRadius = 48.0f,
+    .projectileRenderScale = 1.0f,
+    .projectileLaunchOffset = { 8.0f, -8.0f },
 };
 
 static const CombatProfile *combat_profile_for_card_type(const char *cardType) {
     if (!cardType) return &kDefaultMeleeCombatProfile;
     if (strcmp(cardType, "healer") == 0) return &kHealerCombatProfile;
     if (strcmp(cardType, "fishfing") == 0) return &kFishfingCombatProfile;
+    if (strcmp(cardType, "bird") == 0) return &kBirdCombatProfile;
     return &kDefaultMeleeCombatProfile;
 }
 
@@ -98,6 +115,7 @@ TroopData troop_create_data_from_card(const Card *card) {
     data.projectileVisualType = profile->projectileVisualType;
     data.projectileSpeed = profile->projectileSpeed;
     data.projectileHitRadius = profile->projectileHitRadius;
+    data.projectileSplashRadius = profile->projectileSplashRadius;
     data.projectileRenderScale = profile->projectileRenderScale;
     data.projectileLaunchOffset = profile->projectileLaunchOffset;
 
@@ -183,6 +201,7 @@ Entity *troop_spawn(Player *owner, const TroopData *data, Vector2 position,
     e->projectileVisualType = data->projectileVisualType;
     e->projectileSpeed = data->projectileSpeed;
     e->projectileHitRadius = data->projectileHitRadius;
+    e->projectileSplashRadius = data->projectileSplashRadius;
     e->projectileRenderScale = data->projectileRenderScale;
     e->projectileLaunchOffset = data->projectileLaunchOffset;
     e->bodyRadius = (data->bodyRadius > 0.0f)
@@ -220,6 +239,7 @@ Entity *troop_spawn(Player *owner, const TroopData *data, Vector2 position,
         e->projectileVisualType = PROJECTILE_VISUAL_NONE;
         e->projectileSpeed = 0.0f;
         e->projectileHitRadius = 0.0f;
+        e->projectileSplashRadius = 0.0f;
         e->projectileRenderScale = 1.0f;
         e->projectileLaunchOffset = (Vector2){ 0.0f, 0.0f };
         e->farmerState = FARMER_SEEKING;

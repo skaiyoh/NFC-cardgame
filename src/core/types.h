@@ -51,13 +51,15 @@ typedef enum {
 typedef enum {
     PROJECTILE_VISUAL_NONE = 0,
     PROJECTILE_VISUAL_FISH,
-    PROJECTILE_VISUAL_HEALER_BLOB
+    PROJECTILE_VISUAL_HEALER_BLOB,
+    PROJECTILE_VISUAL_BIRD_BOMB
 } ProjectileVisualType;
 
 typedef enum {
     COMBAT_PROFILE_DEFAULT_MELEE = 0,
     COMBAT_PROFILE_HEALER,
-    COMBAT_PROFILE_FISHFING
+    COMBAT_PROFILE_FISHFING,
+    COMBAT_PROFILE_BIRD
 } CombatProfileId;
 
 // Targeting preference for combat (used by Entity and TroopData)
@@ -136,6 +138,7 @@ typedef struct {
     Vector2 snapshotTargetPos;
     float speed;
     float hitRadius;
+    float splashRadius;
     ProjectileVisualType visualType;
     float renderScale;
     float animElapsed;
@@ -144,6 +147,7 @@ typedef struct {
 typedef struct {
     Texture2D fishTexture;
     Texture2D healerBlobTexture;
+    Texture2D birdBombTexture;
 } ProjectileAssets;
 
 typedef struct {
@@ -177,6 +181,7 @@ struct Entity {
     ProjectileVisualType projectileVisualType;
     float projectileSpeed;
     float projectileHitRadius;
+    float projectileSplashRadius;
     float projectileRenderScale;
     Vector2 projectileLaunchOffset;
 

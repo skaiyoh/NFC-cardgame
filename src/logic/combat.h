@@ -78,6 +78,13 @@ bool combat_apply_effect_payload(const CombatEffectPayload *payload,
 // Checks for base kill and latches win condition if applicable.
 void combat_apply_hit(Entity *attacker, Entity *target, GameState *gs);
 
+// Enemy-only radial damage burst centered at `center`. Damages every alive
+// enemy troop/building within `radius`, skipping projectiles, dead/marked
+// entities, and friendlies. Applies the full kill-bookkeeping path.
+void combat_apply_enemy_burst(Vector2 center, float radius, int damage,
+                              int sourceEntityId, int sourceOwnerId,
+                              GameState *gs);
+
 // Area burst centered on a base. Damages every alive enemy troop/building
 // within `radius` by `damage`, skipping projectiles, friendlies, and the
 // base itself. Applies the full kill-bookkeeping path (farmer drop, win latch).

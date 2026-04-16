@@ -398,6 +398,16 @@ static void test_spec_lookup_healer_blubert_timing(void) {
     assert(attack->lockFacing == true);
 }
 
+static void test_spec_lookup_bird_attack_release_timing(void) {
+    const EntityAnimSpec *spec = anim_spec_get(SPRITE_TYPE_BIRD, ANIM_ATTACK);
+    assert(spec != NULL);
+    assert(spec->anim == ANIM_ATTACK);
+    assert(spec->mode == ANIM_PLAY_ONCE);
+    assert(approx_eq(spec->cycleSeconds, 0.60f, 0.01f));
+    assert(approx_eq(spec->hitNormalized, 5.0f / 9.0f, 0.01f));
+    assert(spec->lockFacing == true);
+}
+
 static void test_spec_lookup_death_oneshot(void) {
     for (int t = 0; t < SPRITE_TYPE_COUNT; t++) {
         const EntityAnimSpec *spec = anim_spec_get((SpriteType)t, ANIM_DEATH);
@@ -657,6 +667,38 @@ static void test_bird_walk_manifest_and_atlas_match_birdman_sheet(void) {
 
     assert(atlasEntry != NULL);
     assert(atlasEntry->frameCount == 8);
+    assert(atlasEntry->sourceRowCount == 1);
+}
+
+static void test_bird_attack_manifest_and_atlas_match_bird_attack_sheet(void) {
+    const SpriteSheetManifestEntry *manifestEntry = NULL;
+    const SpriteSheetAtlasEntry *atlasEntry = NULL;
+
+    for (int i = 0; i < kSpriteSheetManifestCount; i++) {
+        const SpriteSheetManifestEntry *entry = &kSpriteSheetManifest[i];
+        if (!entry->isBaseFallback &&
+            entry->spriteType == SPRITE_TYPE_BIRD &&
+            entry->anim == ANIM_ATTACK) {
+            manifestEntry = entry;
+            break;
+        }
+    }
+
+    assert(manifestEntry != NULL);
+    assert(strcmp(manifestEntry->path, "src/assets/characters/Bird/bird_attack.png") == 0);
+    assert(manifestEntry->frameCount == 9);
+    assert(manifestEntry->sourceRowCount == 1);
+
+    for (int i = 0; i < kSpriteSheetAtlasCount; i++) {
+        const SpriteSheetAtlasEntry *entry = &kSpriteSheetAtlas[i];
+        if (strcmp(entry->path, "src/assets/characters/Bird/bird_attack.png") == 0) {
+            atlasEntry = entry;
+            break;
+        }
+    }
+
+    assert(atlasEntry != NULL);
+    assert(atlasEntry->frameCount == 9);
     assert(atlasEntry->sourceRowCount == 1);
 }
 
@@ -1132,6 +1174,7 @@ int main(void) {
     RUN_TEST(test_spec_lookup_brute_attack);
     RUN_TEST(test_spec_lookup_assassin_attack_timing);
     RUN_TEST(test_spec_lookup_healer_blubert_timing);
+    RUN_TEST(test_spec_lookup_bird_attack_release_timing);
     RUN_TEST(test_spec_lookup_death_oneshot);
     RUN_TEST(test_spec_lookup_out_of_bounds);
     RUN_TEST(test_sheet_lookup_resolves_idle_and_run_to_walk);
@@ -1145,6 +1188,7 @@ int main(void) {
     RUN_TEST(test_assassin_walk_manifest_and_atlas_match_baxter_sheet);
     RUN_TEST(test_assassin_attack_manifest_and_atlas_match_baxter_attack_sheet);
     RUN_TEST(test_bird_walk_manifest_and_atlas_match_birdman_sheet);
+    RUN_TEST(test_bird_attack_manifest_and_atlas_match_bird_attack_sheet);
     RUN_TEST(test_fishfing_walk_manifest_and_atlas_match_new_sheet);
     RUN_TEST(test_fishfing_attack_manifest_and_atlas_match_new_sheet);
     RUN_TEST(test_king_idle_manifest_and_atlas_match_new_sheet);

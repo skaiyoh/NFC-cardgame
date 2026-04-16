@@ -101,12 +101,14 @@ typedef enum {
 typedef enum {
     PROJECTILE_VISUAL_NONE = 0,
     PROJECTILE_VISUAL_FISH,
-    PROJECTILE_VISUAL_HEALER_BLOB
+    PROJECTILE_VISUAL_HEALER_BLOB,
+    PROJECTILE_VISUAL_BIRD_BOMB
 } ProjectileVisualType;
 typedef enum {
     COMBAT_PROFILE_DEFAULT_MELEE = 0,
     COMBAT_PROFILE_HEALER,
-    COMBAT_PROFILE_FISHFING
+    COMBAT_PROFILE_FISHFING,
+    COMBAT_PROFILE_BIRD
 } CombatProfileId;
 typedef enum { TARGET_NEAREST, TARGET_BUILDING, TARGET_SPECIFIC_TYPE } TargetingMode;
 typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
@@ -182,6 +184,7 @@ struct Entity {
     ProjectileVisualType projectileVisualType;
     float projectileSpeed;
     float projectileHitRadius;
+    float projectileSplashRadius;
     float projectileRenderScale;
     Vector2 projectileLaunchOffset;
     AnimState anim;
@@ -648,6 +651,7 @@ static Entity make_test_entity(int lane, int waypointIndex, float moveSpeed) {
     e.projectileVisualType = PROJECTILE_VISUAL_NONE;
     e.projectileSpeed = 0.0f;
     e.projectileHitRadius = 0.0f;
+    e.projectileSplashRadius = 0.0f;
     e.projectileRenderScale = 1.0f;
     e.projectileLaunchOffset = (Vector2){0};
     e.movementTargetId = -1;

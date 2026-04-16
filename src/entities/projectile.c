@@ -18,9 +18,14 @@ enum {
     PROJECTILE_BLOB_FRAME_COUNT = 1,
     PROJECTILE_BLOB_FRAME_WIDTH = 64,
     PROJECTILE_BLOB_FRAME_HEIGHT = 32,
+    PROJECTILE_BIRD_BOMB_FRAME_COUNT = 5,
+    PROJECTILE_BIRD_BOMB_FRAME_WIDTH = 32,
+    PROJECTILE_BIRD_BOMB_FRAME_HEIGHT = 32,
 };
 
 static const float kFishFramesPerSecond = 12.0f;
+static const float kBirdBombFramesPerSecond = 12.0f;
+static const float kBirdBombExplosionScale = 2.0f;
 
 typedef struct {
     Texture2D texture;
@@ -35,6 +40,7 @@ static const ProjectileVisualDef *projectile_visual_def(const GameState *gs,
     static const ProjectileVisualDef s_none = {0};
     static ProjectileVisualDef s_fish;
     static ProjectileVisualDef s_blob;
+    static ProjectileVisualDef s_birdBomb;
 
     if (!gs) return &s_none;
 
@@ -52,10 +58,18 @@ static const ProjectileVisualDef *projectile_visual_def(const GameState *gs,
         .frameHeight = PROJECTILE_BLOB_FRAME_HEIGHT,
         .framesPerSecond = 0.0f,
     };
+    s_birdBomb = (ProjectileVisualDef){
+        .texture = gs->projectileAssets.birdBombTexture,
+        .frameCount = PROJECTILE_BIRD_BOMB_FRAME_COUNT,
+        .frameWidth = PROJECTILE_BIRD_BOMB_FRAME_WIDTH,
+        .frameHeight = PROJECTILE_BIRD_BOMB_FRAME_HEIGHT,
+        .framesPerSecond = kBirdBombFramesPerSecond,
+    };
 
     switch (visualType) {
         case PROJECTILE_VISUAL_FISH: return &s_fish;
         case PROJECTILE_VISUAL_HEALER_BLOB: return &s_blob;
+        case PROJECTILE_VISUAL_BIRD_BOMB: return &s_birdBomb;
         default: return &s_none;
     }
 }
@@ -130,6 +144,26 @@ static float projectile_point_segment_distance_sq(Vector2 point, Vector2 a, Vect
     return dx * dx + dy * dy;
 }
 
+static Vector2 projectile_point_segment_closest_point(Vector2 point, Vector2 a, Vector2 b) {
+    float abx = b.x - a.x;
+    float aby = b.y - a.y;
+    float apx = point.x - a.x;
+    float apy = point.y - a.y;
+    float abLenSq = abx * abx + aby * aby;
+    float t = 0.0f;
+
+    if (abLenSq > 0.0001f) {
+        t = (apx * abx + apy * aby) / abLenSq;
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
+    }
+
+    return (Vector2){
+        a.x + abx * t,
+        a.y + aby * t,
+    };
+}
+
 static bool projectile_reached_snapshot(const Projectile *projectile) {
     if (!projectile) return true;
 
@@ -162,6 +196,30 @@ static float projectile_rotation_degrees(const Projectile *projectile) {
     return atan2f(dir.y, dir.x) * (180.0f / PI_F);
 }
 
+static bool projectile_uses_splash(const Projectile *projectile) {
+    if (!projectile) return false;
+    return projectile->splashRadius > 0.0f &&
+           projectile->payload.kind == PROJECTILE_EFFECT_DAMAGE;
+}
+
+static bool projectile_emits_explosion(const Projectile *projectile) {
+    if (!projectile) return false;
+    return projectile->visualType == PROJECTILE_VISUAL_BIRD_BOMB;
+}
+
+static void projectile_detonate_at(GameState *gs, Projectile *projectile, Vector2 center) {
+    if (!gs || !projectile) return;
+    if (projectile_emits_explosion(projectile)) {
+        spawn_fx_emit_explosion(&gs->spawnFx, center, kBirdBombExplosionScale);
+    }
+    if (projectile_uses_splash(projectile)) {
+        combat_apply_enemy_burst(center, projectile->splashRadius,
+                                 projectile->payload.amount, projectile->sourceId,
+                                 projectile->sourceOwnerId, gs);
+    }
+    projectile->active = false;
+}
+
 void projectile_assets_init(ProjectileAssets *assets) {
     if (!assets) return;
 
@@ -180,6 +238,13 @@ void projectile_assets_init(ProjectileAssets *assets) {
     } else {
         SetTextureFilter(assets->healerBlobTexture, TEXTURE_FILTER_POINT);
     }
+
+    assets->birdBombTexture = LoadTexture(PROJECTILE_BIRD_BOMB_PATH);
+    if (assets->birdBombTexture.id == 0) {
+        fprintf(stderr, "[Projectile] Failed to load %s\n", PROJECTILE_BIRD_BOMB_PATH);
+    } else {
+        SetTextureFilter(assets->birdBombTexture, TEXTURE_FILTER_POINT);
+    }
 }
 
 void projectile_assets_cleanup(ProjectileAssets *assets) {
@@ -190,6 +255,9 @@ void projectile_assets_cleanup(ProjectileAssets *assets) {
     }
     if (assets->healerBlobTexture.id > 0) {
         UnloadTexture(assets->healerBlobTexture);
+    }
+    if (assets->birdBombTexture.id > 0) {
+        UnloadTexture(assets->birdBombTexture);
     }
 
     memset(assets, 0, sizeof(*assets));
@@ -228,6 +296,7 @@ bool projectile_spawn_for_attack(GameState *gs, const Entity *attacker,
         .snapshotTargetPos = target->position,
         .speed = attacker->projectileSpeed,
         .hitRadius = attacker->projectileHitRadius,
+        .splashRadius = attacker->projectileSplashRadius,
         .visualType = attacker->projectileVisualType,
         .renderScale = attacker->projectileRenderScale,
         .animElapsed = 0.0f,
@@ -269,15 +338,27 @@ void projectile_system_update(GameState *gs, float dt) {
                 target->position, projectile->prevPos, projectile->currentPos
             );
             if (distanceSq <= collisionRadius * collisionRadius) {
-                combat_apply_effect_payload(&projectile->payload, target, gs);
-                projectile->active = false;
+                if (projectile_uses_splash(projectile)) {
+                    Vector2 impactPoint = projectile_point_segment_closest_point(
+                        target->position, projectile->prevPos, projectile->currentPos
+                    );
+                    projectile_detonate_at(gs, projectile, impactPoint);
+                } else {
+                    combat_apply_effect_payload(&projectile->payload, target, gs);
+                    projectile->active = false;
+                }
                 if (gs->gameOver) break;
                 continue;
             }
         }
 
         if (projectile_reached_snapshot(projectile)) {
-            projectile->active = false;
+            if (projectile_uses_splash(projectile)) {
+                projectile_detonate_at(gs, projectile, projectile->snapshotTargetPos);
+                if (gs->gameOver) break;
+            } else {
+                projectile->active = false;
+            }
         }
     }
 }

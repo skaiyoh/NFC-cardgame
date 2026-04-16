@@ -10,6 +10,11 @@
 #include <string.h>
 #include <math.h>
 
+/* ---- Config stub ---- */
+#define NFC_CARDGAME_CONFIG_H
+#define FX_SMOKE_PATH "src/assets/fx/smoke.png"
+#define FX_EXPLOSION_PATH "src/assets/fx/explosion.png"
+
 /* ---- Raylib stubs ---- */
 #define RAYLIB_H
 
@@ -28,6 +33,8 @@ typedef struct { unsigned char r, g, b, a; } Color;
 #define TEXTURE_FILTER_POINT 0
 
 static const char *g_lastTexturePath = NULL;
+static const char *g_loadedTexturePaths[8] = {0};
+static int g_loadTextureCalls = 0;
 static int g_unloadTextureCalls = 0;
 static int g_drawCalls = 0;
 static Texture2D g_lastDrawTexture = {0};
@@ -38,7 +45,14 @@ static float g_lastDrawRotation = 0.0f;
 
 static Texture2D LoadTexture(const char *fileName) {
     g_lastTexturePath = fileName;
-    return (Texture2D){ .id = 1, .width = 704, .height = 960, .mipmaps = 1, .format = 7 };
+    g_loadedTexturePaths[g_loadTextureCalls++] = fileName;
+    if (strcmp(fileName, FX_SMOKE_PATH) == 0) {
+        return (Texture2D){ .id = 1, .width = 704, .height = 960, .mipmaps = 1, .format = 7 };
+    }
+    if (strcmp(fileName, FX_EXPLOSION_PATH) == 0) {
+        return (Texture2D){ .id = 2, .width = 384, .height = 32, .mipmaps = 1, .format = 7 };
+    }
+    return (Texture2D){0};
 }
 
 static void UnloadTexture(Texture2D texture) {
@@ -61,10 +75,6 @@ static void DrawTexturePro(Texture2D texture, Rectangle source, Rectangle dest,
     g_lastDrawOrigin = origin;
     g_lastDrawRotation = rotation;
 }
-
-/* ---- Config stub ---- */
-#define NFC_CARDGAME_CONFIG_H
-#define FX_SMOKE_PATH "src/assets/fx/smoke.png"
 
 /* ---- Production spawn FX types ---- */
 #include "../src/rendering/spawn_fx.h"
@@ -125,6 +135,12 @@ static void reset_draw_state(void) {
     g_lastDrawRotation = 0.0f;
 }
 
+static void reset_load_state(void) {
+    g_lastTexturePath = NULL;
+    memset(g_loadedTexturePaths, 0, sizeof(g_loadedTexturePaths));
+    g_loadTextureCalls = 0;
+}
+
 static int count_active_smoke(const SpawnFxSystem *fx) {
     int count = 0;
     for (int i = 0; i < SPAWN_FX_CAPACITY; i++) {
@@ -133,17 +149,29 @@ static int count_active_smoke(const SpawnFxSystem *fx) {
     return count;
 }
 
+static int count_active_explosions(const SpawnFxSystem *fx) {
+    int count = 0;
+    for (int i = 0; i < SPAWN_FX_CAPACITY; i++) {
+        if (fx->explosions[i].active) count++;
+    }
+    return count;
+}
+
 /* ---- Tests ---- */
 
-static void test_init_loads_smoke_sheet(void) {
+static void test_init_loads_smoke_and_explosion_sheets(void) {
+    reset_load_state();
     SpawnFxSystem fx = {0};
     spawn_fx_init(&fx);
 
     assert(fx.smokeTexture.id == 1);
-    assert(strcmp(g_lastTexturePath, FX_SMOKE_PATH) == 0);
+    assert(fx.explosionTexture.id == 2);
+    assert(g_loadTextureCalls == 2);
+    assert(strcmp(g_loadedTexturePaths[0], FX_SMOKE_PATH) == 0);
+    assert(strcmp(g_loadedTexturePaths[1], FX_EXPLOSION_PATH) == 0);
 
     spawn_fx_cleanup(&fx);
-    assert(g_unloadTextureCalls > 0);
+    assert(g_unloadTextureCalls >= 2);
 }
 
 static void test_draw_uses_first_frame_of_row_eleven(void) {
@@ -203,6 +231,81 @@ static void test_effect_expires_at_duration(void) {
     spawn_fx_cleanup(&fx);
 }
 
+static void test_overlay_draw_uses_first_explosion_frame(void) {
+    SpawnFxSystem fx = {0};
+    spawn_fx_init(&fx);
+    spawn_fx_emit_explosion(&fx, (Vector2){150.0f, 250.0f}, 2.0f);
+
+    spawn_fx_draw_overlay(&fx, 180.0f);
+
+    assert(g_drawCalls == 1);
+    assert(g_lastDrawTexture.id == 2);
+    assert(approx_eq(g_lastDrawSrc.x, 0.0f, 0.001f));
+    assert(approx_eq(g_lastDrawSrc.y, 0.0f, 0.001f));
+    assert(approx_eq(g_lastDrawSrc.width, 32.0f, 0.001f));
+    assert(approx_eq(g_lastDrawSrc.height, 32.0f, 0.001f));
+    assert(approx_eq(g_lastDrawDst.x, 150.0f, 0.001f));
+    assert(approx_eq(g_lastDrawDst.y, 250.0f, 0.001f));
+    assert(approx_eq(g_lastDrawDst.width, 64.0f, 0.001f));
+    assert(approx_eq(g_lastDrawDst.height, 64.0f, 0.001f));
+    assert(approx_eq(g_lastDrawOrigin.x, 32.0f, 0.001f));
+    assert(approx_eq(g_lastDrawOrigin.y, 32.0f, 0.001f));
+    assert(approx_eq(g_lastDrawRotation, 180.0f, 0.001f));
+
+    spawn_fx_cleanup(&fx);
+}
+
+static void test_explosion_frame_selection_advances_and_clamps_to_last_frame(void) {
+    SpawnFxSystem fx = {0};
+    spawn_fx_init(&fx);
+    spawn_fx_emit_explosion(&fx, (Vector2){0}, 2.0f);
+
+    spawn_fx_update(&fx, 0.25f);
+    spawn_fx_draw_overlay(&fx, 0.0f);
+    assert(g_drawCalls == 1);
+    assert(approx_eq(g_lastDrawSrc.x, 192.0f, 0.001f));
+
+    reset_draw_state();
+    spawn_fx_update(&fx, 0.24f);
+    spawn_fx_draw_overlay(&fx, 0.0f);
+    assert(g_drawCalls == 1);
+    assert(approx_eq(g_lastDrawSrc.x, 352.0f, 0.001f));
+
+    spawn_fx_cleanup(&fx);
+}
+
+static void test_explosion_effect_expires_at_duration(void) {
+    SpawnFxSystem fx = {0};
+    spawn_fx_init(&fx);
+    spawn_fx_emit_explosion(&fx, (Vector2){0}, 2.0f);
+
+    spawn_fx_update(&fx, 0.5f);
+    assert(count_active_explosions(&fx) == 0);
+
+    spawn_fx_draw_overlay(&fx, 0.0f);
+    assert(g_drawCalls == 0);
+
+    spawn_fx_cleanup(&fx);
+}
+
+static void test_smoke_and_overlay_draws_stay_separate(void) {
+    SpawnFxSystem fx = {0};
+    spawn_fx_init(&fx);
+    spawn_fx_emit_smoke(&fx, (Vector2){100.0f, 200.0f}, 2.0f);
+    spawn_fx_emit_explosion(&fx, (Vector2){150.0f, 250.0f}, 2.0f);
+
+    spawn_fx_draw(&fx, 0.0f);
+    assert(g_drawCalls == 1);
+    assert(g_lastDrawTexture.id == 1);
+
+    reset_draw_state();
+    spawn_fx_draw_overlay(&fx, 0.0f);
+    assert(g_drawCalls == 1);
+    assert(g_lastDrawTexture.id == 2);
+
+    spawn_fx_cleanup(&fx);
+}
+
 static void test_capacity_overwrites_oldest_slot(void) {
     SpawnFxSystem fx = {0};
 
@@ -251,10 +354,14 @@ static void test_spawn_register_none_skips_smoke(void) {
 int main(void) {
     printf("Running spawn_fx tests...\n");
 
-    RUN_TEST(test_init_loads_smoke_sheet);
+    RUN_TEST(test_init_loads_smoke_and_explosion_sheets);
     RUN_TEST(test_draw_uses_first_frame_of_row_eleven);
     RUN_TEST(test_frame_selection_advances_and_clamps_to_last_frame);
     RUN_TEST(test_effect_expires_at_duration);
+    RUN_TEST(test_overlay_draw_uses_first_explosion_frame);
+    RUN_TEST(test_explosion_frame_selection_advances_and_clamps_to_last_frame);
+    RUN_TEST(test_explosion_effect_expires_at_duration);
+    RUN_TEST(test_smoke_and_overlay_draws_stay_separate);
     RUN_TEST(test_capacity_overwrites_oldest_slot);
     RUN_TEST(test_spawn_register_entity_adds_battlefield_entity_and_smoke);
     RUN_TEST(test_spawn_register_none_skips_smoke);

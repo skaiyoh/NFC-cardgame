@@ -26,6 +26,7 @@ typedef struct {
     ProjectileVisualType projectileVisualType;
     float projectileSpeed;
     float projectileHitRadius;
+    float projectileSplashRadius;
     float projectileRenderScale;
     Vector2 projectileLaunchOffset;
 } TroopData;

@@ -75,7 +75,7 @@ static const EntityAnimSpec s_specs[SPRITE_TYPE_COUNT][ANIM_COUNT] = {
         [ANIM_WALK]   = { ANIM_WALK,   ANIM_PLAY_LOOP, 0.80f, -1.0f, false, false },
         [ANIM_HURT]   = { ANIM_HURT,   ANIM_PLAY_ONCE, 0.50f, -1.0f, false, false },
         [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.50f, -1.0f, false, true  },
-        [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.60f,  0.5f, true,  false }, // 6 frames
+        [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.60f,  5.0f / 9.0f, true,  false }, // 9 frames, release on frame 6
     },
     // SPRITE_TYPE_FISHFING
     {
