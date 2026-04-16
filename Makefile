@@ -46,7 +46,7 @@ card_enroll: tools/card_enroll.c src/data/db.c src/data/cards.c src/hardware/nfc
 	$(CC) $(CFLAGS) $(CPPFLAGS) tools/card_enroll.c src/data/db.c src/data/cards.c src/hardware/nfc_reader.c src/hardware/arduino_protocol.c third_party/cjson/cJSON.c -o card_enroll $(MACFLAGS) -lsqlite3 -lm
 
 card-enroll-run: card_enroll
-	NFC_PORT_P1="/dev/ttyUSB1" ./card_enroll
+	NFC_PORT="/dev/ttyUSB1" ./card_enroll
 
 # Test targets
 test_pathfinding: tests/test_pathfinding.c src/logic/pathfinding.c
