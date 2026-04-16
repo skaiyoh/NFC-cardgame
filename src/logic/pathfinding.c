@@ -761,6 +761,124 @@ static int pathfind_candidate_lateral_sign(Vector2 forward, Vector2 stepDir) {
     return 0;
 }
 
+static bool pathfind_position_in_hardblocked_mask(Vector2 position,
+                                                  const uint8_t *hardBlockedMask) {
+    if (!hardBlockedMask) return false;
+
+    int32_t cell = nav_cell_index_for_world(position.x, position.y);
+    if (cell < 0 || cell >= NAV_CELLS) return false;
+    return hardBlockedMask[cell] != 0;
+}
+
+static bool pathfind_position_is_rescue_safe(const Entity *e, Vector2 candidate,
+                                             const Battlefield *bf) {
+    if (!e || !bf) return false;
+    if (!pathfind_candidate_in_bounds(e, bf, candidate)) return false;
+
+    float selfRadius = pathfind_nav_radius(e);
+    for (int i = 0; i < bf->entityCount; ++i) {
+        const Entity *other = bf->entities[i];
+        if (!pathfind_is_blocker(e, other)) continue;
+
+        Vector2 blockerCenter = other->position;
+        if (pathfind_is_current_static_target(e, other)) {
+            blockerCenter = pathfind_target_anchor(other);
+        } else if (other->type == ENTITY_BUILDING ||
+                   other->navProfile == NAV_PROFILE_STATIC) {
+            blockerCenter = pathfind_static_blocker_center(other);
+        }
+
+        float dx = blockerCenter.x - candidate.x;
+        float dy = blockerCenter.y - candidate.y;
+        float centerDist = sqrtf(dx * dx + dy * dy);
+        float hardShell = selfRadius + pathfind_blocker_radius_for_self(e, other) +
+                          PATHFIND_CONTACT_GAP;
+        float contactCloudPenaltyScale = 0.0f;
+        if (pathfind_allows_contact_cloud_overlap(e, candidate, other, bf,
+                                                  &contactCloudPenaltyScale)) {
+            continue;
+        }
+
+        float legalShell = hardShell;
+        if (pathfind_is_soft_blocker(e, other)) {
+            legalShell -= pathfind_soft_overlap_allowance(e, other);
+        }
+
+        if (centerDist < legalShell - 0.001f) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool pathfind_try_blocker_rescue_teleport(Entity *e, Vector2 goal,
+                                                 const Battlefield *bf,
+                                                 const uint8_t *hardBlockedMask) {
+    if (!e || !bf || !hardBlockedMask) return false;
+    if (e->ticksSinceProgress < PATHFIND_BLOCKER_RESCUE_TICKS) return false;
+
+    int32_t currentCell = nav_cell_index_for_world(e->position.x, e->position.y);
+    if (currentCell < 0 || currentCell >= NAV_CELLS) return false;
+    if (!hardBlockedMask[currentCell]) return false;
+
+    NavCellCoord origin = nav_cell_coord(currentCell);
+    bool found = false;
+    Vector2 bestCandidate = e->position;
+    float bestMoveDistSq = INFINITY;
+    float bestGoalDist = INFINITY;
+
+    for (int radius = 1; radius <= PATHFIND_BLOCKER_RESCUE_MAX_RADIUS_CELLS; ++radius) {
+        bool foundThisRadius = false;
+        for (int row = origin.row - radius; row <= origin.row + radius; ++row) {
+            for (int col = origin.col - radius; col <= origin.col + radius; ++col) {
+                if (!nav_in_bounds(col, row)) continue;
+                if (abs(col - origin.col) != radius &&
+                    abs(row - origin.row) != radius) {
+                    continue;
+                }
+
+                int32_t idx = nav_index(col, row);
+                if (hardBlockedMask[idx]) continue;
+
+                float cx = 0.0f;
+                float cy = 0.0f;
+                nav_cell_center(idx, &cx, &cy);
+                Vector2 candidate = { cx, cy };
+                if (!pathfind_position_is_rescue_safe(e, candidate, bf)) {
+                    continue;
+                }
+
+                float dxMove = candidate.x - e->position.x;
+                float dyMove = candidate.y - e->position.y;
+                float moveDistSq = dxMove * dxMove + dyMove * dyMove;
+                float goalDist = pathfind_candidate_goal_dist(goal, candidate);
+
+                if (!foundThisRadius ||
+                    moveDistSq < bestMoveDistSq - 0.001f ||
+                    (fabsf(moveDistSq - bestMoveDistSq) <= 0.001f &&
+                     goalDist < bestGoalDist - 0.001f)) {
+                    found = true;
+                    foundThisRadius = true;
+                    bestCandidate = candidate;
+                    bestMoveDistSq = moveDistSq;
+                    bestGoalDist = goalDist;
+                }
+            }
+        }
+
+        if (foundThisRadius) break;
+    }
+
+    if (!found) return false;
+
+    e->position = bestCandidate;
+    e->ticksSinceProgress = 0;
+    pathfind_sync_presentation(e, bf);
+    pathfind_face_goal(e, bf, goal);
+    return true;
+}
+
 static bool pathfind_static_target_flow_active(const Entity *e, const Battlefield *bf) {
     if (!e || !bf || e->navProfile != NAV_PROFILE_ASSAULT) return false;
 
@@ -1280,7 +1398,13 @@ static bool pathfind_step_free_goal_flow(Entity *e, Vector2 goal,
         float tryX = posX + fx * subLen;
         float tryY = posY + fy * subLen;
         int32_t tryCell = nav_cell_index_for_world(tryX, tryY);
-        if (field->hardBlocked[tryCell]) break;
+        if (field->hardBlocked[tryCell]) {
+            // If the first sampled move is blocked, let the outer caller
+            // fall back to local steering for this tick instead of consuming
+            // the update with a no-op stall against the blocker lip.
+            if (!moved) return false;
+            break;
+        }
         // Arrival: if we would cross into the stopRadius, clamp and
         // stop. Saves a frame of wiggling at the ring boundary.
         float dxGoal = tryX - goal.x;
@@ -1296,6 +1420,10 @@ static bool pathfind_step_free_goal_flow(Entity *e, Vector2 goal,
         moved = true;
     }
     if (!moved) {
+        if (pathfind_try_blocker_rescue_teleport(e, goal, bf,
+                                                 field->hardBlocked)) {
+            return true;
+        }
         e->ticksSinceProgress++;
         pathfind_face_goal(e, bf, goal);
         return true;
@@ -1308,6 +1436,15 @@ static bool pathfind_step_free_goal_flow(Entity *e, Vector2 goal,
 
     e->position.x = posX;
     e->position.y = posY;
+    if (pathfind_position_in_hardblocked_mask(e->position, field->hardBlocked)) {
+        e->ticksSinceProgress++;
+        if (pathfind_try_blocker_rescue_teleport(e, goal, bf,
+                                                 field->hardBlocked)) {
+            return true;
+        }
+        pathfind_face_goal(e, bf, goal);
+        return true;
+    }
     e->ticksSinceProgress = 0;
     pathfind_face_goal(e, bf, goal);
     return true;
@@ -1341,7 +1478,31 @@ bool pathfind_move_toward_goal(Entity *e, Vector2 goal, float stopRadius,
         return false;
     }
 
-    pathfind_try_step_toward(e, goal, stopRadius, bf, deltaTime, false, false);
+    int prevTicksSinceProgress = e->ticksSinceProgress;
+    bool moved = pathfind_try_step_toward(e, goal, stopRadius, bf, deltaTime, false, false);
+    if (nav) {
+        const uint8_t *hardBlockedMask = nav->staticBlockers.blocked;
+        NavFreeGoalRequest request;
+        pathfind_build_free_goal_request(e, bf, goal, stopRadius, &request);
+        const NavField *field = nav_find_free_goal_field(nav, &request);
+        if (!field) {
+            field = nav_get_or_build_free_goal_field(nav, bf, &request);
+        }
+        if (field) {
+            hardBlockedMask = field->hardBlocked;
+        }
+        if (moved && pathfind_position_in_hardblocked_mask(e->position, hardBlockedMask)) {
+            e->ticksSinceProgress = prevTicksSinceProgress + 1;
+        }
+        if (pathfind_try_blocker_rescue_teleport(e, goal, bf, hardBlockedMask)) {
+            float ddx = goal.x - e->position.x;
+            float ddy = goal.y - e->position.y;
+            if (ddx * ddx + ddy * ddy <= (stopRadius + arriveEpsilon) *
+                                          (stopRadius + arriveEpsilon)) {
+                return true;
+            }
+        }
+    }
     return false;
 }
 
@@ -1545,6 +1706,10 @@ static void pathfind_step_lane_flow(Entity *e, NavFrame *nav,
                                       float deltaTime) {
     const NavField *field = nav_get_or_build_lane_field(nav, bf, ownerSide, e->lane);
     if (!field) {
+        if (pathfind_try_blocker_rescue_teleport(e, facingGoal, bf,
+                                                 nav->staticBlockers.blocked)) {
+            return;
+        }
         e->ticksSinceProgress++;
         return;
     }
@@ -1555,6 +1720,10 @@ static void pathfind_step_lane_flow(Entity *e, NavFrame *nav,
         // No flow neighborhood: units just outside the 96 px corridor can
         // land here. Stand in place, keep facing, and let the enclosing
         // tick loop decide whether to switch state.
+        if (pathfind_try_blocker_rescue_teleport(e, facingGoal, bf,
+                                                 field->hardBlocked)) {
+            return;
+        }
         e->ticksSinceProgress++;
         return;
     }
@@ -1597,6 +1766,10 @@ static void pathfind_step_lane_flow(Entity *e, NavFrame *nav,
     }
     if (!moved) {
         // Fully blocked in front. Stall.
+        if (pathfind_try_blocker_rescue_teleport(e, facingGoal, bf,
+                                                 field->hardBlocked)) {
+            return;
+        }
         e->ticksSinceProgress++;
         return;
     }
@@ -1610,6 +1783,15 @@ static void pathfind_step_lane_flow(Entity *e, NavFrame *nav,
 
     e->position.x = posX;
     e->position.y = posY;
+    if (pathfind_position_in_hardblocked_mask(e->position, field->hardBlocked)) {
+        e->ticksSinceProgress++;
+        if (pathfind_try_blocker_rescue_teleport(e, facingGoal, bf,
+                                                 field->hardBlocked)) {
+            return;
+        }
+        pathfind_face_goal(e, bf, facingGoal);
+        return;
+    }
     e->ticksSinceProgress = 0;
 
     // Facing uses the outer waypoint-derived goal, not the bilinear-
@@ -1667,6 +1849,10 @@ static bool pathfind_step_target_flow(Entity *e, NavFrame *nav,
         // Attacker is already on a seed cell (at engagement range) or
         // no reachable flow. Stand still so combat_in_range can latch
         // in the caller.
+        if (pathfind_try_blocker_rescue_teleport(e, facingGoal, bf,
+                                                 field->hardBlocked)) {
+            return true;
+        }
         e->ticksSinceProgress++;
         pathfind_face_goal(e, bf, facingGoal);
         return true;
@@ -1718,6 +1904,10 @@ static bool pathfind_step_target_flow(Entity *e, NavFrame *nav,
         moved = true;
     }
     if (!moved) {
+        if (pathfind_try_blocker_rescue_teleport(e, facingGoal, bf,
+                                                 field->hardBlocked)) {
+            return true;
+        }
         e->ticksSinceProgress++;
         return true;
     }
@@ -1729,6 +1919,15 @@ static bool pathfind_step_target_flow(Entity *e, NavFrame *nav,
 
     e->position.x = posX;
     e->position.y = posY;
+    if (pathfind_position_in_hardblocked_mask(e->position, field->hardBlocked)) {
+        e->ticksSinceProgress++;
+        if (pathfind_try_blocker_rescue_teleport(e, facingGoal, bf,
+                                                 field->hardBlocked)) {
+            return true;
+        }
+        pathfind_face_goal(e, bf, facingGoal);
+        return true;
+    }
     e->ticksSinceProgress = 0;
     pathfind_face_goal(e, bf, facingGoal);
     return true;
@@ -1782,7 +1981,17 @@ bool pathfind_step_entity(Entity *e, NavFrame *nav, const Battlefield *bf,
                                                   goal, stopRadius, deltaTime);
     }
     if (!handledByFlow) {
-        pathfind_try_step_toward(e, goal, stopRadius, bf, deltaTime, true, true);
+        int prevTicksSinceProgress = e->ticksSinceProgress;
+        bool moved = pathfind_try_step_toward(e, goal, stopRadius, bf, deltaTime, true, true);
+        if (nav) {
+            if (moved &&
+                pathfind_position_in_hardblocked_mask(e->position,
+                                                      nav->staticBlockers.blocked)) {
+                e->ticksSinceProgress = prevTicksSinceProgress + 1;
+            }
+            (void)pathfind_try_blocker_rescue_teleport(e, goal, bf,
+                                                       nav->staticBlockers.blocked);
+        }
     }
     pathfind_sync_lane_progress(e, bf);
 

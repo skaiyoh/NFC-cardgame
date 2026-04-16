@@ -47,7 +47,15 @@
 #define BASE_NAV_HARD_CORE_RADIUS 52.0f
 #define BASE_NAV_HARD_CORE_CELL_COUNT 12
 #define BASE_NAV_RADIUS 56.0f
+#define BASE_DEPOSIT_PRIMARY_SLOT_COUNT 4
+#define BASE_DEPOSIT_QUEUE_SLOT_COUNT 6
+#define BASE_DEPOSIT_PRIMARY_ARC_DEGREES 160.0f
+#define BASE_DEPOSIT_QUEUE_ARC_DEGREES 170.0f
 #define BASE_DEPOSIT_SLOT_GAP 4.0f
+#define BASE_DEPOSIT_QUEUE_RADIAL_OFFSET 40.0f
+#define FARMER_DEFAULT_BODY_RADIUS 14.0f
+#define FARMER_DEPOSIT_ARRIVAL_RADIUS 10.0f
+#define FARMER_QUEUE_WAIT_PROXIMITY 14.0f
 #define BASE_ASSAULT_QUEUE_RADIAL_OFFSET 22.0f
 #define COMBAT_BUILDING_MELEE_INSET 30.0f
 #define COMBAT_MELEE_GOAL_SLACK_MAX 8.0f
@@ -66,6 +74,8 @@
 #define PATHFIND_CONTACT_GAP              2.0f
 #define PATHFIND_WAYPOINT_REACH_GAP       4.0f
 #define PATHFIND_JAM_RELIEF_TICKS         6
+#define PATHFIND_BLOCKER_RESCUE_TICKS     24
+#define PATHFIND_BLOCKER_RESCUE_MAX_RADIUS_CELLS 4
 #define PATHFIND_ESCAPE_BACKTRACK_STEP_RATIO 0.5f
 #define PATHFIND_LANE_DRIFT_MAX_RATIO     0.65f
 #define PATHFIND_LANE_LOOKAHEAD_DISTANCE  48.0f
@@ -160,6 +170,17 @@ typedef enum {
     DEPOSIT_SLOT_QUEUE
 } DepositSlotKind;
 
+typedef struct {
+    Vector2 worldPos;
+    int claimedByEntityId;
+} DepositSlot;
+
+typedef struct {
+    DepositSlot primary[BASE_DEPOSIT_PRIMARY_SLOT_COUNT];
+    DepositSlot queue[BASE_DEPOSIT_QUEUE_SLOT_COUNT];
+    bool initialized;
+} DepositSlotRing;
+
 typedef struct Entity Entity;
 
 struct Entity {
@@ -210,6 +231,7 @@ struct Entity {
     int lastSteerSideSign;
     int reservedDepositSlotIndex;
     DepositSlotKind reservedDepositSlotKind;
+    DepositSlotRing depositSlots;
 };
 
 /* ---- Battlefield stub (minimal for pathfinding) ---- */
@@ -501,6 +523,7 @@ float combat_static_target_occupancy_radius(const Entity *attacker, const Entity
  *      it in here lets every lane-march test run the real Phase 3b
  *      stepper end-to-end instead of stubbing out flow sampling. ---- */
 #include "../src/logic/nav_frame.c"
+#include "../src/logic/deposit_slots.c"
 
 typedef struct Player {
     Entity *base;
@@ -657,6 +680,92 @@ static Entity make_test_entity(int lane, int waypointIndex, float moveSpeed) {
     e.movementTargetId = -1;
     e.ticksSinceProgress = 0;
     return e;
+}
+
+static NavFrame *phase3b_nav_begin_runtime_like(Battlefield *bf);
+
+static float test_vec2_distance(Vector2 a, Vector2 b) {
+    float dx = a.x - b.x;
+    float dy = a.y - b.y;
+    return sqrtf(dx * dx + dy * dy);
+}
+
+static bool test_free_goal_first_substep_hits_blocker(const Entity *farmer,
+                                                      const Battlefield *bf,
+                                                      NavFrame *nav,
+                                                      Vector2 goal,
+                                                      float stopRadius,
+                                                      float deltaTime) {
+    if (!farmer || !bf || !nav) return false;
+
+    float dxGoal = goal.x - farmer->position.x;
+    float dyGoal = goal.y - farmer->position.y;
+    float distToGoal = sqrtf(dxGoal * dxGoal + dyGoal * dyGoal);
+    float seedRadius = stopRadius;
+    float minSeedRadius = sqrtf(2.0f) * (float)NAV_CELL_SIZE * 0.5f;
+    if (seedRadius < minSeedRadius) {
+        seedRadius = minSeedRadius;
+    }
+    if (distToGoal <= seedRadius + 0.01f) return false;
+
+    NavFreeGoalRequest request;
+    pathfind_build_free_goal_request(farmer, bf, goal, stopRadius, &request);
+    const NavField *field = nav_get_or_build_free_goal_field(nav, bf, &request);
+    if (!field) return false;
+
+    float fx = 0.0f;
+    float fy = 0.0f;
+    nav_sample_flow(field, farmer->position.x, farmer->position.y, &fx, &fy);
+    if (fx == 0.0f && fy == 0.0f) return false;
+
+    float totalStep = farmer->moveSpeed * deltaTime;
+    if (totalStep < 0.0f) totalStep = 0.0f;
+    float maxSub = (float)NAV_CELL_SIZE * 0.5f;
+    int32_t subCount = 1;
+    if (totalStep > maxSub) {
+        subCount = (int32_t)ceilf(totalStep / maxSub);
+    }
+    float subLen = (subCount > 0) ? totalStep / (float)subCount : 0.0f;
+
+    float tryX = farmer->position.x + fx * subLen;
+    float tryY = farmer->position.y + fy * subLen;
+    int32_t tryCell = nav_cell_index_for_world(tryX, tryY);
+    return field->hardBlocked[tryCell] != 0;
+}
+
+static bool test_force_free_goal_first_substep_blocked(const Entity *farmer,
+                                                       const Battlefield *bf,
+                                                       NavFrame *nav,
+                                                       Vector2 goal,
+                                                       float stopRadius,
+                                                       float deltaTime) {
+    if (!farmer || !bf || !nav) return false;
+
+    NavFreeGoalRequest request;
+    pathfind_build_free_goal_request(farmer, bf, goal, stopRadius, &request);
+    const NavField *field = nav_get_or_build_free_goal_field(nav, bf, &request);
+    if (!field) return false;
+
+    float fx = 0.0f;
+    float fy = 0.0f;
+    nav_sample_flow(field, farmer->position.x, farmer->position.y, &fx, &fy);
+    if (fx == 0.0f && fy == 0.0f) return false;
+
+    float totalStep = farmer->moveSpeed * deltaTime;
+    if (totalStep < 0.0f) totalStep = 0.0f;
+    float maxSub = (float)NAV_CELL_SIZE * 0.5f;
+    int32_t subCount = 1;
+    if (totalStep > maxSub) {
+        subCount = (int32_t)ceilf(totalStep / maxSub);
+    }
+    float subLen = (subCount > 0) ? totalStep / (float)subCount : 0.0f;
+
+    float tryX = farmer->position.x + fx * subLen;
+    float tryY = farmer->position.y + fy * subLen;
+    int32_t tryCell = nav_cell_index_for_world(tryX, tryY);
+    ((NavField *)field)->hardBlocked[tryCell] = 1;
+    return test_free_goal_first_substep_hits_blocker(farmer, bf, nav, goal,
+                                                     stopRadius, deltaTime);
 }
 
 static GameState *make_test_game_state(Battlefield bf, NavFrame nav) {
@@ -2886,6 +2995,196 @@ static void test_phase3d_mixed_home_base_farmer_traffic_makes_progress(void) {
     printf("  PASS: test_phase3d_mixed_home_base_farmer_traffic_makes_progress\n");
 }
 
+static void test_phase3d_runtime_reserved_primary_slot_progresses_from_below(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity base = make_test_entity(1, 0, 0.0f);
+    base.id = 940;
+    base.type = ENTITY_BUILDING;
+    base.navProfile = NAV_PROFILE_STATIC;
+    base.position = (Vector2){ 540.0f, 1616.0f };
+    base.bodyRadius = 16.0f;
+    base.navRadius = BASE_NAV_RADIUS;
+    base.ownerID = 0;
+    base.presentationSide = SIDE_BOTTOM;
+    deposit_slots_build_for_base(&base);
+
+    Entity farmer = make_test_entity(1, 0, 300.0f);
+    farmer.id = 941;
+    farmer.position = (Vector2){ 540.0f, 1776.0f };
+    farmer.navProfile = NAV_PROFILE_FREE_GOAL;
+    farmer.unitRole = UNIT_ROLE_FARMER;
+    farmer.bodyRadius = 14.0f;
+    farmer.movementTargetId = base.id;
+
+    bf_test_register(&bf, &base);
+    bf_test_register(&bf, &farmer);
+
+    int slotIdx = -1;
+    DepositSlotKind kind = deposit_slots_reserve_for(&base, farmer.id,
+                                                     farmer.position, &slotIdx);
+    assert(kind == DEPOSIT_SLOT_PRIMARY);
+    farmer.reservedDepositSlotKind = kind;
+    farmer.reservedDepositSlotIndex = slotIdx;
+
+    Vector2 goal = deposit_slots_get_position(&base, kind, slotIdx);
+    float stopRadius = FARMER_DEPOSIT_ARRIVAL_RADIUS;
+    Vector2 start = farmer.position;
+    float initialDist = test_vec2_distance(start, goal);
+
+    NavFrame *nav = phase3b_nav_begin_runtime_like(&bf);
+    assert(test_force_free_goal_first_substep_blocked(&farmer, &bf, nav, goal,
+                                                      stopRadius,
+                                                      1.0f / 60.0f));
+    assert(!(pathfind_step_free_goal_flow)(&farmer, goal, stopRadius,
+                                           nav, &bf, 1.0f / 60.0f));
+    assert(test_vec2_distance(start, farmer.position) <= 0.01f);
+
+    (pathfind_move_toward_goal)(&farmer, goal, stopRadius,
+                                nav, &bf, 1.0f / 60.0f);
+    assert(test_vec2_distance(start, farmer.position) > 0.01f);
+
+    nav = phase3b_nav_begin_runtime_like(&bf);
+    int32_t cell = nav_cell_index_for_world(farmer.position.x, farmer.position.y);
+    assert(!nav->staticBlockers.blocked[cell]);
+    assert(test_vec2_distance(farmer.position, goal) < initialDist - 0.1f);
+    printf("  PASS: test_phase3d_runtime_reserved_primary_slot_progresses_from_below\n");
+}
+
+static void test_phase3d_runtime_reserved_queue_slot_progresses_from_below_offset(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity base = make_test_entity(1, 0, 0.0f);
+    base.id = 942;
+    base.type = ENTITY_BUILDING;
+    base.navProfile = NAV_PROFILE_STATIC;
+    base.position = (Vector2){ 540.0f, 1616.0f };
+    base.bodyRadius = 16.0f;
+    base.navRadius = BASE_NAV_RADIUS;
+    base.ownerID = 0;
+    base.presentationSide = SIDE_BOTTOM;
+    deposit_slots_build_for_base(&base);
+
+    for (int i = 0; i < BASE_DEPOSIT_PRIMARY_SLOT_COUNT; ++i) {
+        int slotIdx = -1;
+        DepositSlotKind kind = deposit_slots_reserve_for(
+            &base, 5000 + i, (Vector2){ 520.0f + (float)i * 12.0f, 1768.0f }, &slotIdx);
+        assert(kind == DEPOSIT_SLOT_PRIMARY);
+    }
+
+    Entity farmer = make_test_entity(1, 0, 300.0f);
+    farmer.id = 943;
+    farmer.position = (Vector2){ 548.0f, 1784.0f };
+    farmer.navProfile = NAV_PROFILE_FREE_GOAL;
+    farmer.unitRole = UNIT_ROLE_FARMER;
+    farmer.bodyRadius = 14.0f;
+    farmer.movementTargetId = base.id;
+
+    bf_test_register(&bf, &base);
+    bf_test_register(&bf, &farmer);
+
+    int slotIdx = -1;
+    DepositSlotKind kind = deposit_slots_reserve_for(&base, farmer.id,
+                                                     farmer.position, &slotIdx);
+    assert(kind == DEPOSIT_SLOT_QUEUE);
+    farmer.reservedDepositSlotKind = kind;
+    farmer.reservedDepositSlotIndex = slotIdx;
+
+    Vector2 goal = deposit_slots_get_position(&base, kind, slotIdx);
+    float stopRadius = FARMER_QUEUE_WAIT_PROXIMITY;
+    Vector2 start = farmer.position;
+    float initialDist = test_vec2_distance(start, goal);
+
+    NavFrame *nav = phase3b_nav_begin_runtime_like(&bf);
+    assert(test_force_free_goal_first_substep_blocked(&farmer, &bf, nav, goal,
+                                                      stopRadius,
+                                                      1.0f / 60.0f));
+    assert(!(pathfind_step_free_goal_flow)(&farmer, goal, stopRadius,
+                                           nav, &bf, 1.0f / 60.0f));
+    assert(test_vec2_distance(start, farmer.position) <= 0.01f);
+
+    (pathfind_move_toward_goal)(&farmer, goal, stopRadius,
+                                nav, &bf, 1.0f / 60.0f);
+    assert(test_vec2_distance(start, farmer.position) > 0.01f);
+
+    nav = phase3b_nav_begin_runtime_like(&bf);
+    int32_t cell = nav_cell_index_for_world(farmer.position.x, farmer.position.y);
+    assert(!nav->staticBlockers.blocked[cell]);
+    assert(test_vec2_distance(farmer.position, goal) < initialDist - 0.1f);
+    printf("  PASS: test_phase3d_runtime_reserved_queue_slot_progresses_from_below_offset\n");
+}
+
+static void test_blocker_rescue_teleports_free_mover_out_of_blocked_cell(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity mover = make_test_entity(1, 0, 300.0f);
+    mover.id = 944;
+    mover.position = (Vector2){ 540.0f, 960.0f };
+    mover.navProfile = NAV_PROFILE_FREE_GOAL;
+    mover.unitRole = UNIT_ROLE_FARMER;
+
+    Entity blocker = make_test_entity(1, 0, 0.0f);
+    blocker.id = 945;
+    blocker.position = mover.position;
+    blocker.navProfile = NAV_PROFILE_STATIC;
+    blocker.navRadius = 56.0f;
+    blocker.moveSpeed = 0.0f;
+
+    bf_test_register(&bf, &mover);
+    bf_test_register(&bf, &blocker);
+
+    NavFrame *nav = phase3b_nav_begin(&bf);
+    int32_t startCell = nav_cell_index_for_world(mover.position.x, mover.position.y);
+    assert(nav->staticBlockers.blocked[startCell]);
+
+    mover.ticksSinceProgress = PATHFIND_BLOCKER_RESCUE_TICKS;
+    Vector2 before = mover.position;
+    Vector2 goal = { 540.0f, 720.0f };
+    bool arrived = (pathfind_move_toward_goal)(&mover, goal, 16.0f, nav, &bf, 1.0f / 60.0f);
+    assert(!arrived);
+
+    float movedDist = test_vec2_distance(before, mover.position);
+    assert(movedDist > 20.0f);
+    int32_t endCell = nav_cell_index_for_world(mover.position.x, mover.position.y);
+    assert(!nav->staticBlockers.blocked[endCell]);
+    assert(mover.ticksSinceProgress == 0);
+    printf("  PASS: test_blocker_rescue_teleports_free_mover_out_of_blocked_cell\n");
+}
+
+static void test_blocker_rescue_teleports_lane_mover_out_of_blocked_cell(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity mover = make_test_entity(1, 1, 10.0f);
+    mover.id = 946;
+    mover.position = bf.laneWaypoints[SIDE_BOTTOM][1][1].v;
+    mover.navProfile = NAV_PROFILE_LANE;
+
+    Entity blocker = make_test_entity(1, 0, 0.0f);
+    blocker.id = 947;
+    blocker.position = mover.position;
+    blocker.navProfile = NAV_PROFILE_STATIC;
+    blocker.navRadius = 96.0f;
+    blocker.moveSpeed = 0.0f;
+
+    bf_test_register(&bf, &mover);
+    bf_test_register(&bf, &blocker);
+
+    NavFrame *nav = phase3b_nav_begin(&bf);
+    int32_t startCell = nav_cell_index_for_world(mover.position.x, mover.position.y);
+    assert(nav->staticBlockers.blocked[startCell]);
+
+    mover.ticksSinceProgress = PATHFIND_BLOCKER_RESCUE_TICKS;
+    Vector2 before = mover.position;
+    (pathfind_step_entity)(&mover, nav, &bf, 1.0f / 60.0f);
+
+    float movedDist = test_vec2_distance(before, mover.position);
+    assert(movedDist > 20.0f);
+    int32_t endCell = nav_cell_index_for_world(mover.position.x, mover.position.y);
+    assert(!nav->staticBlockers.blocked[endCell]);
+    assert(mover.ticksSinceProgress == 0);
+    printf("  PASS: test_blocker_rescue_teleports_lane_mover_out_of_blocked_cell\n");
+}
+
 static void test_phase3d_farmer_arrival_is_idempotent(void) {
     /* When already inside the stopRadius, move_toward_goal returns
      * true without taking a step. */
@@ -3442,6 +3741,10 @@ int main(void) {
     test_phase3d_primary_deposit_slot_reaches_goal_outside_base_core();
     test_phase3d_farmer_escapes_friendly_base_traffic_to_far_goal();
     test_phase3d_mixed_home_base_farmer_traffic_makes_progress();
+    test_phase3d_runtime_reserved_primary_slot_progresses_from_below();
+    test_phase3d_runtime_reserved_queue_slot_progresses_from_below_offset();
+    test_blocker_rescue_teleports_free_mover_out_of_blocked_cell();
+    test_blocker_rescue_teleports_lane_mover_out_of_blocked_cell();
     test_phase3d_farmer_arrival_is_idempotent();
     test_debug_preview_lane_uses_cached_lane_field_without_mutation();
     test_debug_preview_mobile_target_uses_cached_field_without_mutation();
