@@ -211,15 +211,76 @@ static Entity *entity_refresh_enemy_pursuit(Entity *e, GameState *gs) {
     return pursuit;
 }
 
+static bool entity_attack_uses_projectile_reservation(const Entity *e) {
+    if (!e) return false;
+    return e->type == ENTITY_TROOP &&
+           e->deliveryMode == ATTACK_DELIVERY_PROJECTILE &&
+           e->healAmount <= 0;
+}
+
+static bool entity_attack_uses_windup_commit(const Entity *e) {
+    if (!e) return false;
+    if (e->type != ENTITY_TROOP) return false;
+    return e->deliveryMode == ATTACK_DELIVERY_INSTANT ||
+           entity_attack_uses_projectile_reservation(e);
+}
+
+static void entity_release_reserved_projectile(Entity *e, GameState *gs) {
+    if (!e || !gs) return;
+    if (e->reservedProjectileSlotIndex < 0) return;
+
+    projectile_release_slot(gs, e->reservedProjectileSlotIndex);
+    e->reservedProjectileSlotIndex = -1;
+}
+
+static bool entity_ensure_reserved_projectile(Entity *e, GameState *gs) {
+    if (!e || !gs) return false;
+    if (!entity_attack_uses_projectile_reservation(e)) return true;
+    if (e->reservedProjectileSlotIndex >= 0) return true;
+
+    int slotIndex = projectile_reserve_slot(gs);
+    if (slotIndex < 0) return false;
+
+    e->reservedProjectileSlotIndex = slotIndex;
+    return true;
+}
+
+static void entity_sync_reserved_projectile_state(Entity *e, GameState *gs) {
+    if (!e || !gs) return;
+    if (e->reservedProjectileSlotIndex < 0) return;
+    if (e->state == ESTATE_ATTACKING && e->alive && !e->markedForRemoval) return;
+
+    entity_release_reserved_projectile(e, gs);
+}
+
+static bool entity_begin_attack(Entity *e, GameState *gs, Entity *target,
+                                bool restartClip) {
+    if (!e || !gs || !target) return false;
+
+    if (!entity_attack_uses_projectile_reservation(e)) {
+        entity_release_reserved_projectile(e, gs);
+    } else if (!entity_ensure_reserved_projectile(e, gs)) {
+        return false;
+    }
+
+    if (entity_should_seed_pursuit_for_target(e, gs, target)) {
+        entity_apply_enemy_pursuit(e, gs, target);
+    }
+    e->attackTargetId = target->id;
+    if (restartClip) {
+        entity_face_toward(e, &gs->battlefield, target->position);
+        entity_restart_clip(e);
+    } else {
+        entity_set_state(e, ESTATE_ATTACKING);
+        entity_face_toward(e, &gs->battlefield, target->position);
+    }
+    return true;
+}
+
 static Entity *entity_retarget_or_walk(Entity *e, GameState *gs) {
     Entity *nextTarget = combat_find_target(e, gs);
-    if (nextTarget && combat_in_range(e, nextTarget, gs)) {
-        if (entity_should_seed_pursuit_for_target(e, gs, nextTarget)) {
-            entity_apply_enemy_pursuit(e, gs, nextTarget);
-        }
-        e->attackTargetId = nextTarget->id;
-        entity_face_toward(e, &gs->battlefield, nextTarget->position);
-        entity_restart_clip(e);
+    if (nextTarget && combat_in_range(e, nextTarget, gs) &&
+        entity_begin_attack(e, gs, nextTarget, true)) {
         return nextTarget;
     }
 
@@ -230,6 +291,7 @@ static Entity *entity_retarget_or_walk(Entity *e, GameState *gs) {
         ? bf_find_entity(&gs->battlefield, e->attackTargetId) : NULL;
     Entity *pursuit = entity_select_post_attack_pursuit(e, gs, stale);
     entity_apply_enemy_pursuit(e, gs, pursuit);
+    entity_release_reserved_projectile(e, gs);
     e->attackTargetId = -1;
     entity_set_state(e, ESTATE_WALKING);
     return NULL;
@@ -249,6 +311,8 @@ Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
     e->markedForRemoval = false;
     e->attackTargetId = -1;
     e->attackReleaseFired = false;
+    e->attackWindupCommitted = false;
+    e->reservedProjectileSlotIndex = -1;
     e->movementTargetId = -1;
     e->ticksSinceProgress = 0;
     e->laneProgress = 0.0f;
@@ -313,6 +377,26 @@ static unsigned int entity_anim_seed(const Entity *e, AnimationType animType) {
     return seed;
 }
 
+static void entity_sync_attack_commit_progress(Entity *e) {
+    if (!entity_attack_uses_windup_commit(e)) return;
+    if (e->state != ESTATE_ATTACKING) return;
+    if (e->attackWindupCommitted) return;
+
+    if (e->anim.normalizedTime > 0.0f || e->anim.finished) {
+        e->attackWindupCommitted = true;
+    }
+}
+
+static void entity_note_attack_progress(Entity *e, const AnimPlaybackEvent *evt) {
+    if (!entity_attack_uses_windup_commit(e) || !evt) return;
+    if (e->state != ESTATE_ATTACKING) return;
+    if (e->attackWindupCommitted) return;
+
+    if (evt->currNormalized > 0.0f || evt->finishedThisTick) {
+        e->attackWindupCommitted = true;
+    }
+}
+
 void entity_sync_animation(Entity *e) {
     if (!e) return;
 
@@ -358,6 +442,7 @@ void entity_set_state(Entity *e, EntityState newState) {
     e->state = newState;
     e->hitFlashTimer = 0.0f;
     e->attackReleaseFired = false;
+    e->attackWindupCommitted = false;
 
     entity_sync_animation(e);
 
@@ -371,11 +456,16 @@ void entity_set_state(Entity *e, EntityState newState) {
 void entity_restart_clip(Entity *e) {
     if (!e) return;
     e->attackReleaseFired = false;
+    e->attackWindupCommitted = false;
     anim_state_restart(&e->anim);
 }
 
 void entity_update(Entity *e, GameState *gs, float deltaTime) {
-    if (!e || e->markedForRemoval) return;
+    if (!e) return;
+    if (gs) {
+        entity_sync_reserved_projectile_state(e, gs);
+    }
+    if (!gs || e->markedForRemoval) return;
 
     // TODO: Farmer bypasses combat state machine. Add ESTATE_WORKING when
     // farmer-specific animations are available.
@@ -390,13 +480,8 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
             // First honor the normal in-range attack/heal semantics.
             if (e->type == ENTITY_TROOP) {
                 Entity *target = combat_find_target(e, gs);
-                if (target && combat_in_range(e, target, gs)) {
-                    if (entity_should_seed_pursuit_for_target(e, gs, target)) {
-                        entity_apply_enemy_pursuit(e, gs, target);
-                    }
-                    e->attackTargetId = target->id;
-                    entity_set_state(e, ESTATE_ATTACKING);
-                    entity_face_toward(e, &gs->battlefield, target->position);
+                if (target && combat_in_range(e, target, gs) &&
+                    entity_begin_attack(e, gs, target, false)) {
                     break;
                 }
 
@@ -421,12 +506,12 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
             // (b) Probe-before-move: if the pursuit target is already in
             // attack range, transition this tick instead of lane-walking
             // one more step past it.
+            bool attackStartBlocked = false;
             if (pursuit && combat_in_range(e, pursuit, gs)) {
-                entity_apply_enemy_pursuit(e, gs, pursuit);
-                e->attackTargetId = pursuit->id;
-                entity_set_state(e, ESTATE_ATTACKING);
-                entity_face_toward(e, bf, pursuit->position);
-                break;
+                if (entity_begin_attack(e, gs, pursuit, false)) {
+                    break;
+                }
+                attackStartBlocked = true;
             }
 
             // (c) Step. Phase 2 still uses waypoint stepping; Phase 3 makes
@@ -437,14 +522,11 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
             // (d) Post-step attack check -- uses the heal-first combat_find_target
             // so healers can still heal an injured ally that just landed in
             // range after the walk step.
-            Entity *target = combat_find_target(e, gs);
-            if (target && combat_in_range(e, target, gs)) {
-                if (entity_should_seed_pursuit_for_target(e, gs, target)) {
-                    entity_apply_enemy_pursuit(e, gs, target);
+            if (!attackStartBlocked) {
+                Entity *target = combat_find_target(e, gs);
+                if (target && combat_in_range(e, target, gs)) {
+                    entity_begin_attack(e, gs, target, false);
                 }
-                e->attackTargetId = target->id;
-                entity_set_state(e, ESTATE_ATTACKING);
-                entity_face_toward(e, bf, target->position);
             }
             break;
         }
@@ -480,14 +562,24 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
 
             // Resolve locked target by ID
             Entity *target = bf_find_entity(&gs->battlefield, e->attackTargetId);
+            entity_sync_attack_commit_progress(e);
+            bool usesProjectileReservation = entity_attack_uses_projectile_reservation(e);
+            bool committedWindup = entity_attack_uses_windup_commit(e) &&
+                                   e->attackWindupCommitted;
+            bool targetAvailable = target && target->alive && !target->markedForRemoval;
+            bool targetInRange = targetAvailable && combat_in_range(e, target, gs);
+            bool cancelForUnavailableTarget = !targetAvailable &&
+                (!committedWindup || usesProjectileReservation);
+            bool cancelForRangeLoss = targetAvailable && !targetInRange &&
+                                      !committedWindup;
 
-            // Target lost or out of range — transition back to walking.
-            // Immediate pursuit: if the previous target is still a valid
-            // enemy inside aggro radius, seed movementTargetId so the
-            // walking probe skips the one-tick lane relapse.
-            if (!target || !target->alive || !combat_in_range(e, target, gs)) {
+            // Melee and offensive projectile attacks can commit their wind-up
+            // once the clip visibly advances. Offensive projectile attacks
+            // still require the locked target to remain alive until release.
+            if (cancelForUnavailableTarget || cancelForRangeLoss) {
                 Entity *pursuit = entity_select_post_attack_pursuit(e, gs, target);
                 entity_apply_enemy_pursuit(e, gs, pursuit);
+                entity_release_reserved_projectile(e, gs);
                 e->attackTargetId = -1;
                 entity_set_state(e, ESTATE_WALKING);
                 break;
@@ -503,22 +595,36 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
             // Tick animation and check for hit-marker crossing
             const EntityAnimSpec *spec = anim_spec_get(e->spriteType, ANIM_ATTACK);
             AnimPlaybackEvent evt = anim_state_update(&e->anim, deltaTime);
+            entity_note_attack_progress(e, &evt);
 
             if (spec->hitNormalized >= 0.0f &&
                 evt.prevNormalized < spec->hitNormalized &&
                 evt.currNormalized >= spec->hitNormalized) {
                 e->hitFlashTimer = 0.15f;
-                if (!e->attackReleaseFired && target->alive) {
+                if (!e->attackReleaseFired) {
                     if (e->deliveryMode == ATTACK_DELIVERY_PROJECTILE) {
-                        if (!projectile_spawn_for_attack(gs, e, target)) {
-                            // Degrade to the shared direct-hit path rather than
-                            // silently dropping the swing when the visual pool is exhausted.
-                            combat_apply_hit(e, target, gs);
+                        if (usesProjectileReservation) {
+                            if (targetAvailable &&
+                                projectile_activate_reserved_attack(
+                                    gs, e->reservedProjectileSlotIndex, e, target)) {
+                                e->reservedProjectileSlotIndex = -1;
+                                e->attackReleaseFired = true;
+                            } else {
+                                entity_release_reserved_projectile(e, gs);
+                            }
+                        } else if (targetAvailable) {
+                            if (!projectile_spawn_for_attack(gs, e, target)) {
+                                // Legacy support/projectile fallback: if the
+                                // pool is exhausted, degrade to the direct
+                                // effect rather than dropping the action.
+                                combat_apply_hit(e, target, gs);
+                            }
+                            e->attackReleaseFired = true;
                         }
-                    } else {
+                    } else if (targetAvailable) {
                         combat_apply_hit(e, target, gs);
+                        e->attackReleaseFired = true;
                     }
-                    e->attackReleaseFired = true;
                 }
             }
 
@@ -530,6 +636,7 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
             // Clip finished — chain next swing or leave attack
             if (evt.finishedThisTick) {
                 // Retarget for next swing
+                entity_release_reserved_projectile(e, gs);
                 entity_retarget_or_walk(e, gs);
             }
 
@@ -548,6 +655,7 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
     }
 
     AnimPlaybackEvent evt = anim_state_update(&e->anim, deltaTime);
+    entity_note_attack_progress(e, &evt);
     if (e->state == ESTATE_WALKING && evt.loopedThisTick) {
         pathfind_commit_presentation(e, &gs->battlefield);
         pathfind_update_walk_facing(e, &gs->battlefield);

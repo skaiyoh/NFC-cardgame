@@ -111,16 +111,41 @@ static Vector2 projectile_launch_origin(const Entity *attacker) {
     };
 }
 
-static Projectile *projectile_alloc(ProjectileSystem *system) {
+static bool projectile_slot_in_use(const Projectile *projectile) {
+    if (!projectile) return false;
+    return projectile->active || projectile->reserved;
+}
+
+static Projectile *projectile_slot_at(ProjectileSystem *system, int slotIndex) {
     if (!system) return NULL;
+    if (slotIndex < 0 || slotIndex >= PROJECTILE_CAPACITY) return NULL;
+    return &system->projectiles[slotIndex];
+}
 
-    for (int i = 0; i < PROJECTILE_CAPACITY; i++) {
-        if (!system->projectiles[i].active) {
-            return &system->projectiles[i];
-        }
-    }
+static bool projectile_fill_attack(Projectile *projectile, const Entity *attacker,
+                                   const Entity *target,
+                                   const CombatEffectPayload *payload) {
+    if (!projectile || !attacker || !target || !payload) return false;
 
-    return NULL;
+    Vector2 startPos = projectile_launch_origin(attacker);
+    *projectile = (Projectile){
+        .active = true,
+        .reserved = false,
+        .sourceId = attacker->id,
+        .sourceOwnerId = attacker->ownerID,
+        .lockedTargetId = target->id,
+        .payload = *payload,
+        .prevPos = startPos,
+        .currentPos = startPos,
+        .snapshotTargetPos = target->position,
+        .speed = attacker->projectileSpeed,
+        .hitRadius = attacker->projectileHitRadius,
+        .splashRadius = attacker->projectileSplashRadius,
+        .visualType = attacker->projectileVisualType,
+        .renderScale = attacker->projectileRenderScale,
+        .animElapsed = 0.0f,
+    };
+    return true;
 }
 
 static float projectile_point_segment_distance_sq(Vector2 point, Vector2 a, Vector2 b) {
@@ -268,39 +293,67 @@ void projectile_system_init(ProjectileSystem *system) {
     memset(system, 0, sizeof(*system));
 }
 
-bool projectile_spawn_for_attack(GameState *gs, const Entity *attacker,
-                                 const Entity *target) {
+int projectile_reserve_slot(GameState *gs) {
+    if (!gs) return -1;
+
+    ProjectileSystem *system = &gs->projectileSystem;
+    for (int i = 0; i < PROJECTILE_CAPACITY; i++) {
+        Projectile *projectile = &system->projectiles[i];
+        if (projectile_slot_in_use(projectile)) continue;
+
+        memset(projectile, 0, sizeof(*projectile));
+        projectile->reserved = true;
+        return i;
+    }
+
+    return -1;
+}
+
+void projectile_release_slot(GameState *gs, int slotIndex) {
+    if (!gs) return;
+
+    Projectile *projectile = projectile_slot_at(&gs->projectileSystem, slotIndex);
+    if (!projectile) return;
+    memset(projectile, 0, sizeof(*projectile));
+}
+
+bool projectile_activate_reserved_attack(GameState *gs, int slotIndex,
+                                         const Entity *attacker,
+                                         const Entity *target) {
     CombatEffectPayload payload = {0};
     Projectile *projectile = NULL;
 
     if (!gs || !attacker || !target) return false;
     if (attacker->deliveryMode != ATTACK_DELIVERY_PROJECTILE) return false;
-    if (!combat_build_effect_payload(attacker, target, &payload)) return false;
 
-    projectile = projectile_alloc(&gs->projectileSystem);
-    if (!projectile) {
+    projectile = projectile_slot_at(&gs->projectileSystem, slotIndex);
+    if (!projectile || !projectile->reserved || projectile->active) return false;
+    if (!combat_build_effect_payload(attacker, target, &payload)) {
+        projectile_release_slot(gs, slotIndex);
+        return false;
+    }
+
+    return projectile_fill_attack(projectile, attacker, target, &payload);
+}
+
+bool projectile_spawn_for_attack(GameState *gs, const Entity *attacker,
+                                 const Entity *target) {
+    int slotIndex = -1;
+
+    if (!gs || !attacker || !target) return false;
+    if (attacker->deliveryMode != ATTACK_DELIVERY_PROJECTILE) return false;
+    slotIndex = projectile_reserve_slot(gs);
+    if (slotIndex < 0) {
         fprintf(stderr, "[Projectile] Pool exhausted; dropping projectile from entity %d\n",
                 attacker->id);
         return false;
     }
 
-    Vector2 startPos = projectile_launch_origin(attacker);
-    *projectile = (Projectile){
-        .active = true,
-        .sourceId = attacker->id,
-        .sourceOwnerId = attacker->ownerID,
-        .lockedTargetId = target->id,
-        .payload = payload,
-        .prevPos = startPos,
-        .currentPos = startPos,
-        .snapshotTargetPos = target->position,
-        .speed = attacker->projectileSpeed,
-        .hitRadius = attacker->projectileHitRadius,
-        .splashRadius = attacker->projectileSplashRadius,
-        .visualType = attacker->projectileVisualType,
-        .renderScale = attacker->projectileRenderScale,
-        .animElapsed = 0.0f,
-    };
+    if (!projectile_activate_reserved_attack(gs, slotIndex, attacker, target)) {
+        projectile_release_slot(gs, slotIndex);
+        return false;
+    }
+
     return true;
 }
 

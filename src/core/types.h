@@ -134,6 +134,7 @@ typedef struct {
 
 typedef struct {
     bool active;
+    bool reserved;
     int sourceId;
     int sourceOwnerId;
     int lockedTargetId;
@@ -178,6 +179,8 @@ struct Entity {
     float attackCooldown;       // time remaining before next attack
     int attackTargetId;         // locked target for current swing, -1 if none
     bool attackReleaseFired;    // once-per-clip latch for effect release/projectile spawn
+    bool attackWindupCommitted; // once the attack visibly starts, finish the wind-up policy for this attack type
+    int reservedProjectileSlotIndex; // offensive projectile slot reserved before release, -1 when none
     TargetingMode targeting;    // targeting preference
     const char *targetType;     // for TARGET_SPECIFIC_TYPE (owned, freed in entity_destroy)
     CombatProfileId combatProfileId;

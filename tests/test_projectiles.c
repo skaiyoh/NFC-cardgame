@@ -68,6 +68,7 @@ typedef struct {
 
 typedef struct {
     bool active;
+    bool reserved;
     int sourceId;
     int sourceOwnerId;
     int lockedTargetId;
@@ -423,6 +424,39 @@ static void test_bird_bomb_spawn_uses_beak_offset(void) {
     printf("  PASS: test_bird_bomb_spawn_uses_beak_offset\n");
 }
 
+static void test_reserved_slot_is_ignored_until_activated(void) {
+    reset_observers();
+    GameState gs = make_game_state();
+
+    int slotIndex = projectile_reserve_slot(&gs);
+    assert(slotIndex == 0);
+    assert(gs.projectileSystem.projectiles[slotIndex].reserved);
+    assert(!gs.projectileSystem.projectiles[slotIndex].active);
+
+    projectile_system_update(&gs, 1.0f);
+    projectile_system_draw(&gs);
+
+    assert(g_applyCalls == 0);
+    assert(g_drawCalls == 0);
+    assert(gs.projectileSystem.projectiles[slotIndex].reserved);
+    assert(!gs.projectileSystem.projectiles[slotIndex].active);
+    printf("  PASS: test_reserved_slot_is_ignored_until_activated\n");
+}
+
+static void test_reserved_slot_release_makes_slot_reusable(void) {
+    reset_observers();
+    GameState gs = make_game_state();
+
+    int firstSlot = projectile_reserve_slot(&gs);
+    assert(firstSlot == 0);
+    projectile_release_slot(&gs, firstSlot);
+
+    int secondSlot = projectile_reserve_slot(&gs);
+    assert(secondSlot == 0);
+    assert(gs.projectileSystem.projectiles[secondSlot].reserved);
+    printf("  PASS: test_reserved_slot_release_makes_slot_reusable\n");
+}
+
 static void test_dead_target_despawns_without_effect(void) {
     reset_observers();
     GameState gs = make_game_state();
@@ -439,6 +473,29 @@ static void test_dead_target_despawns_without_effect(void) {
     assert(g_explosionEmitCalls == 0);
     assert(!gs.projectileSystem.projectiles[0].active);
     printf("  PASS: test_dead_target_despawns_without_effect\n");
+}
+
+static void test_reserved_attack_uses_snapshot_travel_and_target_can_dodge(void) {
+    reset_observers();
+    GameState gs = make_game_state();
+    Entity attacker = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    Entity target = make_entity(2, 1, ENTITY_TROOP, (Vector2){20.0f, 0.0f});
+    attacker.projectileSpeed = 20.0f;
+    target.bodyRadius = 1.0f;
+
+    battlefield_add(&gs.battlefield, &target);
+    int slotIndex = projectile_reserve_slot(&gs);
+    assert(slotIndex == 0);
+    assert(projectile_activate_reserved_attack(&gs, slotIndex, &attacker, &target));
+    assert(gs.projectileSystem.projectiles[slotIndex].active);
+    assert(!gs.projectileSystem.projectiles[slotIndex].reserved);
+
+    target.position = (Vector2){20.0f, 20.0f};
+    projectile_system_update(&gs, 1.0f);
+
+    assert(g_applyCalls == 0);
+    assert(!gs.projectileSystem.projectiles[slotIndex].active);
+    printf("  PASS: test_reserved_attack_uses_snapshot_travel_and_target_can_dodge\n");
 }
 
 static void test_gameover_breaks_remaining_projectile_updates(void) {
@@ -667,7 +724,10 @@ int main(void) {
     test_update_uses_swept_collision_against_live_target();
     test_heal_projectile_noops_when_target_is_full();
     test_bird_bomb_spawn_uses_beak_offset();
+    test_reserved_slot_is_ignored_until_activated();
+    test_reserved_slot_release_makes_slot_reusable();
     test_dead_target_despawns_without_effect();
+    test_reserved_attack_uses_snapshot_travel_and_target_can_dodge();
     test_gameover_breaks_remaining_projectile_updates();
     test_static_target_uses_combat_contact_shell();
     test_bird_bomb_splash_damages_multiple_enemies_on_impact();

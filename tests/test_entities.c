@@ -212,6 +212,8 @@ struct Entity {
     float attackCooldown;
     int attackTargetId;
     bool attackReleaseFired;
+    bool attackWindupCommitted;
+    int reservedProjectileSlotIndex;
     TargetingMode targeting;
     const char *targetType;
     CombatProfileId combatProfileId;
@@ -284,9 +286,16 @@ static int g_applyHitCalls = 0;
 static Entity *g_lastApplyHitAttacker = NULL;
 static Entity *g_lastApplyHitTarget = NULL;
 static int g_projectileSpawnCalls = 0;
+static int g_projectileReserveCalls = 0;
+static int g_projectileReleaseCalls = 0;
+static int g_projectileActivateReservedCalls = 0;
 static Entity *g_lastProjectileAttacker = NULL;
 static Entity *g_lastProjectileTarget = NULL;
 static bool g_projectileSpawnShouldFail = false;
+static bool g_projectileReserveShouldFail = false;
+static int g_nextReservedProjectileSlot = 0;
+static int g_lastReservedProjectileSlot = -1;
+static int g_lastReleasedProjectileSlot = -1;
 static int g_applyKingBurstCalls = 0;
 static Entity *g_lastKingBurstBase = NULL;
 static float g_lastKingBurstRadius = 0.0f;
@@ -360,6 +369,36 @@ void combat_apply_king_burst(Entity *base, float radius, int damage, GameState *
     g_lastKingBurstBase = base;
     g_lastKingBurstRadius = radius;
     g_lastKingBurstDamage = damage;
+}
+
+int projectile_reserve_slot(GameState *gs) {
+    (void)gs;
+    g_projectileReserveCalls++;
+    if (g_projectileReserveShouldFail) return -1;
+
+    g_lastReservedProjectileSlot = g_nextReservedProjectileSlot++;
+    return g_lastReservedProjectileSlot;
+}
+
+void projectile_release_slot(GameState *gs, int slotIndex) {
+    (void)gs;
+    if (slotIndex < 0) return;
+
+    g_projectileReleaseCalls++;
+    g_lastReleasedProjectileSlot = slotIndex;
+}
+
+bool projectile_activate_reserved_attack(GameState *gs, int slotIndex,
+                                         const Entity *attacker,
+                                         const Entity *target) {
+    (void)gs;
+    if (slotIndex < 0) return false;
+
+    g_projectileActivateReservedCalls++;
+    g_projectileSpawnCalls++;
+    g_lastProjectileAttacker = (Entity *)attacker;
+    g_lastProjectileTarget = (Entity *)target;
+    return true;
 }
 
 bool projectile_spawn_for_attack(GameState *gs, const Entity *attacker,
@@ -680,9 +719,16 @@ static void reset_globals(void) {
     g_lastApplyHitAttacker = NULL;
     g_lastApplyHitTarget = NULL;
     g_projectileSpawnCalls = 0;
+    g_projectileReserveCalls = 0;
+    g_projectileReleaseCalls = 0;
+    g_projectileActivateReservedCalls = 0;
     g_lastProjectileAttacker = NULL;
     g_lastProjectileTarget = NULL;
     g_projectileSpawnShouldFail = false;
+    g_projectileReserveShouldFail = false;
+    g_nextReservedProjectileSlot = 0;
+    g_lastReservedProjectileSlot = -1;
+    g_lastReleasedProjectileSlot = -1;
     g_applyKingBurstCalls = 0;
     g_lastKingBurstBase = NULL;
     g_lastKingBurstRadius = 0.0f;
@@ -715,6 +761,8 @@ static Entity make_entity(int id, int ownerID, EntityType type, Vector2 pos) {
     e.attackRange = 80.0f;
     e.attackTargetId = -1;
     e.attackReleaseFired = false;
+    e.attackWindupCommitted = false;
+    e.reservedProjectileSlotIndex = -1;
     e.targeting = TARGET_NEAREST;
     e.combatProfileId = COMBAT_PROFILE_DEFAULT_MELEE;
     e.engagementMode = ATTACK_ENGAGEMENT_CONTACT;
@@ -757,6 +805,22 @@ static Entity make_healer(int id, Vector2 pos) {
     return healer;
 }
 
+static Entity make_ranged_attacker(int id, Vector2 pos) {
+    Entity attacker = make_entity(id, 0, ENTITY_TROOP, pos);
+    attacker.state = ESTATE_ATTACKING;
+    attacker.spriteType = SPRITE_TYPE_FISHFING;
+    attacker.combatProfileId = COMBAT_PROFILE_FISHFING;
+    attacker.engagementMode = ATTACK_ENGAGEMENT_DIRECT_RANGE;
+    attacker.deliveryMode = ATTACK_DELIVERY_PROJECTILE;
+    attacker.projectileVisualType = PROJECTILE_VISUAL_FISH;
+    attacker.projectileSpeed = 240.0f;
+    attacker.projectileHitRadius = 12.0f;
+    attacker.projectileRenderScale = 1.5f;
+    attacker.projectileLaunchOffset = (Vector2){16.0f, 2.0f};
+    anim_state_init(&attacker.anim, ANIM_ATTACK, DIR_SIDE, 1.0f, true);
+    return attacker;
+}
+
 static Entity make_bird(int id, Vector2 pos) {
     Entity bird = make_entity(id, 0, ENTITY_TROOP, pos);
     bird.state = ESTATE_ATTACKING;
@@ -770,6 +834,7 @@ static Entity make_bird(int id, Vector2 pos) {
     bird.projectileSplashRadius = 48.0f;
     bird.projectileRenderScale = 1.0f;
     bird.projectileLaunchOffset = (Vector2){8.0f, -8.0f};
+    bird.reservedProjectileSlotIndex = 0;
     anim_state_init(&bird.anim, ANIM_ATTACK, DIR_SIDE, 0.60f, true);
     bird.anim.elapsed = 0.32f;
     bird.anim.normalizedTime = 0.32f / 0.60f;
@@ -1225,6 +1290,153 @@ static void test_non_healer_enemy_hit_flow_unchanged(void) {
     assert(g_lastApplyHitTarget == &enemy);
 }
 
+static void test_melee_swing_commits_after_attack_entry_and_hits_out_of_range(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity attacker = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){50.0f, 0.0f});
+    attacker.state = ESTATE_WALKING;
+
+    battlefield_add(&gs.battlefield, &enemy);
+    g_findWithinRadiusResult = &enemy;
+
+    entity_update(&attacker, &gs, 0.016f);
+
+    assert(attacker.state == ESTATE_ATTACKING);
+    assert(attacker.attackTargetId == enemy.id);
+    assert(attacker.attackWindupCommitted);
+
+    enemy.position = (Vector2){100.0f, 0.0f};
+
+    entity_update(&attacker, &gs, 0.50f);
+
+    assert(attacker.state == ESTATE_ATTACKING);
+    assert(attacker.attackTargetId == enemy.id);
+    assert(attacker.attackWindupCommitted);
+    assert(g_applyHitCalls == 1);
+    assert(g_lastApplyHitAttacker == &attacker);
+    assert(g_lastApplyHitTarget == &enemy);
+}
+
+static void test_committed_melee_swing_skips_dead_target_hit(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity attacker = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){10.0f, 0.0f});
+    attacker.state = ESTATE_ATTACKING;
+    attacker.attackTargetId = enemy.id;
+    attacker.attackWindupCommitted = true;
+    anim_state_init(&attacker.anim, ANIM_ATTACK, DIR_SIDE, 1.0f, true);
+    attacker.anim.elapsed = 0.49f;
+    attacker.anim.normalizedTime = 0.49f;
+    enemy.alive = false;
+
+    battlefield_add(&gs.battlefield, &enemy);
+
+    entity_update(&attacker, &gs, 0.05f);
+
+    assert(attacker.state == ESTATE_ATTACKING);
+    assert(attacker.attackTargetId == enemy.id);
+    assert(g_applyHitCalls == 0);
+    assert(attacker.attackReleaseFired == false);
+
+    entity_update(&attacker, &gs, 0.60f);
+
+    assert(attacker.state == ESTATE_WALKING);
+    assert(attacker.attackTargetId == -1);
+    assert(attacker.attackWindupCommitted == false);
+    assert(g_applyHitCalls == 0);
+}
+
+static void test_offensive_projectile_commits_after_attack_entry_and_fires_out_of_range(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity attacker = make_ranged_attacker(1, (Vector2){0.0f, 0.0f});
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){50.0f, 0.0f});
+    attacker.state = ESTATE_WALKING;
+    anim_state_init(&attacker.anim, ANIM_WALK, DIR_SIDE, 1.0f, false);
+
+    battlefield_add(&gs.battlefield, &enemy);
+    g_findWithinRadiusResult = &enemy;
+
+    entity_update(&attacker, &gs, 0.016f);
+
+    assert(attacker.state == ESTATE_ATTACKING);
+    assert(attacker.attackTargetId == enemy.id);
+    assert(attacker.attackWindupCommitted);
+    assert(attacker.reservedProjectileSlotIndex == g_lastReservedProjectileSlot);
+    assert(g_projectileReserveCalls == 1);
+    assert(g_projectileActivateReservedCalls == 0);
+
+    enemy.position = (Vector2){120.0f, 0.0f};
+
+    entity_update(&attacker, &gs, 0.50f);
+
+    assert(attacker.state == ESTATE_ATTACKING);
+    assert(attacker.attackTargetId == enemy.id);
+    assert(attacker.attackReleaseFired);
+    assert(attacker.reservedProjectileSlotIndex == -1);
+    assert(g_projectileActivateReservedCalls == 1);
+    assert(g_projectileSpawnCalls == 1);
+    assert(g_lastProjectileAttacker == &attacker);
+    assert(g_lastProjectileTarget == &enemy);
+    assert(g_applyHitCalls == 0);
+}
+
+static void test_offensive_projectile_cancels_out_of_range_before_commit(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity attacker = make_ranged_attacker(1, (Vector2){0.0f, 0.0f});
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){100.0f, 0.0f});
+    attacker.attackTargetId = enemy.id;
+    attacker.reservedProjectileSlotIndex = 7;
+    anim_state_init(&attacker.anim, ANIM_ATTACK, DIR_SIDE, 1.0f, true);
+
+    battlefield_add(&gs.battlefield, &enemy);
+
+    entity_update(&attacker, &gs, 0.016f);
+
+    assert(attacker.state == ESTATE_WALKING);
+    assert(attacker.attackTargetId == -1);
+    assert(attacker.reservedProjectileSlotIndex == -1);
+    assert(attacker.movementTargetId == enemy.id);
+    assert(g_projectileReleaseCalls == 1);
+    assert(g_lastReleasedProjectileSlot == 7);
+    assert(g_projectileActivateReservedCalls == 0);
+    assert(g_projectileSpawnCalls == 0);
+}
+
+static void test_offensive_projectile_cancels_committed_windup_when_target_dies(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity attacker = make_ranged_attacker(1, (Vector2){0.0f, 0.0f});
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){10.0f, 0.0f});
+    attacker.attackTargetId = enemy.id;
+    attacker.attackWindupCommitted = true;
+    attacker.reservedProjectileSlotIndex = 3;
+    anim_state_init(&attacker.anim, ANIM_ATTACK, DIR_SIDE, 1.0f, true);
+    attacker.anim.elapsed = 0.49f;
+    attacker.anim.normalizedTime = 0.49f;
+    enemy.alive = false;
+
+    battlefield_add(&gs.battlefield, &enemy);
+
+    entity_update(&attacker, &gs, 0.05f);
+
+    assert(attacker.state == ESTATE_WALKING);
+    assert(attacker.attackTargetId == -1);
+    assert(attacker.reservedProjectileSlotIndex == -1);
+    assert(g_projectileReleaseCalls == 1);
+    assert(g_lastReleasedProjectileSlot == 3);
+    assert(g_projectileActivateReservedCalls == 0);
+    assert(g_projectileSpawnCalls == 0);
+}
+
 static void test_projectile_attacker_spawns_projectile_on_release(void) {
     reset_globals();
     GameState gs = make_game_state();
@@ -1243,6 +1455,53 @@ static void test_projectile_attacker_spawns_projectile_on_release(void) {
     assert(g_lastProjectileAttacker == &healer);
     assert(g_lastProjectileTarget == &enemy);
     assert(g_applyHitCalls == 0);
+}
+
+static void test_offensive_projectile_waits_for_free_slot_before_entering_attack(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity attacker = make_ranged_attacker(1, (Vector2){0.0f, 0.0f});
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){50.0f, 0.0f});
+    attacker.state = ESTATE_IDLE;
+    attacker.waypointIndex = LANE_WAYPOINT_COUNT;
+    attacker.movementTargetId = -1;
+    anim_state_init(&attacker.anim, ANIM_IDLE, DIR_SIDE, 1.0f, false);
+
+    battlefield_add(&gs.battlefield, &enemy);
+    g_findTargetResult = &enemy;
+    g_findWithinRadiusResult = &enemy;
+    g_projectileReserveShouldFail = true;
+
+    entity_update(&attacker, &gs, 0.016f);
+
+    assert(attacker.state == ESTATE_WALKING);
+    assert(attacker.attackTargetId == -1);
+    assert(attacker.reservedProjectileSlotIndex == -1);
+    assert(attacker.movementTargetId == enemy.id);
+    assert(g_projectileReserveCalls == 1);
+    assert(g_projectileActivateReservedCalls == 0);
+    assert(g_projectileSpawnCalls == 0);
+}
+
+static void test_projectile_attacker_still_cancels_when_target_leaves_range(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity healer = make_healer(1, (Vector2){0.0f, 0.0f});
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){100.0f, 0.0f});
+    healer.attackTargetId = enemy.id;
+
+    battlefield_add(&gs.battlefield, &enemy);
+
+    entity_update(&healer, &gs, 0.05f);
+
+    assert(healer.state == ESTATE_WALKING);
+    assert(healer.attackTargetId == -1);
+    assert(healer.movementTargetId == enemy.id);
+    assert(g_projectileSpawnCalls == 0);
+    assert(g_applyHitCalls == 0);
+    assert(healer.attackReleaseFired == false);
 }
 
 static void test_bird_spawns_bomb_on_frame_six_release_without_direct_hit(void) {
@@ -1387,7 +1646,14 @@ int main(void) {
     RUN_TEST(test_healer_cancels_stale_heal_and_retargets_enemy);
     RUN_TEST(test_healer_cancels_stale_heal_and_walks_without_replacement);
     RUN_TEST(test_non_healer_enemy_hit_flow_unchanged);
+    RUN_TEST(test_melee_swing_commits_after_attack_entry_and_hits_out_of_range);
+    RUN_TEST(test_committed_melee_swing_skips_dead_target_hit);
+    RUN_TEST(test_offensive_projectile_commits_after_attack_entry_and_fires_out_of_range);
+    RUN_TEST(test_offensive_projectile_cancels_out_of_range_before_commit);
+    RUN_TEST(test_offensive_projectile_cancels_committed_windup_when_target_dies);
     RUN_TEST(test_projectile_attacker_spawns_projectile_on_release);
+    RUN_TEST(test_offensive_projectile_waits_for_free_slot_before_entering_attack);
+    RUN_TEST(test_projectile_attacker_still_cancels_when_target_leaves_range);
     RUN_TEST(test_bird_spawns_bomb_on_frame_six_release_without_direct_hit);
     RUN_TEST(test_projectile_spawn_failure_falls_back_to_direct_hit);
     RUN_TEST(test_building_attack_clip_finishes_and_returns_to_idle);
