@@ -309,10 +309,10 @@ INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) V
 (
   'KING_01',
   'King',
-  8,
-  'energy',
+  75,
+  'sustenance',
   'king',
-  'Spend a huge burst of energy to channel the crown''s wrath through your base.',
+  'Spend 75 sustenance from your current stores to channel the crown''s wrath through your base.',
   '{
     "visual": {
       "border_color":       "yellow",

@@ -169,7 +169,8 @@ static void play_fishfing(const Card *card, GameState *state, int playerIndex, i
 
 // King queues an area burst on the owning base. The swing animation drives
 // damage resolution at the spec's hit marker, so activation only consumes
-// energy, restarts the clip, and stages pending-burst state on the base.
+// the configured card resource, restarts the clip, and stages pending-burst
+// state on the base.
 static void play_king(const Card *card, GameState *state, int playerIndex, int slotIndex) {
     if (!state) return;
 
