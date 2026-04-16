@@ -9,9 +9,8 @@
 
 #define NFC_NUM_PLAYERS 2
 #define NFC_READERS_PER_PLAYER 3   // One TCA channel per card slot
-#define NFC_REMOVAL_TIMEOUT_FRAMES 30  // ~500ms at 60fps; must miss ~5 Arduino packets to clear
 
-// A single card-scan event produced by an Arduino.
+// A single card placement event produced by an Arduino.
 typedef struct {
     char uid[32]; // Uppercase hex UID string (e.g. "04A1B2C3")
     int readerIndex; // Which reader slot fired (0–2, maps to card slot / lane)
@@ -21,8 +20,6 @@ typedef struct {
 // One serial file descriptor per Arduino (one per player).
 typedef struct {
     int fds[NFC_NUM_PLAYERS]; // serial fd per Arduino (-1 if not open)
-    char lastUID[NFC_NUM_PLAYERS][NFC_READERS_PER_PLAYER][32]; // debounce table
-    int noPacketFrames[NFC_NUM_PLAYERS][NFC_READERS_PER_PLAYER]; // frames since last packet
 } NFCReader;
 
 // Opens serial ports for both Arduinos at 115200 baud, non-blocking.
@@ -34,7 +31,7 @@ bool nfc_init(NFCReader *r, const char *port0, const char *port1);
 bool nfc_init_single(NFCReader *r, const char *port);
 
 // Polls both serial ports (non-blocking). Fills events[0..max_events-1].
-// Returns the number of events produced (0 if no cards were scanned this frame).
+// Returns the number of placement events produced (0 if no packets were queued).
 int nfc_poll(NFCReader *r, NFCEvent *events, int max_events);
 
 // Closes open serial port file descriptors.

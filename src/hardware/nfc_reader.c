@@ -45,8 +45,6 @@ static int open_serial_port(const char *path) {
 bool nfc_init(NFCReader *r, const char *port0, const char *port1) {
     r->fds[0] = -1;
     r->fds[1] = -1;
-    memset(r->lastUID, 0, sizeof(r->lastUID));
-    memset(r->noPacketFrames, 0, sizeof(r->noPacketFrames));
 
     r->fds[0] = open_serial_port(port0);
     if (r->fds[0] < 0) {
@@ -69,8 +67,6 @@ bool nfc_init(NFCReader *r, const char *port0, const char *port1) {
 bool nfc_init_single(NFCReader *r, const char *port) {
     r->fds[0] = -1;
     r->fds[1] = -1;
-    memset(r->lastUID, 0, sizeof(r->lastUID));
-    memset(r->noPacketFrames, 0, sizeof(r->noPacketFrames));
 
     r->fds[0] = open_serial_port(port);
     if (r->fds[0] < 0) {
@@ -89,37 +85,18 @@ int nfc_poll(NFCReader *r, NFCEvent *events, int max_events) {
         int fd = r->fds[player];
         if (fd < 0) continue;
 
-        bool seen[NFC_READERS_PER_PLAYER] = {false};
-
         ArduinoPacket pkt;
         while (count < max_events && arduino_read_packet(fd, &pkt)) {
             int ri = pkt.reader_index;
             if (ri < 0 || ri >= NFC_READERS_PER_PLAYER) continue;
-            seen[ri] = true;
-            r->noPacketFrames[player][ri] = 0; // card still present, reset counter
 
             char uid_str[32];
             arduino_uid_to_string(pkt.uid, pkt.uid_len, uid_str);
-
-            // Only emit on rising edge (new card placed)
-            if (strcmp(r->lastUID[player][ri], uid_str) == 0) continue;
-            memcpy(r->lastUID[player][ri], uid_str, sizeof(r->lastUID[player][ri]));
 
             NFCEvent *ev = &events[count++];
             ev->playerIndex = player;
             ev->readerIndex = ri;
             memcpy(ev->uid, uid_str, sizeof(ev->uid));
-        }
-
-        // Increment silence counter; only clear lastUID after sustained silence (card removed)
-        for (int ri = 0; ri < NFC_READERS_PER_PLAYER; ri++) {
-            if (!seen[ri]) {
-                r->noPacketFrames[player][ri]++;
-                if (r->noPacketFrames[player][ri] >= NFC_REMOVAL_TIMEOUT_FRAMES) {
-                    r->lastUID[player][ri][0] = '\0';
-                    r->noPacketFrames[player][ri] = 0;
-                }
-            }
         }
     }
 
