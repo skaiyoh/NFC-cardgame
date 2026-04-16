@@ -16,6 +16,7 @@
 #define UNDEAD_DETAIL_PATH  "src/assets/environment/Undead-Tileset-Top-Down-Pixel-Art/Tiled_files/details.png"
 #define FX_SMOKE_PATH       "src/assets/fx/smoke.png"
 #define FX_EXPLOSION_PATH   "src/assets/fx/explosion.png"
+#define FX_BLOOD_PATH       "src/assets/fx/blood.png"
 #define PROJECTILE_FISH_PATH "src/assets/environment/Objects/fish_idle.png"
 #define PROJECTILE_HEALER_BLOB_PATH "src/assets/environment/Objects/uvulite_blob.png"
 #define PROJECTILE_BIRD_BOMB_PATH "src/assets/environment/Objects/bomba.png"

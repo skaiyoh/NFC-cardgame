@@ -134,6 +134,7 @@ typedef struct {
 } AnimPlaybackEvent;
 
 typedef struct { void *texture; int frameWidth; int frameHeight; int frameCount; } AnimSheet;
+typedef AnimSheet SpriteSheet;
 typedef struct { AnimSheet sheets[ANIM_COUNT]; } CharacterSprite;
 
 typedef struct {
@@ -145,6 +146,11 @@ typedef struct {
 typedef struct Entity Entity;
 typedef struct Player Player;
 typedef struct GameState GameState;
+typedef struct {
+    int bloodEmitCount;
+    Vector2 lastBloodPos;
+    float lastBloodScale;
+} SpawnFxSystem;
 
 /* ---- Battlefield math stubs (must precede Player for BattleSide field) ---- */
 typedef enum { SIDE_BOTTOM, SIDE_TOP } BattleSide;
@@ -317,6 +323,7 @@ struct GameState {
     Player players[2];
     BiomeDef_stub biomeDefs[BIOME_COUNT];
     Battlefield battlefield;
+    SpawnFxSystem spawnFx;
     SpriteAtlas spriteAtlas;
     int halfWidth;
     NFCReader_stub nfc;
@@ -368,12 +375,31 @@ void win_latch_from_destroyed_base(GameState *gs, const Entity *destroyedBase) {
 static int s_farmerOnDeathCalls = 0;
 static Entity *s_lastFarmerOnDeath = NULL;
 static GameState *s_lastFarmerOnDeathGameState = NULL;
+static int s_bloodEmitCalls = 0;
+static Vector2 s_lastBloodEmitPos = {0};
+static float s_lastBloodEmitScale = 0.0f;
 
 /* farmer_on_death stub -- combat.c now calls this on farmer kills */
 void farmer_on_death(Entity *farmer, GameState *gs) {
     s_farmerOnDeathCalls++;
     s_lastFarmerOnDeath = farmer;
     s_lastFarmerOnDeathGameState = gs;
+}
+
+const SpriteSheet *sprite_sheet_get(const CharacterSprite *cs, AnimationType anim) {
+    if (!cs || anim < 0 || anim >= ANIM_COUNT) return NULL;
+    return &cs->sheets[anim];
+}
+
+void spawn_fx_emit_blood(SpawnFxSystem *fx, Vector2 position, float scale) {
+    if (!fx) return;
+
+    fx->bloodEmitCount++;
+    fx->lastBloodPos = position;
+    fx->lastBloodScale = scale;
+    s_bloodEmitCalls++;
+    s_lastBloodEmitPos = position;
+    s_lastBloodEmitScale = scale;
 }
 
 /* ---- Include combat.c directly ---- */
@@ -443,6 +469,7 @@ static Entity make_entity(int ownerID, EntityType type, Vector2 pos) {
     e.projectileHitRadius = 0.0f;
     e.projectileSplashRadius = 0.0f;
     e.projectileRenderScale = 1.0f;
+    e.spriteScale = 1.0f;
     e.projectileLaunchOffset = (Vector2){0};
     e.bodyRadius = 14.0f;
     e.navRadius = 14.0f;
@@ -489,6 +516,8 @@ static void bf_test_add_entity(GameState *gs, Entity *e) {
     gs->battlefield.entities[gs->battlefield.entityCount++] = e;
 }
 
+static Entity make_healer(int ownerID, Vector2 pos);
+
 /* ---- Tests ---- */
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -505,6 +534,9 @@ static void reset_test_observers(void) {
     s_farmerOnDeathCalls = 0;
     s_lastFarmerOnDeath = NULL;
     s_lastFarmerOnDeathGameState = NULL;
+    s_bloodEmitCalls = 0;
+    s_lastBloodEmitPos = (Vector2){0};
+    s_lastBloodEmitScale = 0.0f;
 }
 
 static void test_in_range_same_space(void) {
@@ -826,6 +858,7 @@ static void test_canonical_distance_direct(void) {
 /* ---- combat_apply_hit tests ---- */
 
 static void test_apply_hit_deals_damage(void) {
+    reset_test_observers();
     GameState gs = make_game_state();
     Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
     attacker.attack = 25;
@@ -838,9 +871,14 @@ static void test_apply_hit_deals_damage(void) {
 
     assert(target.hp == 75);
     assert(target.alive == true);
+    assert(s_bloodEmitCalls == 1);
+    assert(fabsf(s_lastBloodEmitPos.x - target.position.x) < 0.001f);
+    assert(fabsf(s_lastBloodEmitPos.y - target.position.y) < 0.001f);
+    assert(fabsf(s_lastBloodEmitScale - 1.0f) < 0.001f);
 }
 
 static void test_apply_hit_kills(void) {
+    reset_test_observers();
     GameState gs = make_game_state();
     Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
     attacker.attack = 150;
@@ -854,6 +892,7 @@ static void test_apply_hit_kills(void) {
     assert(target.hp == 0);
     assert(target.alive == false);
     assert(target.state == ESTATE_DEAD);
+    assert(s_bloodEmitCalls == 1);
 }
 
 static void test_apply_hit_skips_dead(void) {
@@ -872,11 +911,68 @@ static void test_apply_hit_skips_dead(void) {
 }
 
 static void test_apply_hit_null_safety(void) {
+    reset_test_observers();
     GameState gs = make_game_state();
     Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
     /* Should not crash */
     combat_apply_hit(NULL, &attacker, &gs);
     combat_apply_hit(&attacker, NULL, &gs);
+    assert(s_bloodEmitCalls == 0);
+}
+
+static void test_apply_hit_heal_does_not_emit_blood(void) {
+    reset_test_observers();
+    GameState gs = make_game_state();
+    Entity healer = make_healer(0, (Vector2){540, 970});
+
+    Entity ally = make_entity(0, ENTITY_TROOP, (Vector2){540, 1000});
+    ally.hp = 80;
+    ally.maxHP = 100;
+
+    combat_apply_hit(&healer, &ally, &gs);
+
+    assert(ally.hp == 88);
+    assert(s_bloodEmitCalls == 0);
+}
+
+static void test_apply_hit_offsets_blood_up_using_sprite_height(void) {
+    reset_test_observers();
+    GameState gs = make_game_state();
+    CharacterSprite sprite = {0};
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
+    attacker.attack = 25;
+
+    Entity target = make_entity(1, ENTITY_TROOP, (Vector2){200, 300});
+    target.hp = 100;
+    target.maxHP = 100;
+    target.sprite = &sprite;
+    target.spriteScale = 2.0f;
+    target.anim.anim = ANIM_WALK;
+    sprite.sheets[ANIM_WALK].frameHeight = 80;
+
+    combat_apply_hit(&attacker, &target, &gs);
+
+    assert(target.hp == 75);
+    assert(s_bloodEmitCalls == 1);
+    assert(fabsf(s_lastBloodEmitPos.x - target.position.x) < 0.001f);
+    assert(fabsf(s_lastBloodEmitPos.y - (target.position.y - 32.0f)) < 0.001f);
+    assert(fabsf(s_lastBloodEmitScale - 2.0f) < 0.001f);
+}
+
+static void test_apply_hit_damage_skips_blood_for_buildings(void) {
+    reset_test_observers();
+    GameState gs = make_game_state();
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
+    attacker.attack = 25;
+
+    Entity building = make_entity(1, ENTITY_BUILDING, (Vector2){540, 500});
+    building.hp = 100;
+    building.maxHP = 100;
+
+    combat_apply_hit(&attacker, &building, &gs);
+
+    assert(building.hp == 75);
+    assert(s_bloodEmitCalls == 0);
 }
 
 static void test_enemy_burst_damages_only_live_enemy_non_projectiles_in_radius(void) {
@@ -913,6 +1009,7 @@ static void test_enemy_burst_damages_only_live_enemy_non_projectiles_in_radius(v
     assert(markedEnemy.hp == 100);
     assert(farEnemy.hp == 100);
     assert(s_farmerOnDeathCalls == 0);
+    assert(s_bloodEmitCalls == 1);
     assert(gs.gameOver == false);
 }
 
@@ -935,6 +1032,26 @@ static void test_enemy_burst_kills_enemy_base_latches_win(void) {
     assert(gs.winnerID == 0);
 }
 
+static void test_enemy_burst_emits_blood_for_each_damaged_non_building_target(void) {
+    reset_test_observers();
+    GameState gs = make_game_state();
+
+    Entity enemyTroopA = make_entity(1, ENTITY_TROOP, (Vector2){520, 1600});
+    Entity enemyTroopB = make_entity(1, ENTITY_TROOP, (Vector2){560, 1600});
+    Entity enemyBuilding = make_entity(1, ENTITY_BUILDING, (Vector2){540, 1510});
+
+    bf_test_add_entity(&gs, &enemyTroopA);
+    bf_test_add_entity(&gs, &enemyTroopB);
+    bf_test_add_entity(&gs, &enemyBuilding);
+
+    combat_apply_enemy_burst((Vector2){540, 1600}, 120.0f, 30, 99, 0, &gs);
+
+    assert(enemyTroopA.hp == 70);
+    assert(enemyTroopB.hp == 70);
+    assert(enemyBuilding.hp == 70);
+    assert(s_bloodEmitCalls == 2);
+}
+
 static void test_enemy_burst_null_and_invalid_params_are_noops(void) {
     reset_test_observers();
     GameState gs = make_game_state();
@@ -948,6 +1065,7 @@ static void test_enemy_burst_null_and_invalid_params_are_noops(void) {
 
     assert(enemy.hp == 100);
     assert(enemy.alive == true);
+    assert(s_bloodEmitCalls == 0);
     assert(gs.gameOver == false);
     assert(gs.winnerID == -1);
 }
@@ -997,6 +1115,7 @@ static void test_king_burst_damages_only_live_enemy_non_projectiles_in_radius(vo
     assert(markedEnemy.hp == 100);
     assert(farEnemy.hp == 100);
     assert(s_farmerOnDeathCalls == 0);
+    assert(s_bloodEmitCalls == 1);
     assert(gs.gameOver == false);
 }
 
@@ -1592,8 +1711,12 @@ int main(void) {
     RUN_TEST(test_apply_hit_kills);
     RUN_TEST(test_apply_hit_skips_dead);
     RUN_TEST(test_apply_hit_null_safety);
+    RUN_TEST(test_apply_hit_heal_does_not_emit_blood);
+    RUN_TEST(test_apply_hit_offsets_blood_up_using_sprite_height);
+    RUN_TEST(test_apply_hit_damage_skips_blood_for_buildings);
     RUN_TEST(test_enemy_burst_damages_only_live_enemy_non_projectiles_in_radius);
     RUN_TEST(test_enemy_burst_kills_enemy_base_latches_win);
+    RUN_TEST(test_enemy_burst_emits_blood_for_each_damaged_non_building_target);
     RUN_TEST(test_enemy_burst_null_and_invalid_params_are_noops);
     RUN_TEST(test_king_burst_damages_only_live_enemy_non_projectiles_in_radius);
     RUN_TEST(test_king_burst_farmer_kill_calls_farmer_on_death);

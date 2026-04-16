@@ -353,6 +353,34 @@ bool entity_apply_heal(Entity *entity, int amount) {
     return entity->hp > before;
 }
 
+static float combat_entity_sprite_height(const Entity *target) {
+    if (!target || !target->sprite) return 0.0f;
+
+    const SpriteSheet *sheet = sprite_sheet_get(target->sprite, target->anim.anim);
+    if (!sheet || sheet->frameHeight <= 0) return 0.0f;
+
+    return (float)sheet->frameHeight * target->spriteScale;
+}
+
+static Vector2 combat_damage_fx_position(const Entity *target) {
+    if (!target) return (Vector2){ 0.0f, 0.0f };
+
+    Vector2 position = target->position;
+    float spriteHeight = combat_entity_sprite_height(target);
+    if (spriteHeight > 0.0f) {
+        position.y -= spriteHeight * 0.20f;
+    }
+    return position;
+}
+
+static void combat_emit_damage_fx(Entity *target, GameState *gs) {
+    if (!target || !gs) return;
+    if (target->type == ENTITY_BUILDING) return;
+
+    float scale = (target->spriteScale > 0.0f) ? target->spriteScale : 1.0f;
+    spawn_fx_emit_blood(&gs->spawnFx, combat_damage_fx_position(target), scale);
+}
+
 // Handle post-kill consequences for any entity type.
 // Currently handles farmer sustenance transfer; extend for future unit roles.
 static void combat_on_kill(Entity *victim, GameState *gs) {
@@ -433,6 +461,7 @@ bool combat_apply_effect_payload(const CombatEffectPayload *payload,
     }
 
     bool killed = entity_take_damage(target, payload->amount);
+    combat_emit_damage_fx(target, gs);
     debug_event_emit_xy(target->position.x, target->position.y, DEBUG_EVT_HIT);
 
     printf("[COMBAT] Entity %d dealt %d damage to entity %d (hp: %d/%d)\n",
@@ -476,6 +505,7 @@ void combat_apply_enemy_burst(Vector2 center, float radius, int damage,
         if (dist > radius) continue;
 
         bool killed = entity_take_damage(target, damage);
+        combat_emit_damage_fx(target, gs);
         debug_event_emit_xy(target->position.x, target->position.y, DEBUG_EVT_HIT);
         printf("[COMBAT] Burst from entity %d dealt %d damage to entity %d (hp: %d/%d)\n",
                sourceEntityId, damage, target->id, target->hp, target->maxHP);

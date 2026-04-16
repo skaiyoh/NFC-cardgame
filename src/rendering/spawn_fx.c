@@ -16,10 +16,15 @@ enum {
     SPAWN_EXPLOSION_FRAME_HEIGHT = 32,
     SPAWN_EXPLOSION_FRAME_COUNT = 12,
     SPAWN_EXPLOSION_ROW_INDEX = 0,
+    SPAWN_BLOOD_FRAME_WIDTH = 32,
+    SPAWN_BLOOD_FRAME_HEIGHT = 32,
+    SPAWN_BLOOD_FRAME_COUNT = 24,
+    SPAWN_BLOOD_ROW_INDEX = 0,
 };
 
 static const float kSpawnSmokeDurationSeconds = 0.4f;
 static const float kSpawnExplosionDurationSeconds = 0.5f;
+static const float kSpawnBloodDurationSeconds = 0.45f;
 
 static int spawn_fx_frame_index(float elapsed, float durationSeconds, int frameCount) {
     float normalized = elapsed / durationSeconds;
@@ -44,6 +49,15 @@ static void spawn_fx_update_explosion(SpawnExplosionFx *explosion, float dt) {
     explosion->elapsed += dt;
     if (explosion->elapsed >= kSpawnExplosionDurationSeconds) {
         explosion->active = false;
+    }
+}
+
+static void spawn_fx_update_blood(SpawnBloodFx *blood, float dt) {
+    if (!blood || !blood->active) return;
+
+    blood->elapsed += dt;
+    if (blood->elapsed >= kSpawnBloodDurationSeconds) {
+        blood->active = false;
     }
 }
 
@@ -85,6 +99,23 @@ void spawn_fx_init(SpawnFxSystem *fx) {
                 fx->explosionTexture.width, fx->explosionTexture.height,
                 minExplosionWidth, minExplosionHeight);
     }
+
+    fx->bloodTexture = LoadTexture(FX_BLOOD_PATH);
+    if (fx->bloodTexture.id == 0) {
+        fprintf(stderr, "[SpawnFX] Failed to load %s\n", FX_BLOOD_PATH);
+        return;
+    }
+
+    SetTextureFilter(fx->bloodTexture, TEXTURE_FILTER_POINT);
+
+    const int minBloodWidth = SPAWN_BLOOD_FRAME_WIDTH * SPAWN_BLOOD_FRAME_COUNT;
+    const int minBloodHeight = SPAWN_BLOOD_FRAME_HEIGHT * (SPAWN_BLOOD_ROW_INDEX + 1);
+    if (fx->bloodTexture.width < minBloodWidth || fx->bloodTexture.height < minBloodHeight) {
+        fprintf(stderr,
+                "[SpawnFX] Blood sheet too small (%dx%d); need at least %dx%d\n",
+                fx->bloodTexture.width, fx->bloodTexture.height,
+                minBloodWidth, minBloodHeight);
+    }
 }
 
 void spawn_fx_cleanup(SpawnFxSystem *fx) {
@@ -97,10 +128,16 @@ void spawn_fx_cleanup(SpawnFxSystem *fx) {
         UnloadTexture(fx->explosionTexture);
         fx->explosionTexture = (Texture2D){0};
     }
+    if (fx->bloodTexture.id > 0) {
+        UnloadTexture(fx->bloodTexture);
+        fx->bloodTexture = (Texture2D){0};
+    }
     memset(fx->smoke, 0, sizeof(fx->smoke));
     memset(fx->explosions, 0, sizeof(fx->explosions));
+    memset(fx->blood, 0, sizeof(fx->blood));
     fx->nextSmokeIndex = 0;
     fx->nextExplosionIndex = 0;
+    fx->nextBloodIndex = 0;
 }
 
 void spawn_fx_update(SpawnFxSystem *fx, float dt) {
@@ -109,6 +146,7 @@ void spawn_fx_update(SpawnFxSystem *fx, float dt) {
     for (int i = 0; i < SPAWN_FX_CAPACITY; i++) {
         spawn_fx_update_smoke(&fx->smoke[i], dt);
         spawn_fx_update_explosion(&fx->explosions[i], dt);
+        spawn_fx_update_blood(&fx->blood[i], dt);
     }
 }
 
@@ -138,6 +176,20 @@ void spawn_fx_emit_explosion(SpawnFxSystem *fx, Vector2 position, float scale) {
     };
 
     fx->nextExplosionIndex = (fx->nextExplosionIndex + 1) % SPAWN_FX_CAPACITY;
+}
+
+void spawn_fx_emit_blood(SpawnFxSystem *fx, Vector2 position, float scale) {
+    if (!fx) return;
+
+    SpawnBloodFx *blood = &fx->blood[fx->nextBloodIndex];
+    *blood = (SpawnBloodFx){
+        .position = position,
+        .scale = scale,
+        .elapsed = 0.0f,
+        .active = true,
+    };
+
+    fx->nextBloodIndex = (fx->nextBloodIndex + 1) % SPAWN_FX_CAPACITY;
 }
 
 void spawn_fx_draw(const SpawnFxSystem *fx, float rotationDegrees) {
@@ -171,7 +223,37 @@ void spawn_fx_draw(const SpawnFxSystem *fx, float rotationDegrees) {
 }
 
 void spawn_fx_draw_overlay(const SpawnFxSystem *fx, float rotationDegrees) {
-    if (!fx || fx->explosionTexture.id == 0) return;
+    if (!fx) return;
+
+    if (fx->bloodTexture.id > 0) {
+        for (int i = 0; i < SPAWN_FX_CAPACITY; i++) {
+            const SpawnBloodFx *blood = &fx->blood[i];
+            if (!blood->active) continue;
+
+            int frame = spawn_fx_frame_index(blood->elapsed, kSpawnBloodDurationSeconds,
+                                             SPAWN_BLOOD_FRAME_COUNT);
+            Rectangle src = {
+                (float)(frame * SPAWN_BLOOD_FRAME_WIDTH),
+                (float)(SPAWN_BLOOD_ROW_INDEX * SPAWN_BLOOD_FRAME_HEIGHT),
+                (float)SPAWN_BLOOD_FRAME_WIDTH,
+                (float)SPAWN_BLOOD_FRAME_HEIGHT,
+            };
+
+            float drawWidth = (float)SPAWN_BLOOD_FRAME_WIDTH * blood->scale;
+            float drawHeight = (float)SPAWN_BLOOD_FRAME_HEIGHT * blood->scale;
+            Rectangle dst = {
+                blood->position.x,
+                blood->position.y,
+                drawWidth,
+                drawHeight,
+            };
+            Vector2 origin = { drawWidth * 0.5f, drawHeight * 0.5f };
+
+            DrawTexturePro(fx->bloodTexture, src, dst, origin, rotationDegrees, WHITE);
+        }
+    }
+
+    if (fx->explosionTexture.id == 0) return;
 
     for (int i = 0; i < SPAWN_FX_CAPACITY; i++) {
         const SpawnExplosionFx *explosion = &fx->explosions[i];

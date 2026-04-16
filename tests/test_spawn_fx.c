@@ -14,6 +14,7 @@
 #define NFC_CARDGAME_CONFIG_H
 #define FX_SMOKE_PATH "src/assets/fx/smoke.png"
 #define FX_EXPLOSION_PATH "src/assets/fx/explosion.png"
+#define FX_BLOOD_PATH "src/assets/fx/blood.png"
 
 /* ---- Raylib stubs ---- */
 #define RAYLIB_H
@@ -51,6 +52,9 @@ static Texture2D LoadTexture(const char *fileName) {
     }
     if (strcmp(fileName, FX_EXPLOSION_PATH) == 0) {
         return (Texture2D){ .id = 2, .width = 384, .height = 32, .mipmaps = 1, .format = 7 };
+    }
+    if (strcmp(fileName, FX_BLOOD_PATH) == 0) {
+        return (Texture2D){ .id = 3, .width = 768, .height = 32, .mipmaps = 1, .format = 7 };
     }
     return (Texture2D){0};
 }
@@ -157,21 +161,31 @@ static int count_active_explosions(const SpawnFxSystem *fx) {
     return count;
 }
 
+static int count_active_blood(const SpawnFxSystem *fx) {
+    int count = 0;
+    for (int i = 0; i < SPAWN_FX_CAPACITY; i++) {
+        if (fx->blood[i].active) count++;
+    }
+    return count;
+}
+
 /* ---- Tests ---- */
 
-static void test_init_loads_smoke_and_explosion_sheets(void) {
+static void test_init_loads_smoke_explosion_and_blood_sheets(void) {
     reset_load_state();
     SpawnFxSystem fx = {0};
     spawn_fx_init(&fx);
 
     assert(fx.smokeTexture.id == 1);
     assert(fx.explosionTexture.id == 2);
-    assert(g_loadTextureCalls == 2);
+    assert(fx.bloodTexture.id == 3);
+    assert(g_loadTextureCalls == 3);
     assert(strcmp(g_loadedTexturePaths[0], FX_SMOKE_PATH) == 0);
     assert(strcmp(g_loadedTexturePaths[1], FX_EXPLOSION_PATH) == 0);
+    assert(strcmp(g_loadedTexturePaths[2], FX_BLOOD_PATH) == 0);
 
     spawn_fx_cleanup(&fx);
-    assert(g_unloadTextureCalls >= 2);
+    assert(g_unloadTextureCalls >= 3);
 }
 
 static void test_draw_uses_first_frame_of_row_eleven(void) {
@@ -288,6 +302,63 @@ static void test_explosion_effect_expires_at_duration(void) {
     spawn_fx_cleanup(&fx);
 }
 
+static void test_overlay_draw_uses_first_blood_frame(void) {
+    SpawnFxSystem fx = {0};
+    spawn_fx_init(&fx);
+    spawn_fx_emit_blood(&fx, (Vector2){175.0f, 275.0f}, 2.0f);
+
+    spawn_fx_draw_overlay(&fx, 180.0f);
+
+    assert(g_drawCalls == 1);
+    assert(g_lastDrawTexture.id == 3);
+    assert(approx_eq(g_lastDrawSrc.x, 0.0f, 0.001f));
+    assert(approx_eq(g_lastDrawSrc.y, 0.0f, 0.001f));
+    assert(approx_eq(g_lastDrawSrc.width, 32.0f, 0.001f));
+    assert(approx_eq(g_lastDrawSrc.height, 32.0f, 0.001f));
+    assert(approx_eq(g_lastDrawDst.x, 175.0f, 0.001f));
+    assert(approx_eq(g_lastDrawDst.y, 275.0f, 0.001f));
+    assert(approx_eq(g_lastDrawDst.width, 64.0f, 0.001f));
+    assert(approx_eq(g_lastDrawDst.height, 64.0f, 0.001f));
+    assert(approx_eq(g_lastDrawOrigin.x, 32.0f, 0.001f));
+    assert(approx_eq(g_lastDrawOrigin.y, 32.0f, 0.001f));
+    assert(approx_eq(g_lastDrawRotation, 180.0f, 0.001f));
+
+    spawn_fx_cleanup(&fx);
+}
+
+static void test_blood_frame_selection_advances_and_clamps_to_last_frame(void) {
+    SpawnFxSystem fx = {0};
+    spawn_fx_init(&fx);
+    spawn_fx_emit_blood(&fx, (Vector2){0}, 2.0f);
+
+    spawn_fx_update(&fx, 0.225f);
+    spawn_fx_draw_overlay(&fx, 0.0f);
+    assert(g_drawCalls == 1);
+    assert(approx_eq(g_lastDrawSrc.x, 384.0f, 0.001f));
+
+    reset_draw_state();
+    spawn_fx_update(&fx, 0.22f);
+    spawn_fx_draw_overlay(&fx, 0.0f);
+    assert(g_drawCalls == 1);
+    assert(approx_eq(g_lastDrawSrc.x, 736.0f, 0.001f));
+
+    spawn_fx_cleanup(&fx);
+}
+
+static void test_blood_effect_expires_at_duration(void) {
+    SpawnFxSystem fx = {0};
+    spawn_fx_init(&fx);
+    spawn_fx_emit_blood(&fx, (Vector2){0}, 2.0f);
+
+    spawn_fx_update(&fx, 0.45f);
+    assert(count_active_blood(&fx) == 0);
+
+    spawn_fx_draw_overlay(&fx, 0.0f);
+    assert(g_drawCalls == 0);
+
+    spawn_fx_cleanup(&fx);
+}
+
 static void test_smoke_and_overlay_draws_stay_separate(void) {
     SpawnFxSystem fx = {0};
     spawn_fx_init(&fx);
@@ -354,13 +425,16 @@ static void test_spawn_register_none_skips_smoke(void) {
 int main(void) {
     printf("Running spawn_fx tests...\n");
 
-    RUN_TEST(test_init_loads_smoke_and_explosion_sheets);
+    RUN_TEST(test_init_loads_smoke_explosion_and_blood_sheets);
     RUN_TEST(test_draw_uses_first_frame_of_row_eleven);
     RUN_TEST(test_frame_selection_advances_and_clamps_to_last_frame);
     RUN_TEST(test_effect_expires_at_duration);
     RUN_TEST(test_overlay_draw_uses_first_explosion_frame);
     RUN_TEST(test_explosion_frame_selection_advances_and_clamps_to_last_frame);
     RUN_TEST(test_explosion_effect_expires_at_duration);
+    RUN_TEST(test_overlay_draw_uses_first_blood_frame);
+    RUN_TEST(test_blood_frame_selection_advances_and_clamps_to_last_frame);
+    RUN_TEST(test_blood_effect_expires_at_duration);
     RUN_TEST(test_smoke_and_overlay_draws_stay_separate);
     RUN_TEST(test_capacity_overwrites_oldest_slot);
     RUN_TEST(test_spawn_register_entity_adds_battlefield_entity_and_smoke);
