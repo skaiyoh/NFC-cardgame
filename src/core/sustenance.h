@@ -45,7 +45,7 @@ typedef struct {
 //   2. out of play         (cell center falls outside bf_play_bounds, i.e.
 //                           inside the hand-bar zone at the player's outer edge)
 //   3. lane blocked
-//   4. base blocked
+//   phase 4. base blocked
 //   5. spawn-anchor blocked
 //   6. node blocked
 //   7. valid

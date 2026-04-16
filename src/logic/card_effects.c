@@ -147,7 +147,7 @@ static void spawn_troop_from_card(const Card *card, GameState *state, int player
         return;
     }
 
-    // 4. Commit: consume the resolved resource, spawn, register.
+    // phase 4. Commit: consume the resolved resource, spawn, register.
     if (!player_consume_cost(player, card->cost, card->costResource)) {
         // Defensive: affordability was just checked -- this should never fire,
         // but guard against concurrent resource drains or future side effects.

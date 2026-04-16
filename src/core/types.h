@@ -28,6 +28,14 @@ typedef struct GameState GameState;
 // Entity enums
 typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
 
+typedef enum {
+    MUSIC_PHASE_1 = 0,
+    MUSIC_PHASE_2,
+    MUSIC_PHASE_3,
+    MUSIC_PHASE_4,
+    MUSIC_PHASE_COUNT
+} MusicPhase;
+
 typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
 
 typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_ATTACKING, ESTATE_DEAD } EntityState;
@@ -301,6 +309,20 @@ struct Player {
     int sustenanceCollected;
 };
 
+typedef struct {
+    Music tracks[MUSIC_PHASE_COUNT];
+    bool  trackLoaded[MUSIC_PHASE_COUNT];
+    MusicPhase currentPhase;
+    MusicPhase incomingPhase;
+    float fadeDurationSeconds;
+    float fadeElapsedSeconds;
+    float baseVolume;
+    bool hasCurrentPhase;
+    bool fadeActive;
+    bool deviceReady;
+    bool enabled;
+} AudioSystem;
+
 // Game state
 struct GameState {
     // Database & cards
@@ -332,6 +354,7 @@ struct GameState {
     Texture2D sustenanceTexture;
     Texture2D statusBarsTexture;
     Texture2D troopHealthBarTexture;
+    Texture2D buffIconsTexture;
 
     // Shared hand UI textures (shared by hand_ui)
     Texture2D handBarBackgroundTexture;
@@ -350,6 +373,9 @@ struct GameState {
 
     // NFC hardware (two Arduinos, one per player)
     NFCReader nfc;
+
+    // Phase-based background music streaming
+    AudioSystem audio;
 
     // Match result (latched on first lethal base hit, or defensive draw fallback)
     bool gameOver;

@@ -21,6 +21,7 @@
 #include "../rendering/ui.h"
 #include "../rendering/hand_ui.h"
 #include "../rendering/uvulite_font.h"
+#include "../systems/audio.h"
 #include "../systems/player.h"
 #include "../systems/progression.h"
 #include "../entities/entities.h"
@@ -60,6 +61,19 @@ static void game_seed_demo_hands(GameState *g) {
     }
 }
 
+static MusicPhase game_resolve_music_phase(const GameState *g) {
+    if (!g) return MUSIC_PHASE_1;
+    if (g->gameOver) return MUSIC_PHASE_4;
+
+    int player0Level = progression_level_from_sustenance(g->players[0].sustenanceCollected);
+    int player1Level = progression_level_from_sustenance(g->players[1].sustenanceCollected);
+    int levelSum = player0Level + player1Level;
+
+    if (levelSum >= 13) return MUSIC_PHASE_3;
+    if (levelSum >= 7) return MUSIC_PHASE_2;
+    return MUSIC_PHASE_1;
+}
+
 bool game_init(GameState *g) {
     srand((unsigned int) time(NULL));
     // Derive sustenance seed before bf_init: tilemap creation reseeds global rand(),
@@ -87,6 +101,7 @@ bool game_init(GameState *g) {
     SetWindowPosition(0, 0);
     SetTargetFPS(60);
     HideCursor();
+    audio_init(&g->audio);
 
     // Initialize card system
     card_action_init();
@@ -113,6 +128,7 @@ bool game_init(GameState *g) {
     g->sustenanceTexture = sustenance_renderer_load();
     g->statusBarsTexture = status_bars_load();
     g->troopHealthBarTexture = troop_health_bar_load();
+    g->buffIconsTexture = ui_load_buff_icons();
 
     // Load the shared hand UI textures.
     g->handBarBackgroundTexture = hand_ui_load_bar_background();
@@ -269,6 +285,7 @@ void game_update(GameState *g) {
     // Freeze gameplay once match result is latched
     // (debug event timers still decay so hit flashes fade naturally)
     if (g->gameOver) {
+        audio_tick(&g->audio, game_resolve_music_phase(g), deltaTime);
         debug_events_tick(deltaTime);
         return;
     }
@@ -372,6 +389,7 @@ void game_update(GameState *g) {
     }
 
     debug_events_tick(deltaTime);
+    audio_tick(&g->audio, game_resolve_music_phase(g), deltaTime);
 }
 
 // Draw all Battlefield entities visible in the current viewport.
@@ -488,9 +506,11 @@ void game_render(GameState *g) {
     // HUD — screen space, drawn after all viewports. Use battlefieldArea so
     // the counter stays on the battlefield sub-rect, not the hand bar.
     ui_draw_sustenance_counter(&g->players[0], g->players[0].battlefieldArea, 90.0f,
-                               g->uvuliteLetteringTexture);
+                               g->uvuliteLetteringTexture,
+                               g->buffIconsTexture);
     ui_draw_sustenance_counter(&g->players[1], g->players[1].battlefieldArea, 270.0f,
-                               g->uvuliteLetteringTexture);
+                               g->uvuliteLetteringTexture,
+                               g->buffIconsTexture);
 
     // Hand bars — drawn last so they always cover the outer strip, regardless
     // of any earlier draws that may have bled past the battlefield scissor.
@@ -542,12 +562,14 @@ void game_cleanup(GameState *g) {
     UnloadTexture(g->sustenanceTexture);
     status_bars_unload(g->statusBarsTexture);
     troop_health_bar_unload(g->troopHealthBarTexture);
+    if (g->buffIconsTexture.id != 0) UnloadTexture(g->buffIconsTexture);
     hand_ui_unload_texture(g->handBarBackgroundTexture);
     hand_ui_unload_texture(g->handCardSheetTexture);
     uvulite_font_unload(g->uvuliteLetteringTexture);
 
     projectile_assets_cleanup(&g->projectileAssets);
     spawn_fx_cleanup(&g->spawnFx);
+    audio_cleanup(&g->audio);
     // Cleanup Battlefield (must be before biome_free_all since tilemaps reference biome textures)
     bf_cleanup(&g->battlefield);
     nav_frame_destroy(&g->nav);

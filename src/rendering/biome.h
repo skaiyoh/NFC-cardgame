@@ -20,7 +20,7 @@ typedef enum {
 } BiomeType;
 
 // Describes a rectangular grid of tiles within a sprite sheet.
-// e.g. srcX=128, srcY=0, cols=4, rows=4, tileW=32, tileH=32
+// e.g. srcX=128, srcY=0, cols=phase 4, rows=phase 4, tileW=32, tileH=32
 // reads a 4x4 block of 32px tiles starting at pixel (128, 0).
 typedef struct {
     int srcX;

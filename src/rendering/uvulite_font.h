@@ -7,8 +7,9 @@
 // Row 2: A-J (gold)
 // Row 3: K-T (gold)
 // Row 4, cols 0-5: U-Z (gold)
-// Row 4, col 6: ':'
+// Row 4, col 6: gold ':'
 // Row 4, col 7: '!'
+// Row 4, col 8: white ':'
 // Row 5: A-J (red)
 // Row 6: K-T (red)
 // Row 7: U-Z (red)
@@ -26,6 +27,7 @@
 
 typedef enum {
     UVULITE_TEXT_WHITE_DIGITS_GOLD_LETTERS,
+    UVULITE_TEXT_WHITE_DIGITS_GOLD_LETTERS_WHITE_COLON,
     UVULITE_TEXT_GOLD_DIGITS_GOLD_LETTERS,
     UVULITE_TEXT_GOLD_DIGITS_RED_LETTERS,
 } UvuliteTextStyle;

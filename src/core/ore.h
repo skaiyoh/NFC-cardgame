@@ -44,7 +44,7 @@ typedef struct {
 //   1. edge blocked
 //   2. lane blocked
 //   3. base blocked
-//   4. spawn-anchor blocked
+//   phase 4. spawn-anchor blocked
 //   5. node blocked
 //   6. valid
 typedef enum {

@@ -16,11 +16,20 @@
 // unsupported characters (including space) so the caller advances without
 // drawing.
 static int uvulite_digit_row(UvuliteTextStyle textStyle) {
-    return (textStyle == UVULITE_TEXT_WHITE_DIGITS_GOLD_LETTERS) ? 0 : 1;
+    return (textStyle == UVULITE_TEXT_WHITE_DIGITS_GOLD_LETTERS ||
+            textStyle == UVULITE_TEXT_WHITE_DIGITS_GOLD_LETTERS_WHITE_COLON)
+        ? 0
+        : 1;
 }
 
 static int uvulite_letter_row_base(UvuliteTextStyle textStyle) {
     return (textStyle == UVULITE_TEXT_GOLD_DIGITS_RED_LETTERS) ? 5 : 2;
+}
+
+static int uvulite_colon_col(UvuliteTextStyle textStyle) {
+    return (textStyle == UVULITE_TEXT_WHITE_DIGITS_GOLD_LETTERS_WHITE_COLON)
+        ? 8
+        : 6;
 }
 
 static bool uvulite_glyph_cell(char c, UvuliteTextStyle textStyle,
@@ -45,7 +54,11 @@ static bool uvulite_glyph_cell(char c, UvuliteTextStyle textStyle,
         *col = c - 'U';
         return true;
     }
-    if (c == ':') { *row = 4; *col = 6; return true; }
+    if (c == ':') {
+        *row = 4;
+        *col = uvulite_colon_col(textStyle);
+        return true;
+    }
     if (c == '!') { *row = 4; *col = 7; return true; }
     return false;
 }

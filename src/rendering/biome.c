@@ -229,7 +229,7 @@ static void biome_define_undead(BiomeDef *b) {
         l->cellCount = 26;
     }
     {
-        /* Layer "Layer 4"  PAINT  tex:1  tileScale:2.0 */
+        /* Layer "Layer phase 4"  PAINT  tex:1  tileScale:2.0 */
         BiomeLayer *l = &b->biomeLayerDefs[3];
         l->texPath = "src/assets/environment/Undead-Tileset-Top-Down-Pixel-Art/Tiled_files/details.png";
         l->tileScale = 2.0f;

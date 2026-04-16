@@ -109,7 +109,7 @@ static SustenanceCellReason sustenance_classify_cell_internal(const Battlefield 
         }
     }
 
-    // 4. Base anchor clearance
+    // phase 4. Base anchor clearance
     CanonicalPos baseAnchor = bf_base_anchor(bf, side);
     if (bf_distance(cellPos, baseAnchor) < baseClearPx) return SUSTENANCE_CELL_BASE_BLOCKED;
 

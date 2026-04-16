@@ -22,6 +22,13 @@
 #define PROJECTILE_BIRD_BOMB_PATH "src/assets/environment/Objects/bomba.png"
 #define STATUS_BARS_PATH    "src/assets/environment/Objects/health_energy_bars_sheet.png"
 #define TROOP_HEALTH_BAR_PATH "src/assets/environment/Objects/troop_health_bar_sheet.png"
+#define BUFF_ICONS_PATH     "src/assets/environment/Objects/buff_icons_sheet.png"
+#define MUSIC_PHASE1_PATH   "src/assets/music/phase 1/Nate Smith - Small Moves_ Interlude.mp3"
+#define MUSIC_PHASE2_PATH   "src/assets/music/phase 2/Clockclock.mp3"
+#define MUSIC_PHASE3_PATH   "src/assets/music/phase 3/J.A.M - Sign.mp3"
+#define MUSIC_PHASE4_PATH   "src/assets/music/phase 3/Release Cut.mp3"
+#define MUSIC_DEFAULT_VOLUME 0.55f
+#define MUSIC_FADE_SECONDS   0.40f
 
 // Character sprites
 #define CHAR_BASE_PATH      "src/assets/characters/Base/"
@@ -52,7 +59,7 @@
 #define DEFAULT_MELEE_BODY_RADIUS         14.0f
 
 // Base deposit slot ring (farmers reserve slots instead of pathing to base center).
-// 4 primary slots on a 160-deg arc at the canonical ring radius gives
+// phase 4 primary slots on a 160-deg arc at the canonical ring radius gives
 // ~66 px linear spacing between adjacent slots (2 * 74 * sin(26.7 deg))
 // with ~36 px clearance between adjacent farmer shells -- enough elbow
 // room in the approach corridor without sprawling the ring visually.

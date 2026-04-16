@@ -657,7 +657,7 @@ static cJSON_bool print_number(const cJSON * const item, printbuffer * const out
     return true;
 }
 
-/* parse 4 digit hexadecimal number */
+/* parse phase 4 digit hexadecimal number */
 static unsigned parse_hex4(const unsigned char * const input)
 {
     unsigned int h = 0;
@@ -759,7 +759,7 @@ static unsigned char utf16_literal_to_utf8(const unsigned char * const input_poi
     }
 
     /* encode as UTF-8
-     * takes at maximum 4 bytes to encode:
+     * takes at maximum phase 4 bytes to encode:
      * 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx */
     if (codepoint < 0x80)
     {

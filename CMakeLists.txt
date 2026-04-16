@@ -132,6 +132,7 @@ set(SRC_ENTITIES   src/entities/entities.c
                    src/entities/building.c
                    src/entities/projectile.c)
 set(SRC_SYSTEMS    src/systems/player.c
+                   src/systems/audio.c
                    src/systems/energy.c
                    src/systems/spawn.c
                    src/systems/spawn_placement.c

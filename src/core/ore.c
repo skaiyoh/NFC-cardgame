@@ -104,7 +104,7 @@ static OreCellReason ore_classify_cell_internal(const Battlefield *bf,
     CanonicalPos baseAnchor = bf_base_anchor(bf, side);
     if (bf_distance(cellPos, baseAnchor) < baseClearPx) return ORE_CELL_BASE_BLOCKED;
 
-    // 4. Spawn anchor clearance
+    // phase 4. Spawn anchor clearance
     for (int slot = 0; slot < NUM_CARD_SLOTS; slot++) {
         CanonicalPos spawnAnchor = bf_spawn_pos(bf, side, slot);
         if (bf_distance(cellPos, spawnAnchor) < spawnClearPx) return ORE_CELL_SPAWN_BLOCKED;

@@ -55,7 +55,7 @@ static inline Vector2 base_nav_forward_dir(const Entity *base) {
         : (Vector2){ 0.0f, -1.0f };
 }
 
-// Authored cell mask for the base hard core. The shape is a tapered 4-row
+// Authored cell mask for the base hard core. The shape is a tapered phase 4-row
 // body: narrow at the front lip and rear edge, wider across the middle rows.
 // World-space points intentionally target the centers of the cells to stamp.
 static inline bool base_nav_hard_core_cell_point(const Entity *base, int index,

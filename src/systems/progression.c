@@ -9,7 +9,7 @@ static const int s_levelThresholds[PROGRESSION_MAX_LEVEL] = {
     0,   // level 1
     7,   // level 2
     21,  // level 3
-    38,  // level 4
+    38,  // level phase 4
     59,  // level 5
     83,  // level 6
     109, // level 7

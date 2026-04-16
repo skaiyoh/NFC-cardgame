@@ -16,7 +16,7 @@
 // checksum = XOR of all preceding bytes (start byte through last UID byte)
 typedef struct {
     uint8_t reader_index; // 0, 1, or 2 (TCA multiplexer channel)
-    uint8_t uid_len; // 4 or 7
+    uint8_t uid_len; // phase 4 or 7
     uint8_t uid[ARDUINO_MAX_UID_LEN]; // raw UID bytes
 } ArduinoPacket;
 

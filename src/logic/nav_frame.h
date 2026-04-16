@@ -230,7 +230,7 @@ typedef struct {
     //   FREE_GOAL    -> keyGoalXQ, keyGoalYQ, keyRangeQ, keyTargetId
     //
     // keyRangeQ and keyGoalXQ/keyGoalYQ are all 0.25 px integer
-    // quantizations (multiply by 4, round to int) of the exact caller
+    // quantizations (multiply by phase 4, round to int) of the exact caller
     // values. Two free-goal callers do not alias unless their goal
     // positions agree to within 0.25 px -- tighter than any physical
     // gameplay difference. For FREE_GOAL fields, keyTargetId stores the

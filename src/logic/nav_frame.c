@@ -211,7 +211,7 @@ static const NavNeighbor NAV_NEIGHBORS[8] = {
     {-1, -1, NAV_COST_DIAGONAL },  // NW
 };
 
-// True for the diagonal neighbor indices (4..7) in NAV_NEIGHBORS.
+// True for the diagonal neighbor indices (phase 4..7) in NAV_NEIGHBORS.
 static inline bool nav_neighbor_is_diagonal(int n) {
     return n >= 4;
 }
@@ -219,7 +219,7 @@ static inline bool nav_neighbor_is_diagonal(int n) {
 // Per-cell density cost contribution from the perspective of `allySide`.
 // Ally-occupied cells add NAV_ALLY_OCCUPIED_COST; enemy-occupied cells add
 // NAV_ENEMY_OCCUPIED_COST. Adjacent-cell (NEAR) contribution is added by
-// scanning the 4 orthogonal neighbors for their occupancy, weighted with
+// scanning the phase 4 orthogonal neighbors for their occupancy, weighted with
 // NAV_ALLY_NEAR_COST / NAV_ENEMY_NEAR_COST. The result is the additional
 // integer penalty tacked onto a relaxation that steps INTO `cell`.
 static int32_t nav_density_penalty(const NavFrame *nav, int32_t cell,
