@@ -310,14 +310,24 @@ struct Player {
 };
 
 typedef struct {
-    Music tracks[MUSIC_PHASE_COUNT];
-    bool  trackLoaded[MUSIC_PHASE_COUNT];
+    Music tracks[MUSIC_MAX_TRACKS_PER_PHASE];
+    char  trackPaths[MUSIC_MAX_TRACKS_PER_PHASE][MUSIC_MAX_PATH_LENGTH];
+    int   trackCount;
+    int   shuffleOrder[MUSIC_MAX_TRACKS_PER_PHASE];
+    int   nextShuffleIndex;
+    int   lastPlayedTrackIndex;
+} AudioPlaylist;
+
+typedef struct {
+    AudioPlaylist playlists[MUSIC_PHASE_COUNT];
     MusicPhase currentPhase;
+    int currentTrackIndex;
     MusicPhase incomingPhase;
+    int incomingTrackIndex;
     float fadeDurationSeconds;
     float fadeElapsedSeconds;
     float baseVolume;
-    bool hasCurrentPhase;
+    bool hasCurrentTrack;
     bool fadeActive;
     bool deviceReady;
     bool enabled;

@@ -23,10 +23,16 @@
 #define STATUS_BARS_PATH    "src/assets/environment/Objects/health_energy_bars_sheet.png"
 #define TROOP_HEALTH_BAR_PATH "src/assets/environment/Objects/troop_health_bar_sheet.png"
 #define BUFF_ICONS_PATH     "src/assets/environment/Objects/buff_icons_sheet.png"
+#define MUSIC_PHASE1_DIR    "src/assets/music/phase 1"
+#define MUSIC_PHASE2_DIR    "src/assets/music/phase 2"
+#define MUSIC_PHASE3_DIR    "src/assets/music/phase 3"
+#define MUSIC_PHASE4_DIR    "src/assets/music/phase 4"
 #define MUSIC_PHASE1_PATH   "src/assets/music/phase 1/Nate Smith - Small Moves_ Interlude.mp3"
 #define MUSIC_PHASE2_PATH   "src/assets/music/phase 2/Clockclock.mp3"
 #define MUSIC_PHASE3_PATH   "src/assets/music/phase 3/J.A.M - Sign.mp3"
 #define MUSIC_PHASE4_PATH   "src/assets/music/phase 3/Release Cut.mp3"
+#define MUSIC_MAX_TRACKS_PER_PHASE 8
+#define MUSIC_MAX_PATH_LENGTH      512
 #define MUSIC_DEFAULT_VOLUME 0.55f
 #define MUSIC_FADE_SECONDS   0.40f
 
