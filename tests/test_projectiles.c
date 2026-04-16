@@ -138,6 +138,7 @@ typedef struct GameState {
 
 static Rectangle g_lastDrawSource;
 static Rectangle g_lastDrawDest;
+static Vector2 g_lastDrawOrigin;
 static float g_lastDrawRotation = 0.0f;
 static int g_drawCalls = 0;
 static int g_applyCalls = 0;
@@ -158,7 +159,7 @@ static Texture2D LoadTexture(const char *fileName) {
         return (Texture2D){ .id = 1, .width = 66, .height = 19 };
     }
     if (strcmp(fileName, PROJECTILE_HEALER_BLOB_PATH) == 0) {
-        return (Texture2D){ .id = 2, .width = 64, .height = 32 };
+        return (Texture2D){ .id = 2, .width = 320, .height = 64 };
     }
     if (strcmp(fileName, PROJECTILE_BIRD_BOMB_PATH) == 0) {
         return (Texture2D){ .id = 3, .width = 160, .height = 32 };
@@ -173,10 +174,10 @@ static void SetTextureFilter(Texture2D texture, int filter) {
 static void DrawTexturePro(Texture2D texture, Rectangle source, Rectangle dest,
                            Vector2 origin, float rotation, Color tint) {
     (void)texture;
-    (void)origin;
     (void)tint;
     g_lastDrawSource = source;
     g_lastDrawDest = dest;
+    g_lastDrawOrigin = origin;
     g_lastDrawRotation = rotation;
     g_drawCalls++;
 }
@@ -290,6 +291,7 @@ static void spawn_fx_emit_explosion(SpawnFxSystem *fx, Vector2 position, float s
 static void reset_observers(void) {
     g_lastDrawSource = (Rectangle){0};
     g_lastDrawDest = (Rectangle){0};
+    g_lastDrawOrigin = (Vector2){0};
     g_lastDrawRotation = 0.0f;
     g_drawCalls = 0;
     g_applyCalls = 0;
@@ -310,7 +312,7 @@ static GameState make_game_state(void) {
     GameState gs;
     memset(&gs, 0, sizeof(gs));
     gs.projectileAssets.fishTexture = (Texture2D){ .id = 1, .width = 66, .height = 19 };
-    gs.projectileAssets.healerBlobTexture = (Texture2D){ .id = 2, .width = 64, .height = 32 };
+    gs.projectileAssets.healerBlobTexture = (Texture2D){ .id = 2, .width = 320, .height = 64 };
     gs.projectileAssets.birdBombTexture = (Texture2D){ .id = 3, .width = 160, .height = 32 };
     return gs;
 }
@@ -718,6 +720,31 @@ static void test_draw_uses_bird_bomb_animation_frames(void) {
     printf("  PASS: test_draw_uses_bird_bomb_animation_frames\n");
 }
 
+static void test_draw_uses_healer_projectile_animation_and_anchor(void) {
+    reset_observers();
+    GameState gs = make_game_state();
+    Projectile *p = &gs.projectileSystem.projectiles[0];
+    *p = (Projectile){
+        .active = true,
+        .prevPos = {0.0f, 0.0f},
+        .currentPos = {18.0f, 4.0f},
+        .snapshotTargetPos = {30.0f, 4.0f},
+        .visualType = PROJECTILE_VISUAL_HEALER_BLOB,
+        .renderScale = 2.0f,
+        .animElapsed = 0.20f,
+    };
+
+    projectile_system_draw(&gs);
+
+    assert(g_drawCalls == 1);
+    assert(fabsf(g_lastDrawSource.x - 128.0f) < 0.001f);
+    assert(fabsf(g_lastDrawSource.width - 64.0f) < 0.001f);
+    assert(fabsf(g_lastDrawSource.height - 64.0f) < 0.001f);
+    assert(fabsf(g_lastDrawOrigin.x - 24.0f) < 0.001f);
+    assert(fabsf(g_lastDrawOrigin.y - 62.0f) < 0.001f);
+    printf("  PASS: test_draw_uses_healer_projectile_animation_and_anchor\n");
+}
+
 int main(void) {
     printf("Running projectile tests...\n");
     test_spawn_uses_launch_offset_and_snapshot_target();
@@ -736,6 +763,7 @@ int main(void) {
     test_bird_bomb_reaches_snapshot_and_still_explodes_when_target_is_dead();
     test_draw_uses_fish_animation_frames();
     test_draw_uses_bird_bomb_animation_frames();
+    test_draw_uses_healer_projectile_animation_and_anchor();
     printf("\nAll projectile tests passed!\n");
     return 0;
 }

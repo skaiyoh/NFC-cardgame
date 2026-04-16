@@ -15,15 +15,16 @@ enum {
     PROJECTILE_FISH_FRAME_COUNT = 3,
     PROJECTILE_FISH_FRAME_WIDTH = 22,
     PROJECTILE_FISH_FRAME_HEIGHT = 19,
-    PROJECTILE_BLOB_FRAME_COUNT = 1,
+    PROJECTILE_BLOB_FRAME_COUNT = 5,
     PROJECTILE_BLOB_FRAME_WIDTH = 64,
-    PROJECTILE_BLOB_FRAME_HEIGHT = 32,
+    PROJECTILE_BLOB_FRAME_HEIGHT = 64,
     PROJECTILE_BIRD_BOMB_FRAME_COUNT = 5,
     PROJECTILE_BIRD_BOMB_FRAME_WIDTH = 32,
     PROJECTILE_BIRD_BOMB_FRAME_HEIGHT = 32,
 };
 
 static const float kFishFramesPerSecond = 12.0f;
+static const float kHealerBlobFramesPerSecond = 12.0f;
 static const float kBirdBombFramesPerSecond = 12.0f;
 static const float kBirdBombExplosionScale = 2.0f;
 
@@ -33,6 +34,8 @@ typedef struct {
     int frameWidth;
     int frameHeight;
     float framesPerSecond;
+    float originX;
+    float originY;
 } ProjectileVisualDef;
 
 static const ProjectileVisualDef *projectile_visual_def(const GameState *gs,
@@ -50,13 +53,17 @@ static const ProjectileVisualDef *projectile_visual_def(const GameState *gs,
         .frameWidth = PROJECTILE_FISH_FRAME_WIDTH,
         .frameHeight = PROJECTILE_FISH_FRAME_HEIGHT,
         .framesPerSecond = kFishFramesPerSecond,
+        .originX = (float)PROJECTILE_FISH_FRAME_WIDTH * 0.5f,
+        .originY = (float)PROJECTILE_FISH_FRAME_HEIGHT * 0.5f,
     };
     s_blob = (ProjectileVisualDef){
         .texture = gs->projectileAssets.healerBlobTexture,
         .frameCount = PROJECTILE_BLOB_FRAME_COUNT,
         .frameWidth = PROJECTILE_BLOB_FRAME_WIDTH,
         .frameHeight = PROJECTILE_BLOB_FRAME_HEIGHT,
-        .framesPerSecond = 0.0f,
+        .framesPerSecond = kHealerBlobFramesPerSecond,
+        .originX = 12.0f,
+        .originY = 31.0f,
     };
     s_birdBomb = (ProjectileVisualDef){
         .texture = gs->projectileAssets.birdBombTexture,
@@ -64,6 +71,8 @@ static const ProjectileVisualDef *projectile_visual_def(const GameState *gs,
         .frameWidth = PROJECTILE_BIRD_BOMB_FRAME_WIDTH,
         .frameHeight = PROJECTILE_BIRD_BOMB_FRAME_HEIGHT,
         .framesPerSecond = kBirdBombFramesPerSecond,
+        .originX = (float)PROJECTILE_BIRD_BOMB_FRAME_WIDTH * 0.5f,
+        .originY = (float)PROJECTILE_BIRD_BOMB_FRAME_HEIGHT * 0.5f,
     };
 
     switch (visualType) {
@@ -446,7 +455,10 @@ void projectile_system_draw(const GameState *gs) {
             drawWidth,
             drawHeight
         };
-        Vector2 origin = { drawWidth * 0.5f, drawHeight * 0.5f };
+        Vector2 origin = {
+            visual->originX * projectile->renderScale,
+            visual->originY * projectile->renderScale
+        };
 
         DrawTexturePro(visual->texture, src, dst, origin,
                        projectile_rotation_degrees(projectile), WHITE);

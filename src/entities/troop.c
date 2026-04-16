@@ -43,7 +43,7 @@ static const CombatProfile kHealerCombatProfile = {
     .projectileHitRadius = 14.0f,
     .projectileSplashRadius = 0.0f,
     .projectileRenderScale = 1.0f,
-    .projectileLaunchOffset = { 12.0f, -8.0f },
+    .projectileLaunchOffset = { 0.0f, -12.0f },
 };
 
 static const CombatProfile kFishfingCombatProfile = {

@@ -18,7 +18,7 @@
 #define FX_EXPLOSION_PATH   "src/assets/fx/explosion.png"
 #define FX_BLOOD_PATH       "src/assets/fx/blood.png"
 #define PROJECTILE_FISH_PATH "src/assets/environment/Objects/fish_idle.png"
-#define PROJECTILE_HEALER_BLOB_PATH "src/assets/environment/Objects/uvulite_blob.png"
+#define PROJECTILE_HEALER_BLOB_PATH "src/assets/environment/Objects/blubert_projectile.png"
 #define PROJECTILE_BIRD_BOMB_PATH "src/assets/environment/Objects/bomba.png"
 #define STATUS_BARS_PATH    "src/assets/environment/Objects/health_energy_bars_sheet.png"
 #define TROOP_HEALTH_BAR_PATH "src/assets/environment/Objects/troop_health_bar_sheet.png"

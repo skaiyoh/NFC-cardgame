@@ -350,6 +350,26 @@ static void test_knight_defaults_to_ground_render_layer(void) {
     printf("  PASS: test_knight_defaults_to_ground_render_layer\n");
 }
 
+static void test_healer_defaults_to_forehead_projectile_launch_offset(void) {
+    Card healer = {
+        .card_id = "HEALER_01",
+        .name = "Healer",
+        .type = "healer",
+        .data = NULL,
+    };
+
+    TroopData data = troop_create_data_from_card(&healer);
+
+    assert(data.spriteType == SPRITE_TYPE_HEALER);
+    assert(data.projectileVisualType == PROJECTILE_VISUAL_HEALER_BLOB);
+    assert(data.projectileSpeed == 240.0f);
+    assert(data.projectileHitRadius == 14.0f);
+    assert(data.projectileRenderScale == 1.0f);
+    assert(data.projectileLaunchOffset.x == 0.0f);
+    assert(data.projectileLaunchOffset.y == -12.0f);
+    printf("  PASS: test_healer_defaults_to_forehead_projectile_launch_offset\n");
+}
+
 static void test_troop_spawn_copies_render_layer_from_data(void) {
     Player owner = { .id = 0, .side = SIDE_BOTTOM };
     SpriteAtlas atlas = {0};
@@ -385,6 +405,7 @@ int main(void) {
     printf("Running troop tests...\n");
     test_bird_defaults_to_flying_render_layer();
     test_knight_defaults_to_ground_render_layer();
+    test_healer_defaults_to_forehead_projectile_launch_offset();
     test_troop_spawn_copies_render_layer_from_data();
     test_building_create_base_keeps_ground_render_layer();
     printf("\nAll troop tests passed!\n");
