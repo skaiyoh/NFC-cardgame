@@ -179,3 +179,38 @@ bool db_result_isnull(const DBResult *res, int row, int col) {
     if (!res || row < 0 || row >= res->rows || col < 0 || col >= res->cols) return true;
     return res->data[row][col] == NULL;
 }
+
+bool db_table_has_column(DB *db, const char *tableName, const char *columnName) {
+    if (!db || !db->connected || !tableName || !columnName) return false;
+
+    char sql[256];
+    snprintf(sql, sizeof(sql), "PRAGMA table_info(%s);", tableName);
+
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        snprintf(db->last_error, sizeof(db->last_error),
+                 "Prepare failed: %s", sqlite3_errmsg(db->handle));
+        fprintf(stderr, "Column probe failed: %s\n", db->last_error);
+        return false;
+    }
+
+    bool found = false;
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        const unsigned char *name = sqlite3_column_text(stmt, 1);
+        if (name && strcmp((const char *)name, columnName) == 0) {
+            found = true;
+            break;
+        }
+    }
+
+    if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
+        snprintf(db->last_error, sizeof(db->last_error),
+                 "Step failed: %s", sqlite3_errmsg(db->handle));
+        fprintf(stderr, "Column probe failed: %s\n", db->last_error);
+        found = false;
+    }
+
+    sqlite3_finalize(stmt);
+    return found;
+}

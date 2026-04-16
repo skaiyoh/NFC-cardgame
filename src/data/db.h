@@ -41,4 +41,6 @@ const char *db_result_value(const DBResult *res, int row, int col);
 
 bool db_result_isnull(const DBResult *res, int row, int col);
 
+bool db_table_has_column(DB *db, const char *tableName, const char *columnName);
+
 #endif // NFC_CARDGAME_DB_H

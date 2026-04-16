@@ -1,0 +1,53 @@
+// name, isBaseFallback, spriteType, anim, path, frameCount, sourceRowCount, framesPerRow, required
+SPRITE_SHEET(base_basic_idle,   true,  SPRITE_TYPE_COUNT,   ANIM_IDLE,   "src/assets/characters/Base/Basic/idle.png",   4, 3, 4, true)
+SPRITE_SHEET(base_basic_walk,   true,  SPRITE_TYPE_COUNT,   ANIM_WALK,   "src/assets/characters/Base/Basic/walk.png",   8, 3, 8, true)
+SPRITE_SHEET(base_basic_hurt,   true,  SPRITE_TYPE_COUNT,   ANIM_HURT,   "src/assets/characters/Base/Basic/hurt.png",   4, 3, 4, true)
+SPRITE_SHEET(base_attack_sword, true,  SPRITE_TYPE_COUNT,   ANIM_ATTACK, "src/assets/characters/Base/Attack/sword.png", 6, 3, 6, true)
+
+SPRITE_SHEET(king_idle,         false, SPRITE_TYPE_BASE,    ANIM_IDLE,   "src/assets/characters/King/king_idle.png", 8, 1, 8, true)
+SPRITE_SHEET(king_hurt,         false, SPRITE_TYPE_BASE,    ANIM_HURT,   "src/assets/characters/King/hurt.png",         4, 3, 4, true)
+SPRITE_SHEET(king_death,        false, SPRITE_TYPE_BASE,    ANIM_DEATH,  "src/assets/characters/King/death.png",        6, 3, 6, true)
+SPRITE_SHEET(king_attack,       false, SPRITE_TYPE_BASE,    ANIM_ATTACK, "src/assets/characters/King/king_attack.png",  25, 1, 5, true)
+
+// Knight walk art is authored as a single side-facing row and reused for all directions.
+SPRITE_SHEET(knight_walk,       false, SPRITE_TYPE_KNIGHT,  ANIM_WALK,   "src/assets/characters/Knight/uvulite_walk.png", 8, 1, 8, true)
+SPRITE_SHEET(knight_hurt,       false, SPRITE_TYPE_KNIGHT,  ANIM_HURT,   "src/assets/characters/Knight/hurt.png",       4, 3, 4, true)
+SPRITE_SHEET(knight_attack,     false, SPRITE_TYPE_KNIGHT,  ANIM_ATTACK, "src/assets/characters/Knight/uvulite_attack.png", 6, 1, 6, true)
+
+// Healer walk/attack art is authored as a single side-facing row; troop facing is side-only.
+SPRITE_SHEET(healer_walk,       false, SPRITE_TYPE_HEALER,  ANIM_WALK,   "src/assets/characters/Healer/blubert_walk.png", 8, 1, 8, true)
+SPRITE_SHEET(healer_hurt,       false, SPRITE_TYPE_HEALER,  ANIM_HURT,   "src/assets/characters/Healer/hurt.png",       4, 3, 4, true)
+SPRITE_SHEET(healer_attack,     false, SPRITE_TYPE_HEALER,  ANIM_ATTACK, "src/assets/characters/Healer/blubert_attack.png", 6, 1, 6, true)
+
+// Assassin movement art is authored as a single side-facing row and reused for all directions.
+SPRITE_SHEET(assassin_walk,     false, SPRITE_TYPE_ASSASSIN, ANIM_WALK,  "src/assets/characters/Assassin/baxter_run.png", 8, 1, 8, true)
+SPRITE_SHEET(assassin_hurt,     false, SPRITE_TYPE_ASSASSIN, ANIM_HURT,  "src/assets/characters/Assassin/hurt.png",     4, 3, 4, true)
+SPRITE_SHEET(assassin_attack,   false, SPRITE_TYPE_ASSASSIN, ANIM_ATTACK,"src/assets/characters/Assassin/baxter_attack.png", 4, 1, 4, true)
+
+SPRITE_SHEET(brute_walk,        false, SPRITE_TYPE_BRUTE,   ANIM_WALK,   "src/assets/characters/Brute/nostril_walk.png", 8, 1, 8, true)
+SPRITE_SHEET(brute_hurt,        false, SPRITE_TYPE_BRUTE,   ANIM_HURT,   "src/assets/characters/Brute/hurt.png",        4, 3, 4, true)
+// Brute attack art is authored as a single side-facing row and reused for all directions.
+SPRITE_SHEET(brute_attack,      false, SPRITE_TYPE_BRUTE,   ANIM_ATTACK, "src/assets/characters/Brute/nostril_attack.png", 8, 1, 8, true)
+
+// Cheffy (farmer) uses two sprite variants: empty while seeking/gathering,
+// full while returning/depositing. Idle and attack share a single authored
+// idle sheet per variant; the attack clip is reused as a one-shot
+// gather/deposit work animation.
+SPRITE_SHEET(farmer_idle,        false, SPRITE_TYPE_FARMER,      ANIM_IDLE,   "src/assets/characters/Farmer/cheffy_idle_empty.png", 4, 1, 4, true)
+SPRITE_SHEET(farmer_walk,        false, SPRITE_TYPE_FARMER,      ANIM_WALK,   "src/assets/characters/Farmer/cheffy_walk_empty.png", 8, 1, 8, true)
+SPRITE_SHEET(farmer_hurt,        false, SPRITE_TYPE_FARMER,      ANIM_HURT,   "src/assets/characters/Farmer/hurt.png",              4, 3, 4, true)
+SPRITE_SHEET(farmer_attack,      false, SPRITE_TYPE_FARMER,      ANIM_ATTACK, "src/assets/characters/Farmer/cheffy_idle_empty.png", 4, 1, 4, true)
+
+SPRITE_SHEET(farmer_full_idle,   false, SPRITE_TYPE_FARMER_FULL, ANIM_IDLE,   "src/assets/characters/Farmer/cheffy_idle_full.png",  4, 1, 4, true)
+SPRITE_SHEET(farmer_full_walk,   false, SPRITE_TYPE_FARMER_FULL, ANIM_WALK,   "src/assets/characters/Farmer/cheffy_walk_full.png",  8, 1, 8, true)
+SPRITE_SHEET(farmer_full_hurt,   false, SPRITE_TYPE_FARMER_FULL, ANIM_HURT,   "src/assets/characters/Farmer/hurt.png",              4, 3, 4, true)
+SPRITE_SHEET(farmer_full_attack, false, SPRITE_TYPE_FARMER_FULL, ANIM_ATTACK, "src/assets/characters/Farmer/cheffy_idle_full.png",  4, 1, 4, true)
+
+// Bird movement art is authored as a single side-facing row and reused for all directions.
+SPRITE_SHEET(bird_walk,         false, SPRITE_TYPE_BIRD,    ANIM_WALK,   "src/assets/characters/Bird/birdman_fly.png",  8, 1, 8, true)
+SPRITE_SHEET(bird_hurt,         false, SPRITE_TYPE_BIRD,    ANIM_HURT,   "src/assets/characters/Bird/hurt.png",         4, 3, 4, true)
+SPRITE_SHEET(bird_attack,       false, SPRITE_TYPE_BIRD,    ANIM_ATTACK, "src/assets/characters/Bird/bird_attack.png",  9, 1, 9, true)
+
+SPRITE_SHEET(fishfing_walk,     false, SPRITE_TYPE_FISHFING, ANIM_WALK,  "src/assets/characters/Fishfing/fishfing_walk.png", 8, 1, 8, true)
+SPRITE_SHEET(fishfing_hurt,     false, SPRITE_TYPE_FISHFING, ANIM_HURT,  "src/assets/characters/Fishfing/hurt.png",     4, 3, 4, true)
+SPRITE_SHEET(fishfing_attack,   false, SPRITE_TYPE_FISHFING, ANIM_ATTACK,"src/assets/characters/Fishfing/fishfing_attack.png", 6, 1, 6, true)

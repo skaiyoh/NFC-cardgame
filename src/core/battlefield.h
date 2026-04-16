@@ -79,6 +79,14 @@ void bf_add_entity(Battlefield *bf, Entity *e);
 void bf_remove_entity(Battlefield *bf, int entityID);
 Entity *bf_find_entity(Battlefield *bf, int entityID);
 
+// Build a stable per-tick iteration order for the entity registry.
+// Writes `bf->entityCount` indices into `outIndices`, sorted ascending by
+// entity.id. This gives deterministic "lower-id wins the jam" semantics for
+// local steering regardless of the registry's swap-with-last removal order.
+// Caller must provide `outIndices` with capacity >= MAX_ENTITIES * 2.
+// Returns the number of indices written.
+int bf_build_update_order(const Battlefield *bf, int *outIndices);
+
 // --- World queries ---
 // Get territory for a given canonical position
 Territory *bf_territory_at(Battlefield *bf, CanonicalPos pos);
@@ -93,8 +101,17 @@ CanonicalPos bf_spawn_pos(const Battlefield *bf, BattleSide side, int slotIndex)
 CanonicalPos bf_waypoint(const Battlefield *bf, BattleSide side, int lane, int waypointIdx);
 
 // Get canonical home-base anchor for a given side.
-// Positioned behind the center-lane spawn point by BASE_SPAWN_GAP.
+// This remains the authored base position even if the center-lane troop spawn
+// is retuned independently.
 CanonicalPos bf_base_anchor(const Battlefield *bf, BattleSide side);
+
+// Get shortened playable bounds for a side -- territory minus the
+// HAND_UI_DEPTH_PX player-edge inset. Used by camera framing, waypoint
+// generation, spawn/base anchors, and sustenance placement so nothing
+// projects into the hand-bar region on the player's outer edge.
+// SIDE_BOTTOM: {0, 960, 1080, 780}
+// SIDE_TOP:    {0, 180, 1080, 780}
+Rectangle bf_play_bounds(const Battlefield *bf, BattleSide side);
 
 // Map playerID (0 or 1) to BattleSide (per D-03, D-04: player 0 = SIDE_BOTTOM, player 1 = SIDE_TOP)
 BattleSide bf_side_for_player(int playerID);

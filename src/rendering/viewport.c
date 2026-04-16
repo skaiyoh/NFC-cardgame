@@ -11,30 +11,41 @@ void viewport_init_split_screen(GameState *gs) {
     gs->halfWidth = SCREEN_WIDTH / 2;
     Battlefield *bf = &gs->battlefield;
 
-    Rectangle p1Screen = { 0, 0, gs->halfWidth, SCREEN_HEIGHT };
-    Rectangle p2Screen = { gs->halfWidth, 0, gs->halfWidth, SCREEN_HEIGHT };
+    // Each player owns a full 960x1080 half, split into an outer hand-bar
+    // strip (HAND_UI_DEPTH_PX deep) and an inner battlefield sub-rect that
+    // hosts all world-space rendering. The seam (canonical y=SEAM_Y) is
+    // anchored to the inner edge of each battlefield sub-rect.
+    //
+    //   P1 (left):  hand { 0, 0, 180, 1080 }   bf { 180, 0, 780, 1080 }
+    //   P2 (right): bf   { 960, 0, 780, 1080 } hand { 1740, 0, 180, 1080 }
+    const float handDepth = (float)HAND_UI_DEPTH_PX;
+    const float bfWidth = (float)gs->halfWidth - handDepth;
+
+    Rectangle p1Screen = { 0.0f, 0.0f, (float)gs->halfWidth, (float)SCREEN_HEIGHT };
+    Rectangle p1Hand   = { 0.0f, 0.0f, handDepth, (float)SCREEN_HEIGHT };
+    Rectangle p1Bf     = { handDepth, 0.0f, bfWidth, (float)SCREEN_HEIGHT };
+
+    Rectangle p2Screen = { (float)gs->halfWidth, 0.0f, (float)gs->halfWidth, (float)SCREEN_HEIGHT };
+    Rectangle p2Bf     = { (float)gs->halfWidth, 0.0f, bfWidth, (float)SCREEN_HEIGHT };
+    Rectangle p2Hand   = { (float)gs->halfWidth + bfWidth, 0.0f, handDepth, (float)SCREEN_HEIGHT };
 
     // Both cameras use rot=+90 so that the seam (y=960) maps to the inner
-    // screen edge (x=960) for both viewports.  P2's viewport is rendered to
-    // a RenderTexture and flipped vertically when composited, which reverses
-    // the world-X → screen-Y mapping to give P2 the opposite perspective
-    // (across-the-table).
-    //
-    // P1 (rot=+90): y=1920 (base) → x=0, y=960 (seam) → x=960
-    // P2 (rot=+90): y=0 (base) → x=1920, y=960 (seam) → x=960
-    //   → then vertical flip reverses Y so world-X is inverted for P2
-    player_init(&gs->players[0], 0, SIDE_BOTTOM, p1Screen, 90.0f, bf);
-    player_init(&gs->players[1], 1, SIDE_TOP, p2Screen, 90.0f, bf);
+    // battlefield edge (screen x=960) for both viewports.  P2's viewport is
+    // rendered to a RenderTexture and flipped vertically when composited,
+    // which reverses the world-X → screen-Y mapping to give P2 the opposite
+    // perspective (across-the-table).
+    player_init(&gs->players[0], 0, SIDE_BOTTOM, p1Screen, p1Bf, p1Hand, 90.0f, bf);
+    player_init(&gs->players[1], 1, SIDE_TOP,    p2Screen, p2Bf, p2Hand, 90.0f, bf);
 
-    printf("Split-screen viewports initialized (canonical)\n");
+    printf("Split-screen viewports initialized (canonical, with hand bars)\n");
 }
 
 void viewport_begin(Player *p) {
     BeginScissorMode(
-        (int) p->screenArea.x,
-        (int) p->screenArea.y,
-        (int) p->screenArea.width,
-        (int) p->screenArea.height
+        (int) p->battlefieldArea.x,
+        (int) p->battlefieldArea.y,
+        (int) p->battlefieldArea.width,
+        (int) p->battlefieldArea.height
     );
     BeginMode2D(p->camera);
 }

@@ -78,16 +78,25 @@ static SustenanceCellReason sustenance_classify_cell_internal(const Battlefield 
         return SUSTENANCE_CELL_EDGE_BLOCKED;
     }
 
-    // Banned cell (respawn-only: treat as node-blocked)
+    CanonicalPos cellPos = sustenance_cell_center(side, row, col);
+
+    // 2. Play-bounds gate: reject cells whose centers fall outside the
+    // shortened playable rect (hand-bar zone at the player's outer edge).
+    Rectangle play = bf_play_bounds(bf, side);
+    if (cellPos.v.y < play.y || cellPos.v.y >= play.y + play.height) {
+        return SUSTENANCE_CELL_OUT_OF_PLAY;
+    }
+
+    // Banned cell (respawn-only: treat as node-blocked so the exact depleted
+    // cell is never reused immediately).
     if (row == bannedRow && col == bannedCol) return SUSTENANCE_CELL_NODE_BLOCKED;
 
-    CanonicalPos cellPos = sustenance_cell_center(side, row, col);
     float laneClearPx  = SUSTENANCE_LANE_CLEARANCE_CELLS  * SUSTENANCE_GRID_CELL_SIZE_PX;
     float baseClearPx  = SUSTENANCE_BASE_CLEARANCE_CELLS   * SUSTENANCE_GRID_CELL_SIZE_PX;
     float spawnClearPx = SUSTENANCE_SPAWN_CLEARANCE_CELLS  * SUSTENANCE_GRID_CELL_SIZE_PX;
     float nodeClearPx  = SUSTENANCE_NODE_CLEARANCE_CELLS   * SUSTENANCE_GRID_CELL_SIZE_PX;
 
-    // 2. Lane clearance (check all 6 lanes: 3 per side)
+    // 3. Lane clearance (check all 6 lanes: 3 per side)
     for (int s = 0; s < 2; s++) {
         for (int lane = 0; lane < 3; lane++) {
             for (int wp = 0; wp < LANE_WAYPOINT_COUNT - 1; wp++) {
@@ -100,17 +109,17 @@ static SustenanceCellReason sustenance_classify_cell_internal(const Battlefield 
         }
     }
 
-    // 3. Base anchor clearance
+    // 4. Base anchor clearance
     CanonicalPos baseAnchor = bf_base_anchor(bf, side);
     if (bf_distance(cellPos, baseAnchor) < baseClearPx) return SUSTENANCE_CELL_BASE_BLOCKED;
 
-    // 4. Spawn anchor clearance
+    // 5. Spawn anchor clearance
     for (int slot = 0; slot < NUM_CARD_SLOTS; slot++) {
         CanonicalPos spawnAnchor = bf_spawn_pos(bf, side, slot);
         if (bf_distance(cellPos, spawnAnchor) < spawnClearPx) return SUSTENANCE_CELL_SPAWN_BLOCKED;
     }
 
-    // 5. Inter-node clearance (existing active nodes on this side)
+    // 6. Inter-node clearance (existing active nodes on this side)
     for (int i = 0; i < SUSTENANCE_MATCH_COUNT_PER_SIDE; i++) {
         const SustenanceNode *existing = &field->nodes[side][i];
         if (!existing->active) continue;

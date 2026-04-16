@@ -1,12 +1,13 @@
 -- Card seed data for SQLite
 -- Run after schema: sqlite3 cardgame.db < sqlite/seed.sql
 
-INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
+INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) VALUES
 
 (
   'KNIGHT_01',
   'Knight',
   4,
+  'energy',
   'knight',
   'A heavily armored warrior that charges toward the nearest enemy.',
   '{
@@ -35,12 +36,12 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
       "energy_bot_color":   "blue",
       "show_energy_bot":    false
     },
-    "hp":          220,
-    "maxHP":       220,
-    "attack":      28,
-    "attackSpeed": 0.75,
-    "attackRange": 50.0,
-    "moveSpeed":   58.0,
+    "hp":          180,
+    "maxHP":       180,
+    "attack":      20,
+    "attackSpeed": 0.95,
+    "attackRange": 52.0,
+    "moveSpeed":   60.0,
     "targeting":   "nearest",
     "targetType":  null
   }'
@@ -49,7 +50,8 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 (
   'ASSASSIN_01',
   'Assassin',
-  3,
+  4,
+  'energy',
   'assassin',
   'A swift killer that strikes hard and fades before the enemy can react.',
   '{
@@ -78,14 +80,13 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
       "energy_bot_color":   "magenta",
       "show_energy_bot":    false
     },
-    "hp":          75,
-    "maxHP":       75,
-    "attack":      42,
-    "attackSpeed": 1.8,
-    "attackRange": 32.0,
-    "moveSpeed":   100.0,
-    "targeting":   "nearest",
-    "targetType":  null
+    "hp":          140,
+    "maxHP":       140,
+    "attack":      16,
+    "attackSpeed": 1.55,
+    "attackRange": 38.0,
+    "moveSpeed":   92.0,
+    "targeting":   "farmer_first_lowest_hp"
   }'
 ),
 
@@ -93,8 +94,9 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
   'BRUTE_01',
   'Brute',
   6,
+  'energy',
   'brute',
-  'An unstoppable force of destruction. Nothing stands between it and your towers.',
+  'A towering frontline tank that soaks damage and opens space for the rest of your push.',
   '{
     "visual": {
       "border_color":       "red",
@@ -121,13 +123,13 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
       "energy_bot_color":   "red",
       "show_energy_bot":    true
     },
-    "hp":          380,
-    "maxHP":       380,
-    "attack":      55,
-    "attackSpeed": 0.5,
-    "attackRange": 48.0,
-    "moveSpeed":   28.0,
-    "targeting":   "building",
+    "hp":          320,
+    "maxHP":       320,
+    "attack":      16,
+    "attackSpeed": 0.6,
+    "attackRange": 56.0,
+    "moveSpeed":   38.0,
+    "targeting":   "nearest",
     "targetType":  null
   }'
 ),
@@ -135,7 +137,8 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 (
   'FARMER_01',
   'Farmer',
-  2,
+  3,
+  'energy',
   'farmer',
   'A hardworking farmer who gathers sustenance from the battlefield and returns it to base.',
   '{
@@ -164,8 +167,8 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
       "energy_bot_color":   "green",
       "show_energy_bot":    false
     },
-    "hp":          90,
-    "maxHP":       90,
+    "hp":          150,
+    "maxHP":       150,
     "moveSpeed":   58.0
   }'
 ),
@@ -173,7 +176,8 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 (
   'HEALER_01',
   'Healer',
-  3,
+  5,
+  'energy',
   'healer',
   'A battlefield medic that keeps allies fighting long after they should have fallen.',
   '{
@@ -202,58 +206,145 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
       "energy_bot_color":   "green",
       "show_energy_bot":    false
     },
-    "hp":          120,
-    "maxHP":       120,
-    "attack":      5,
-    "attackSpeed": 0.5,
-    "attackRange": 85.0,
-    "moveSpeed":   44.0,
+    "hp":          200,
+    "maxHP":       200,
+    "attack":      8,
+    "healAmount":  18,
+    "attackSpeed": 0.7,
+    "attackRange": 135.0,
+    "moveSpeed":   46.0,
     "targeting":   "nearest",
     "targetType":  null
   }'
 ),
 
 (
-  'FIREBALL_01',
-  'Fireball',
-  4,
-  'spell',
-  'Calls down a blazing fireball that scorches everything it touches.',
+  'BIRD_01',
+  'Bird',
+  5,
+  'energy',
+  'bird',
+  'A swift flier that harries enemies from above.',
   '{
     "visual": {
-      "border_color":       "red",
+      "border_color":       "gray",
       "show_border":        true,
-      "bg_style":           "black",
+      "bg_style":           "paper",
       "show_bg":            true,
-      "banner_color":       "red",
+      "banner_color":       "yellow",
       "show_banner":        true,
       "corner_color":       "yellow",
       "show_corner":        true,
-      "container_color":    "red",
-      "container_variant":  2,
+      "container_color":    "gray",
+      "container_variant":  1,
       "show_container":     false,
-      "description_style":  "black",
+      "description_style":  "paper",
       "show_description":   true,
       "innercorner_style":  "yellow",
       "show_innercorner":   true,
-      "gem_color":          "red",
+      "gem_color":          "yellow",
       "show_gem":           true,
-      "socket_color":       "yellow",
+      "socket_color":       "gray",
       "show_socket":        true,
-      "energy_top_color":   "red",
-      "show_energy_top":    true,
+      "energy_top_color":   "yellow",
+      "show_energy_top":    false,
       "energy_bot_color":   "yellow",
       "show_energy_bot":    false
     },
-    "damage":  120,
-    "element": "fire",
-    "targets": ["troops", "buildings"]
+    "hp":          150,
+    "maxHP":       150,
+    "attack":      20,
+    "attackSpeed": 0.75,
+    "attackRange": 145.0,
+    "moveSpeed":   72.0,
+    "targeting":   "nearest",
+    "targetType":  null
+  }'
+),
+
+(
+  'FISHFING_01',
+  'Fishfing',
+  4,
+  'energy',
+  'fishfing',
+  'A slippery scrapper raised in the reeds.',
+  '{
+    "visual": {
+      "border_color":       "gray",
+      "show_border":        true,
+      "bg_style":           "paper",
+      "show_bg":            true,
+      "banner_color":       "aqua",
+      "show_banner":        true,
+      "corner_color":       "aqua",
+      "show_corner":        true,
+      "container_color":    "gray",
+      "container_variant":  1,
+      "show_container":     false,
+      "description_style":  "paper",
+      "show_description":   true,
+      "innercorner_style":  "white",
+      "show_innercorner":   true,
+      "gem_color":          "aqua",
+      "show_gem":           true,
+      "socket_color":       "gray",
+      "show_socket":        true,
+      "energy_top_color":   "aqua",
+      "show_energy_top":    false,
+      "energy_bot_color":   "aqua",
+      "show_energy_bot":    false
+    },
+    "hp":          110,
+    "maxHP":       110,
+    "attack":      24,
+    "attackSpeed": 0.9,
+    "attackRange": 170.0,
+    "moveSpeed":   54.0,
+    "targeting":   "anti_air_first"
+  }'
+),
+
+(
+  'KING_01',
+  'King',
+  8,
+  'energy',
+  'king',
+  'Spend a huge burst of energy to channel the crown''s wrath through your base.',
+  '{
+    "visual": {
+      "border_color":       "yellow",
+      "show_border":        true,
+      "bg_style":           "paper",
+      "show_bg":            true,
+      "banner_color":       "yellow",
+      "show_banner":        true,
+      "corner_color":       "yellow",
+      "show_corner":        true,
+      "container_color":    "yellow",
+      "container_variant":  1,
+      "show_container":     false,
+      "description_style":  "paper",
+      "show_description":   true,
+      "innercorner_style":  "yellow",
+      "show_innercorner":   true,
+      "gem_color":          "yellow",
+      "show_gem":           true,
+      "socket_color":       "yellow",
+      "show_socket":        true,
+      "energy_top_color":   "yellow",
+      "show_energy_top":    false,
+      "energy_bot_color":   "yellow",
+      "show_energy_bot":    false
+    }
   }'
 )
 
 ON CONFLICT (card_id) DO UPDATE SET
   name       = excluded.name,
   cost       = excluded.cost,
+  cost_resource = excluded.cost_resource,
   type       = excluded.type,
   rules_text = excluded.rules_text,
   data       = excluded.data;

@@ -25,12 +25,20 @@ typedef enum {
     DIR_COUNT
 } SpriteDirection;
 
+typedef enum {
+    ANIM_PLAY_LOOP,
+    ANIM_PLAY_ONCE,
+    ANIM_PLAY_IDLE_BURST
+} AnimPlayMode;
+
 // A single animation sheet (e.g. "idle.png")
 typedef struct {
     Texture2D texture;
     int frameWidth;
     int frameHeight;
-    int frameCount; // number of columns (frames per direction)
+    int frameCount; // number of logical animation frames per direction
+    int sourceRowCount; // number of authored directional rows in the source sheet
+    int framesPerRow; // number of logical frames laid out horizontally per source row
     Rectangle *visibleBounds; // frame-local opaque bounds, indexed by dir * frameCount + frame
 } SpriteSheet;
 
@@ -46,6 +54,9 @@ typedef enum {
     SPRITE_TYPE_ASSASSIN,
     SPRITE_TYPE_BRUTE,
     SPRITE_TYPE_FARMER,
+    SPRITE_TYPE_FARMER_FULL,
+    SPRITE_TYPE_BIRD,
+    SPRITE_TYPE_FISHFING,
     SPRITE_TYPE_BASE,
     SPRITE_TYPE_COUNT
 } SpriteType;
@@ -64,9 +75,17 @@ typedef struct {
     float elapsed;        // seconds since clip start
     float cycleDuration;  // total seconds for one full cycle
     float normalizedTime; // elapsed / cycleDuration, clamped [0,1] for one-shot
+    AnimPlayMode mode;
     bool oneShot;
     bool finished;        // true when one-shot clip completes
     bool flipH;
+    int visualLoops;      // how many times to traverse the sheet during one cycle
+    float idleHoldMinSeconds;
+    float idleHoldMaxSeconds;
+    float idleHoldDuration;
+    unsigned int idleSeed;
+    unsigned int idleCycleIndex;
+    bool idleHolding;
 } AnimState;
 
 // Playback events returned by anim_state_update
@@ -81,6 +100,8 @@ void sprite_atlas_init(SpriteAtlas *atlas);
 
 void sprite_atlas_free(SpriteAtlas *atlas);
 
+// Returns the authored sheet for anim, or a configured fallback sheet for
+// clips that allow fallback (for example IDLE/WALK/RUN).
 const SpriteSheet *sprite_sheet_get(const CharacterSprite *cs, AnimationType anim);
 
 Rectangle sprite_visible_bounds(const CharacterSprite *cs, const AnimState *state,
@@ -91,6 +112,17 @@ void sprite_draw(const CharacterSprite *cs, const AnimState *state,
 
 void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir,
                      float cycleDuration, bool oneShot);
+
+void anim_state_init_with_loops(AnimState *state, AnimationType anim, SpriteDirection dir,
+                                float cycleDuration, bool oneShot, int visualLoops);
+
+void anim_state_init_idle_burst(AnimState *state, AnimationType anim, SpriteDirection dir,
+                                float cycleDuration, float idleHoldMinSeconds,
+                                float idleHoldMaxSeconds, float idleInitialPhaseNormalized,
+                                int visualLoops,
+                                unsigned int idleSeed);
+
+void anim_state_restart(AnimState *state);
 
 AnimPlaybackEvent anim_state_update(AnimState *state, float dt);
 

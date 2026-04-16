@@ -4,20 +4,120 @@
 
 #include "sprite_renderer.h"
 #include "../core/config.h"
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include <limits.h>
 
 typedef struct {
     const char *path;
     int frameCount;
+    int sourceRowCount;
+    int framesPerRow;
     const Rectangle *visibleBounds;
 } SpriteSheetAtlasEntry;
 
+typedef struct {
+    bool isBaseFallback;
+    SpriteType spriteType;
+    AnimationType anim;
+    const char *path;
+    int frameCount;
+    int sourceRowCount;
+    int framesPerRow;
+    bool required;
+} SpriteSheetManifestEntry;
+
 #include "sprite_frame_atlas.h"
+
+static const SpriteSheetManifestEntry kSpriteSheetManifest[] = {
+#define SPRITE_SHEET(name, isBaseFallback, spriteType, anim, path, frameCount, sourceRowCount, framesPerRow, required) \
+    { isBaseFallback, spriteType, anim, path, frameCount, sourceRowCount, framesPerRow, required },
+#include "sprite_sheet_manifest.def"
+#undef SPRITE_SHEET
+};
+
+static const int kSpriteSheetManifestCount =
+    (int) (sizeof(kSpriteSheetManifest) / sizeof(kSpriteSheetManifest[0]));
 
 static int sheet_bounds_index(const SpriteSheet *sheet, SpriteDirection dir, int frame) {
     return dir * sheet->frameCount + frame;
+}
+
+static int sheet_frames_per_row(const SpriteSheet *sheet) {
+    if (!sheet || sheet->frameCount <= 0) return 1;
+    int framesPerRow = (sheet->framesPerRow > 0) ? sheet->framesPerRow : sheet->frameCount;
+    if (framesPerRow > sheet->frameCount) return sheet->frameCount;
+    return framesPerRow;
+}
+
+static int sheet_rows_per_direction(const SpriteSheet *sheet) {
+    if (!sheet || sheet->frameCount <= 0) return 1;
+    int framesPerRow = sheet_frames_per_row(sheet);
+    return (sheet->frameCount + framesPerRow - 1) / framesPerRow;
+}
+
+static int sheet_total_row_count(const SpriteSheet *sheet) {
+    if (!sheet) return 1;
+    int sourceRowCount = (sheet->sourceRowCount > 0) ? sheet->sourceRowCount : DIR_COUNT;
+    return sourceRowCount * sheet_rows_per_direction(sheet);
+}
+
+static bool sheet_has_content(const SpriteSheet *sheet) {
+    if (!sheet) return false;
+    return sheet->texture.id != 0 ||
+           sheet->frameCount > 0 ||
+           sheet->frameWidth > 0 ||
+           sheet->frameHeight > 0 ||
+           sheet->visibleBounds != NULL;
+}
+
+static int sheet_source_row(const SpriteSheet *sheet, SpriteDirection dir) {
+    if (!sheet) return 0;
+
+    int sourceRowCount = (sheet->sourceRowCount > 0) ? sheet->sourceRowCount : DIR_COUNT;
+    if (sourceRowCount <= 1) return 0;
+
+    int row = (int) dir;
+    if (row < 0) return 0;
+    if (row >= sourceRowCount) return sourceRowCount - 1;
+    return row;
+}
+
+static void sheet_source_cell(const SpriteSheet *sheet, SpriteDirection dir, int frame,
+                              int *outCol, int *outRow) {
+    int framesPerRow = sheet_frames_per_row(sheet);
+    int rowsPerDirection = sheet_rows_per_direction(sheet);
+    int baseRow = sheet_source_row(sheet, dir) * rowsPerDirection;
+    int col = frame % framesPerRow;
+    int row = baseRow + (frame / framesPerRow);
+
+    if (outCol) *outCol = col;
+    if (outRow) *outRow = row;
+}
+
+static int anim_visual_loops(const AnimState *state) {
+    if (!state || state->visualLoops < 1) return 1;
+    return state->visualLoops;
+}
+
+static int anim_frame_index(const AnimState *state, const SpriteSheet *sheet) {
+    if (!sheet || sheet->frameCount <= 0) return 0;
+
+    float normalized = state ? state->normalizedTime : 0.0f;
+    if (normalized < 0.0f) normalized = 0.0f;
+
+    if (state && state->oneShot && normalized >= 1.0f) {
+        return sheet->frameCount - 1;
+    }
+
+    float phase = normalized * (float)anim_visual_loops(state);
+    float localPhase = phase - floorf(phase);
+    int frame = (int)(localPhase * (float)sheet->frameCount);
+    if (frame >= sheet->frameCount) frame = sheet->frameCount - 1;
+    if (frame < 0) frame = 0;
+    return frame;
 }
 
 static Rectangle compute_visible_bounds(const Color *pixels, int imageWidth,
@@ -52,10 +152,15 @@ static Rectangle compute_visible_bounds(const Color *pixels, int imageWidth,
     };
 }
 
-static const SpriteSheetAtlasEntry *find_sheet_atlas_entry(const char *path, int frameCount) {
+static const SpriteSheetAtlasEntry *find_sheet_atlas_entry(const char *path, int frameCount,
+                                                           int sourceRowCount,
+                                                           int framesPerRow) {
     for (int i = 0; i < kSpriteSheetAtlasCount; i++) {
         const SpriteSheetAtlasEntry *entry = &kSpriteSheetAtlas[i];
-        if (entry->frameCount == frameCount && strcmp(entry->path, path) == 0) {
+        if (entry->frameCount == frameCount &&
+            entry->sourceRowCount == sourceRowCount &&
+            entry->framesPerRow == framesPerRow &&
+            strcmp(entry->path, path) == 0) {
             return entry;
         }
     }
@@ -76,8 +181,11 @@ static void populate_visible_bounds_from_image(SpriteSheet *sheet, const char *p
     if (pixels) {
         for (int dir = 0; dir < DIR_COUNT; dir++) {
             for (int frame = 0; frame < sheet->frameCount; frame++) {
-                int frameX = frame * sheet->frameWidth;
-                int frameY = dir * sheet->frameHeight;
+                int frameCol = 0;
+                int frameRow = 0;
+                sheet_source_cell(sheet, (SpriteDirection) dir, frame, &frameCol, &frameRow);
+                int frameX = frameCol * sheet->frameWidth;
+                int frameY = frameRow * sheet->frameHeight;
                 sheet->visibleBounds[sheet_bounds_index(sheet, (SpriteDirection) dir, frame)] =
                     compute_visible_bounds(pixels, image.width, frameX, frameY,
                                            sheet->frameWidth, sheet->frameHeight);
@@ -90,22 +198,51 @@ static void populate_visible_bounds_from_image(SpriteSheet *sheet, const char *p
 }
 
 // Helper: load one animation sheet and compute frame dimensions
-static SpriteSheet load_sheet(const char *path, int frameCount) {
+static SpriteSheet load_sheet_with_rows(const char *path, int frameCount, int sourceRowCount,
+                                        int framesPerRow,
+                                        bool required) {
     SpriteSheet s = {0};
+    const char *sheetKind = required ? "required" : "optional";
+
+    if (!path || frameCount < 1 || sourceRowCount < 1 || framesPerRow < 1 ||
+        framesPerRow > frameCount) {
+        fprintf(stderr,
+                "[sprite] Invalid %s sheet manifest entry: path=%s frames=%d rows=%d cols=%d\n",
+                sheetKind, path ? path : "(null)", frameCount, sourceRowCount, framesPerRow);
+        return s;
+    }
+
     s.texture = LoadTexture(path);
-    if (s.texture.id == 0) return s;
+    if (s.texture.id == 0) {
+        fprintf(stderr, "[sprite] Failed to load %s sheet: %s\n", sheetKind, path);
+        return s;
+    }
 
     SetTextureFilter(s.texture, TEXTURE_FILTER_POINT);
 
     s.frameCount = frameCount;
-    s.frameWidth = s.texture.width / frameCount;
-    // TODO: frameHeight assumes exactly DIR_COUNT (3) rows in the sheet (SIDE, DOWN, UP).
-    // TODO: If any sprite sheet has a different row layout this silently produces wrong frame heights.
-    // TODO: Validate texture.height % DIR_COUNT == 0 and log a warning if not.
-    s.frameHeight = s.texture.height / DIR_COUNT;
+    s.sourceRowCount = sourceRowCount;
+    s.framesPerRow = framesPerRow;
+
+    if (s.texture.width <= 0 || s.texture.height <= 0 ||
+        s.texture.width % s.framesPerRow != 0 ||
+        s.texture.height % sheet_total_row_count(&s) != 0) {
+        fprintf(stderr,
+                "[sprite] Invalid %s sheet dimensions for %s "
+                "(got %dx%d, frames=%d, rows=%d, cols=%d)\n",
+                sheetKind, path, s.texture.width, s.texture.height,
+                frameCount, sourceRowCount, framesPerRow);
+        UnloadTexture(s.texture);
+        return (SpriteSheet){0};
+    }
+
+    s.frameWidth = s.texture.width / s.framesPerRow;
+    s.frameHeight = s.texture.height / sheet_total_row_count(&s);
     s.visibleBounds = alloc_visible_bounds(s.frameCount);
 
-    const SpriteSheetAtlasEntry *entry = find_sheet_atlas_entry(path, frameCount);
+    const SpriteSheetAtlasEntry *entry = find_sheet_atlas_entry(path, frameCount,
+                                                                sourceRowCount,
+                                                                framesPerRow);
     if (s.visibleBounds && entry) {
         memcpy(s.visibleBounds, entry->visibleBounds,
                (size_t) (s.frameCount * DIR_COUNT) * sizeof(Rectangle));
@@ -116,64 +253,29 @@ static SpriteSheet load_sheet(const char *path, int frameCount) {
     return s;
 }
 
-// TODO: ANIM_RUN sheets are loaded for every character type but no code ever sets ANIM_RUN on
-// TODO: an entity. These textures are loaded into VRAM and never used. Remove the load_sheet calls
-// TODO: for ANIM_RUN or add run-state transitions to entity_update / entity_set_state.
+static SpriteSheet load_sheet_manifest(const SpriteSheetManifestEntry *entry) {
+    if (!entry) return (SpriteSheet){0};
+    return load_sheet_with_rows(entry->path, entry->frameCount, entry->sourceRowCount,
+                                entry->framesPerRow, entry->required);
+}
+
 void sprite_atlas_init(SpriteAtlas *atlas) {
-    CharacterSprite *b = &atlas->base;
-    b->anims[ANIM_IDLE] = load_sheet(CHAR_BASE_PATH "Basic/idle.png", 4);
-    b->anims[ANIM_RUN] = load_sheet(CHAR_BASE_PATH "Basic/run.png", 8);
-    b->anims[ANIM_WALK] = load_sheet(CHAR_BASE_PATH "Basic/walk.png", 8);
-    b->anims[ANIM_HURT] = load_sheet(CHAR_BASE_PATH "Basic/hurt.png", 4);
-    b->anims[ANIM_DEATH] = load_sheet(CHAR_BASE_PATH "Basic/death.png", 6);
-    b->anims[ANIM_ATTACK] = load_sheet(CHAR_BASE_PATH "Attack/sword.png", 6);
+    if (!atlas) return;
+    memset(atlas, 0, sizeof(*atlas));
 
-    CharacterSprite *knight = &atlas->types[SPRITE_TYPE_KNIGHT];
-    knight->anims[ANIM_IDLE] = load_sheet(CHAR_KNIGHT_PATH "idle.png", 4);
-    knight->anims[ANIM_WALK] = load_sheet(CHAR_KNIGHT_PATH "walk.png", 8);
-    knight->anims[ANIM_RUN] = load_sheet(CHAR_KNIGHT_PATH "run.png", 8);
-    knight->anims[ANIM_HURT] = load_sheet(CHAR_KNIGHT_PATH "hurt.png", 4);
-    knight->anims[ANIM_DEATH] = load_sheet(CHAR_KNIGHT_PATH "death.png", 6);
-    knight->anims[ANIM_ATTACK] = load_sheet(CHAR_KNIGHT_PATH "sword.png", 6);
-    atlas->typeLoaded[SPRITE_TYPE_KNIGHT] = true;
+    for (int i = 0; i < kSpriteSheetManifestCount; i++) {
+        const SpriteSheetManifestEntry *entry = &kSpriteSheetManifest[i];
+        CharacterSprite *target = entry->isBaseFallback
+            ? &atlas->base
+            : &atlas->types[entry->spriteType];
+        target->anims[entry->anim] = load_sheet_manifest(entry);
 
-    CharacterSprite *healer = &atlas->types[SPRITE_TYPE_HEALER];
-    healer->anims[ANIM_IDLE] = load_sheet(CHAR_HEALER_PATH "idle.png", 4);
-    healer->anims[ANIM_WALK] = load_sheet(CHAR_HEALER_PATH "walk.png", 8);
-    healer->anims[ANIM_RUN] = load_sheet(CHAR_HEALER_PATH "run.png", 8);
-    healer->anims[ANIM_HURT] = load_sheet(CHAR_HEALER_PATH "hurt.png", 4);
-    healer->anims[ANIM_DEATH] = load_sheet(CHAR_HEALER_PATH "death.png", 6);
-    healer->anims[ANIM_ATTACK] = load_sheet(CHAR_HEALER_PATH "staff.png", 10);
-    atlas->typeLoaded[SPRITE_TYPE_HEALER] = true;
-
-    CharacterSprite *assassin = &atlas->types[SPRITE_TYPE_ASSASSIN];
-    assassin->anims[ANIM_IDLE] = load_sheet(CHAR_ASSASSIN_PATH "idle.png", 4);
-    assassin->anims[ANIM_WALK] = load_sheet(CHAR_ASSASSIN_PATH "walk.png", 8);
-    assassin->anims[ANIM_RUN] = load_sheet(CHAR_ASSASSIN_PATH "run.png", 8);
-    assassin->anims[ANIM_HURT] = load_sheet(CHAR_ASSASSIN_PATH "hurt.png", 4);
-    assassin->anims[ANIM_DEATH] = load_sheet(CHAR_ASSASSIN_PATH "death.png", 6);
-    assassin->anims[ANIM_ATTACK] = load_sheet(CHAR_ASSASSIN_PATH "sword 2.png", 6);
-    atlas->typeLoaded[SPRITE_TYPE_ASSASSIN] = true;
-
-    CharacterSprite *brute = &atlas->types[SPRITE_TYPE_BRUTE];
-    brute->anims[ANIM_IDLE] = load_sheet(CHAR_BRUTE_PATH "idle.png", 4);
-    brute->anims[ANIM_WALK] = load_sheet(CHAR_BRUTE_PATH "walk.png", 8);
-    brute->anims[ANIM_RUN] = load_sheet(CHAR_BRUTE_PATH "run.png", 8);
-    brute->anims[ANIM_HURT] = load_sheet(CHAR_BRUTE_PATH "hurt.png", 4);
-    brute->anims[ANIM_DEATH] = load_sheet(CHAR_BRUTE_PATH "death.png", 6);
-    // TODO: Brute uses "block.png" (4 frames) as its ANIM_ATTACK — likely a "block" animation
-    // TODO: repurposed as attack. Verify this is intentional or replace with an actual attack sheet.
-    brute->anims[ANIM_ATTACK] = load_sheet(CHAR_BRUTE_PATH "block.png", 4);
-    atlas->typeLoaded[SPRITE_TYPE_BRUTE] = true;
-
-    CharacterSprite *farmer = &atlas->types[SPRITE_TYPE_FARMER];
-    farmer->anims[ANIM_IDLE] = load_sheet(CHAR_FARMER_PATH "idle.png", 4);
-    farmer->anims[ANIM_WALK] = load_sheet(CHAR_FARMER_PATH "walk.png", 8);
-    farmer->anims[ANIM_RUN] = load_sheet(CHAR_FARMER_PATH "run.png", 8);
-    farmer->anims[ANIM_HURT] = load_sheet(CHAR_FARMER_PATH "hurt.png", 4);
-    farmer->anims[ANIM_DEATH] = load_sheet(CHAR_FARMER_PATH "death.png", 6);
-    farmer->anims[ANIM_ATTACK] = load_sheet(CHAR_FARMER_PATH "pickaxe.png", 6);
-    atlas->typeLoaded[SPRITE_TYPE_FARMER] = true;
+        if (!entry->isBaseFallback &&
+            entry->spriteType >= 0 &&
+            entry->spriteType < SPRITE_TYPE_COUNT) {
+            atlas->typeLoaded[entry->spriteType] = true;
+        }
+    }
 }
 
 void sprite_atlas_free(SpriteAtlas *atlas) {
@@ -202,6 +304,24 @@ void sprite_atlas_free(SpriteAtlas *atlas) {
 
 const SpriteSheet *sprite_sheet_get(const CharacterSprite *cs, AnimationType anim) {
     if (!cs || anim < 0 || anim >= ANIM_COUNT) return NULL;
+
+    static const AnimationType kFallbacks[ANIM_COUNT][3] = {
+        [ANIM_IDLE] = { ANIM_IDLE, ANIM_WALK, ANIM_RUN },
+        [ANIM_RUN] = { ANIM_RUN, ANIM_WALK, ANIM_IDLE },
+        [ANIM_WALK] = { ANIM_WALK, ANIM_RUN, ANIM_IDLE },
+        [ANIM_HURT] = { ANIM_HURT, ANIM_DEATH, ANIM_HURT },
+        [ANIM_DEATH] = { ANIM_DEATH, ANIM_DEATH, ANIM_DEATH },
+        [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_ATTACK, ANIM_ATTACK },
+    };
+
+    for (int i = 0; i < 3; i++) {
+        AnimationType candidate = kFallbacks[anim][i];
+        const SpriteSheet *sheet = &cs->anims[candidate];
+        if (sheet_has_content(sheet)) {
+            return sheet;
+        }
+    }
+
     return &cs->anims[anim];
 }
 
@@ -212,9 +332,7 @@ Rectangle sprite_visible_bounds(const CharacterSprite *cs, const AnimState *stat
     const SpriteSheet *sheet = sprite_sheet_get(cs, state->anim);
     if (!sheet) return (Rectangle){pos.x, pos.y, 0.0f, 0.0f};
 
-    int frame = (int)(state->normalizedTime * (float)sheet->frameCount);
-    if (frame >= sheet->frameCount) frame = sheet->frameCount - 1;
-    if (frame < 0) frame = 0;
+    int frame = anim_frame_index(state, sheet);
     Rectangle bounds = {0.0f, 0.0f, (float) sheet->frameWidth, (float) sheet->frameHeight};
     if (sheet->visibleBounds) {
         bounds = sheet->visibleBounds[sheet_bounds_index(sheet, state->dir, frame)];
@@ -276,10 +394,9 @@ void sprite_draw(const CharacterSprite *cs, const AnimState *state,
     // TODO: This is safe but gives no indication of why nothing appears. Log a warning at load time.
     if (!sheet || sheet->texture.id == 0) return;
 
-    int col = (int)(state->normalizedTime * (float)sheet->frameCount);
-    if (col >= sheet->frameCount) col = sheet->frameCount - 1;
-    if (col < 0) col = 0;
-    int row = state->dir;
+    int col = anim_frame_index(state, sheet);
+    int row = 0;
+    sheet_source_cell(sheet, state->dir, col, &col, &row);
 
     float fw = (float) sheet->frameWidth;
     float fh = (float) sheet->frameHeight;
@@ -311,18 +428,208 @@ void sprite_draw(const CharacterSprite *cs, const AnimState *state,
 
 void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir,
                      float cycleDuration, bool oneShot) {
+    anim_state_init_with_loops(state, anim, dir, cycleDuration, oneShot, 1);
+}
+
+static unsigned int anim_idle_burst_mix(unsigned int value) {
+    value ^= value >> 16;
+    value *= 0x7feb352du;
+    value ^= value >> 15;
+    value *= 0x846ca68bu;
+    value ^= value >> 16;
+    return value;
+}
+
+static float anim_idle_burst_hold_seconds(const AnimState *state, unsigned int cycleIndex) {
+    if (!state) return 0.0f;
+
+    float minSeconds = state->idleHoldMinSeconds;
+    float maxSeconds = state->idleHoldMaxSeconds;
+    if (minSeconds < 0.0f) minSeconds = 0.0f;
+    if (maxSeconds < minSeconds) maxSeconds = minSeconds;
+    if (maxSeconds <= 0.0f) return 0.0f;
+
+    unsigned int seed = state->idleSeed ^ ((cycleIndex + 1u) * 0x27d4eb2du);
+    double unit = (double) anim_idle_burst_mix(seed) / (double) UINT_MAX;
+    return minSeconds + (float) (unit * (double) (maxSeconds - minSeconds));
+}
+
+static float anim_idle_burst_initial_phase_normalized(const AnimState *state,
+                                                      float initialPhaseNormalized) {
+    if (!state) return 0.0f;
+
+    if (initialPhaseNormalized < 0.0f) {
+        unsigned int seed = state->idleSeed ^ 0x165667b1u;
+        return (float) ((double) anim_idle_burst_mix(seed) / (double) UINT_MAX);
+    }
+
+    if (initialPhaseNormalized > 1.0f) return 1.0f;
+    return initialPhaseNormalized;
+}
+
+static void anim_idle_burst_apply_initial_phase(AnimState *state, float initialPhaseNormalized) {
+    if (!state) return;
+    initialPhaseNormalized =
+        anim_idle_burst_initial_phase_normalized(state, initialPhaseNormalized);
+    if (initialPhaseNormalized <= 0.0f) return;
+
+    float holdDuration = state->idleHoldDuration;
+    float burstDuration = state->cycleDuration;
+    if (holdDuration < 0.0f) holdDuration = 0.0f;
+    if (burstDuration < 0.0f) burstDuration = 0.0f;
+
+    float firstCycleDuration = holdDuration + burstDuration;
+    if (firstCycleDuration <= 0.0f) return;
+
+    if (initialPhaseNormalized > 1.0f) initialPhaseNormalized = 1.0f;
+    float phaseSeconds = initialPhaseNormalized * firstCycleDuration;
+
+    if (phaseSeconds <= holdDuration) {
+        state->idleHolding = true;
+        state->elapsed = phaseSeconds;
+        state->normalizedTime = 0.0f;
+        return;
+    }
+
+    state->idleHolding = false;
+    state->elapsed = phaseSeconds - holdDuration;
+    if (state->elapsed > state->cycleDuration) {
+        state->elapsed = state->cycleDuration;
+    }
+    state->normalizedTime = (state->cycleDuration > 0.0f)
+                                ? state->elapsed / state->cycleDuration
+                                : 0.0f;
+}
+
+void anim_state_restart(AnimState *state) {
+    if (!state) return;
+
+    state->elapsed = 0.0f;
+    state->normalizedTime = 0.0f;
+    state->finished = false;
+
+    if (state->mode == ANIM_PLAY_IDLE_BURST) {
+        state->idleHolding = true;
+        state->idleCycleIndex = 0u;
+        state->idleHoldDuration = anim_idle_burst_hold_seconds(state, state->idleCycleIndex);
+    }
+}
+
+void anim_state_init_with_loops(AnimState *state, AnimationType anim, SpriteDirection dir,
+                                float cycleDuration, bool oneShot, int visualLoops) {
     state->anim = anim;
     state->dir = dir;
-    state->elapsed = 0.0f;
+    state->mode = oneShot ? ANIM_PLAY_ONCE : ANIM_PLAY_LOOP;
     state->cycleDuration = cycleDuration;
-    state->normalizedTime = 0.0f;
     state->oneShot = oneShot;
-    state->finished = false;
     state->flipH = false;
+    state->visualLoops = (visualLoops > 0) ? visualLoops : 1;
+    state->idleHoldMinSeconds = 0.0f;
+    state->idleHoldMaxSeconds = 0.0f;
+    state->idleHoldDuration = 0.0f;
+    state->idleSeed = 0u;
+    state->idleCycleIndex = 0u;
+    state->idleHolding = false;
+    anim_state_restart(state);
+}
+
+void anim_state_init_idle_burst(AnimState *state, AnimationType anim, SpriteDirection dir,
+                                float cycleDuration, float idleHoldMinSeconds,
+                                float idleHoldMaxSeconds, float idleInitialPhaseNormalized,
+                                int visualLoops,
+                                unsigned int idleSeed) {
+    state->anim = anim;
+    state->dir = dir;
+    state->mode = ANIM_PLAY_IDLE_BURST;
+    state->cycleDuration = cycleDuration;
+    state->oneShot = false;
+    state->flipH = false;
+    state->visualLoops = (visualLoops > 0) ? visualLoops : 1;
+    state->idleHoldMinSeconds = idleHoldMinSeconds;
+    state->idleHoldMaxSeconds = idleHoldMaxSeconds;
+    state->idleSeed = idleSeed;
+    anim_state_restart(state);
+    anim_idle_burst_apply_initial_phase(state, idleInitialPhaseNormalized);
+}
+
+static AnimPlaybackEvent anim_state_update_idle_burst(AnimState *state, float dt) {
+    AnimPlaybackEvent evt = {0};
+    if (!state) return evt;
+
+    evt.prevNormalized = state->normalizedTime;
+
+    if (state->cycleDuration <= 0.0f) {
+        state->normalizedTime = 0.0f;
+        evt.currNormalized = state->normalizedTime;
+        return evt;
+    }
+
+    float remaining = (dt > 0.0f) ? dt : 0.0f;
+    int guard = 0;
+    while (remaining > 0.0f && guard++ < 32) {
+        if (state->idleHolding) {
+            float holdRemaining = state->idleHoldDuration - state->elapsed;
+            if (holdRemaining <= 0.0f) {
+                state->idleHolding = false;
+                state->elapsed = 0.0f;
+                continue;
+            }
+            if (remaining < holdRemaining) {
+                state->elapsed += remaining;
+                remaining = 0.0f;
+                state->normalizedTime = 0.0f;
+                break;
+            }
+            remaining -= holdRemaining;
+            state->idleHolding = false;
+            state->elapsed = 0.0f;
+            state->normalizedTime = 0.0f;
+            continue;
+        }
+
+        float burstRemaining = state->cycleDuration - state->elapsed;
+        if (burstRemaining <= 0.0f) {
+            evt.loopedThisTick = true;
+            state->idleHolding = true;
+            state->elapsed = 0.0f;
+            state->normalizedTime = 0.0f;
+            state->idleCycleIndex++;
+            state->idleHoldDuration =
+                anim_idle_burst_hold_seconds(state, state->idleCycleIndex);
+            continue;
+        }
+
+        if (remaining < burstRemaining) {
+            state->elapsed += remaining;
+            remaining = 0.0f;
+            state->normalizedTime = state->elapsed / state->cycleDuration;
+            break;
+        }
+
+        remaining -= burstRemaining;
+        evt.loopedThisTick = true;
+        state->idleHolding = true;
+        state->elapsed = 0.0f;
+        state->normalizedTime = 0.0f;
+        state->idleCycleIndex++;
+        state->idleHoldDuration = anim_idle_burst_hold_seconds(state, state->idleCycleIndex);
+    }
+
+    if (state->idleHolding) {
+        state->normalizedTime = 0.0f;
+    }
+
+    evt.currNormalized = state->normalizedTime;
+    return evt;
 }
 
 AnimPlaybackEvent anim_state_update(AnimState *state, float dt) {
     AnimPlaybackEvent evt = {0};
+    if (!state) return evt;
+
+    if (state->mode == ANIM_PLAY_IDLE_BURST) {
+        return anim_state_update_idle_burst(state, dt);
+    }
 
     if (state->cycleDuration <= 0.0f) {
         // Degenerate clip: stay at frame 0, report finished immediately for one-shot
@@ -372,7 +679,8 @@ SpriteType sprite_type_from_card(const char *cardType) {
     if (strcmp(cardType, "assassin") == 0) return SPRITE_TYPE_ASSASSIN;
     if (strcmp(cardType, "brute") == 0) return SPRITE_TYPE_BRUTE;
     if (strcmp(cardType, "farmer") == 0) return SPRITE_TYPE_FARMER;
-    // TODO: Unknown card types silently fall back to SPRITE_TYPE_KNIGHT. Log a warning so new card
-    // TODO: types that are missing a sprite mapping are caught during development.
-    return SPRITE_TYPE_KNIGHT; // default fallback
+    if (strcmp(cardType, "bird") == 0) return SPRITE_TYPE_BIRD;
+    if (strcmp(cardType, "fishfing") == 0) return SPRITE_TYPE_FISHFING;
+    fprintf(stderr, "[sprite] unknown card type '%s', falling back to KNIGHT\n", cardType);
+    return SPRITE_TYPE_KNIGHT;
 }

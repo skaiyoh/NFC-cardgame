@@ -12,7 +12,8 @@ Cards are stored in the `cards` table with the following columns:
 |--------|------|----------|-------------|
 | `card_id` | TEXT (PK) | Yes | Unique identifier, used to link NFC tags to cards |
 | `name` | TEXT | Yes | Display name shown on the card |
-| `cost` | INTEGER | Yes | Energy cost to play |
+| `cost` | INTEGER | Yes | Cost amount to play |
+| `cost_resource` | TEXT | Yes | Resource used to pay the cost: `energy` or `sustenance` |
 | `type` | TEXT | Yes | Card type — determines which effect handler runs (see [Card Types](#card-types)) |
 | `rules_text` | TEXT | No | Flavor or rules text shown in the card description area |
 | `data` | TEXT | No | Visual styling and gameplay stats as JSON (see [Data JSON](#data-json)); runtime code falls back to defaults when it is absent |
@@ -30,10 +31,16 @@ The following types are registered in `src/logic/card_effects.c`. Using an unreg
 | `assassin` | Spawns a troop using the shared troop pipeline; no assassin-specific ability yet |
 | `brute` | Spawns a troop using the shared troop pipeline; gameplay difference currently comes from JSON stats and targeting |
 | `farmer` | Spawns a troop using the shared troop pipeline; no farmer-specific ability yet |
-| `spell` | Consumes energy and logs parsed spell metadata; no in-world effect yet |
+| `bird` | Spawns a ranged troop that releases a bomb projectile on attack; the bomb deals enemy-only splash damage on activation |
+| `fishfing` | Spawns a troop using the shared troop pipeline; starts from Knight baseline stats |
+| `king` | Plays on the owning base and restarts its attack clip; no spawn, animation-only in this pass |
 
-All troop types (`knight`, `healer`, `assassin`, `brute`, `farmer`) read their
-stats from the same troop fields in the JSON `data` column.
+All troop types (`knight`, `healer`, `assassin`, `brute`, `farmer`, `bird`,
+`fishfing`) read their stats from the same troop fields in the JSON `data`
+column. `king` does not read troop stats — only the `visual` block is required.
+
+`cost_resource` defaults to `energy` in the schema, so older rows can keep
+omitting it until they are re-seeded or edited.
 
 Lookups are case-sensitive: `cards_find()` uses `strcmp()` on `card_id`. Keep
 `cards.card_id` and `nfc_tags.card_id` casing consistent across your database.
@@ -136,6 +143,7 @@ Applies to all troop types: `knight`, `healer`, `assassin`, `brute`, `farmer`.
 | `hp` | int | `100` | Starting health. Also sets `maxHP` if `maxHP` is omitted |
 | `maxHP` | int | `hp` | Maximum health (only needed if different from `hp`) |
 | `attack` | int | `10` | Damage dealt per hit |
+| `healAmount` | int | `0` | HP restored per hit when the target is a friendly troop. Any value > 0 turns the unit into a supporter that prefers injured allies in range over enemies. For `type: "healer"` cards, omitting this field falls back to the `attack` value so older databases stay functional. |
 | `attackSpeed` | float | `1.0` | Attacks per second |
 | `attackRange` | float | `40.0` | Melee range in pixels |
 | `moveSpeed` | float | `60.0` | Movement speed in pixels per second |
@@ -144,27 +152,15 @@ Applies to all troop types: `knight`, `healer`, `assassin`, `brute`, `farmer`.
 
 ---
 
-## Gameplay Fields — Spell Cards
-
-Applies to `type: "spell"`. Note: spell logic currently consumes energy and
-prints parsed metadata only.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `damage` | int | Damage amount |
-| `element` | string | Element type (e.g. `"fire"`, `"ice"`) |
-| `targets` | array of strings | Target categories (e.g. `["troops", "buildings"]`) |
-
----
-
 ## SQL Insert
 
 ```sql
-INSERT INTO cards (card_id, name, cost, type, rules_text, data)
+INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data)
 VALUES (
   'KNIGHT_01',
   'Knight',
   4,
+  'energy',
   'knight',
   'A heavily armored warrior that charges toward the nearest enemy.',
   '{
@@ -253,6 +249,20 @@ VALUES (
 }
 ```
 
+### Brute — Late-game sustenance spender
+
+```json
+{
+  "cost_resource": "sustenance",
+  "hp": 380,
+  "attack": 55,
+  "attackSpeed": 0.5,
+  "attackRange": 48.0,
+  "moveSpeed": 28.0,
+  "targeting": "building"
+}
+```
+
 ### Healer — Slow support troop
 
 ```json
@@ -297,24 +307,6 @@ VALUES (
 }
 ```
 
-### Fireball — Spell card
-
-```json
-{
-  "visual": {
-    "border_color": "red",
-    "bg_style": "black",
-    "banner_color": "red",
-    "gem_color": "red",
-    "show_energy_top": true,
-    "energy_top_color": "red"
-  },
-  "damage": 120,
-  "element": "fire",
-  "targets": ["troops", "buildings"]
-}
-```
-
 ---
 
 ## Quick Reference
@@ -335,4 +327,4 @@ VALUES (
 `nearest` `building` `specific` (+ `targetType` field)
 
 ### Registered card types
-`knight` `healer` `assassin` `brute` `farmer` `spell`
+`assassin` `bird` `brute` `farmer` `fishfing` `healer` `king` `knight`

@@ -8,10 +8,24 @@
 #include "db.h"
 #include <stdbool.h>
 
-typedef struct {
+typedef enum {
+    CARD_COST_RESOURCE_ENERGY = 0,
+    CARD_COST_RESOURCE_SUSTENANCE
+} CardCostResource;
+
+static inline const char *card_cost_resource_name(CardCostResource resource) {
+    switch (resource) {
+        case CARD_COST_RESOURCE_SUSTENANCE: return "sustenance";
+        case CARD_COST_RESOURCE_ENERGY:
+        default: return "energy";
+    }
+}
+
+typedef struct Card {
     char *card_id;
     char *name;
     int cost;
+    CardCostResource costResource;
     char *type;
     char *rules_text;
     char *data;

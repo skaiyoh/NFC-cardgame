@@ -8,9 +8,14 @@
 #include "../core/types.h"
 
 Texture2D status_bars_load(void);
+Texture2D troop_health_bar_load(void);
 void status_bars_unload(Texture2D texture);
-void status_bars_draw_screen(const GameState *gs, Camera2D camera,
+void troop_health_bar_unload(Texture2D texture);
+void status_bars_draw_screen(const GameState *gs, const Player *hudPlayer,
+                             Camera2D camera,
+                             Rectangle viewportRect,
                              float rotationDegrees,
-                             float labelRotationDegrees);
+                             float labelRotationDegrees,
+                             bool reverseFillDirection);
 
 #endif //NFC_CARDGAME_STATUS_BARS_H

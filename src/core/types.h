@@ -15,6 +15,7 @@
 #include "../rendering/spawn_fx.h"
 #include "../rendering/biome.h"
 #include "../hardware/nfc_reader.h"
+#include "../logic/nav_frame.h"
 #include "battlefield.h"
 
 // Forward declarations
@@ -22,12 +23,49 @@ typedef struct Entity Entity;
 typedef struct Player Player;
 typedef struct GameState GameState;
 
+#define PROJECTILE_CAPACITY (MAX_ENTITIES * 2)
+
 // Entity enums
 typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
 
 typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
 
 typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_ATTACKING, ESTATE_DEAD } EntityState;
+
+typedef enum {
+    ENTITY_RENDER_LAYER_GROUND = 0,
+    ENTITY_RENDER_LAYER_FLYING
+} EntityRenderLayer;
+
+typedef enum {
+    ATTACK_ENGAGEMENT_CONTACT = 0,
+    ATTACK_ENGAGEMENT_DIRECT_RANGE
+} AttackEngagementMode;
+
+typedef enum {
+    ATTACK_DELIVERY_INSTANT = 0,
+    ATTACK_DELIVERY_PROJECTILE
+} AttackDeliveryMode;
+
+typedef enum {
+    PROJECTILE_EFFECT_NONE = 0,
+    PROJECTILE_EFFECT_DAMAGE,
+    PROJECTILE_EFFECT_HEAL
+} ProjectileEffectKind;
+
+typedef enum {
+    PROJECTILE_VISUAL_NONE = 0,
+    PROJECTILE_VISUAL_FISH,
+    PROJECTILE_VISUAL_HEALER_BLOB,
+    PROJECTILE_VISUAL_BIRD_BOMB
+} ProjectileVisualType;
+
+typedef enum {
+    COMBAT_PROFILE_DEFAULT_MELEE = 0,
+    COMBAT_PROFILE_HEALER,
+    COMBAT_PROFILE_FISHFING,
+    COMBAT_PROFILE_BIRD
+} CombatProfileId;
 
 // Targeting preference for combat (used by Entity and TroopData)
 typedef enum {
@@ -48,6 +86,81 @@ typedef enum {
     FARMER_DEPOSITING
 } FarmerState;
 
+// Movement profile. In the Phase 3 flow-field mover, LANE vs ASSAULT vs
+// FREE_GOAL chooses which flow field the entity consults: lane-march
+// (LANE), target-pursuit (ASSAULT, set on aggro acquisition), or
+// free-goal (FREE_GOAL, farmers and helpers). STATIC entities are never
+// stepped. The ASSAULT profile is also still read by the old candidate
+// fan in pathfind_try_step_toward (NULL-nav fallback) for its soft
+// overlap shaping -- retiring it entirely is outstanding work. LANE = 0
+// so memset defaults produce a safe lane-marcher.
+typedef enum {
+    NAV_PROFILE_LANE = 0,
+    NAV_PROFILE_ASSAULT,
+    NAV_PROFILE_FREE_GOAL,
+    NAV_PROFILE_STATIC
+} UnitNavProfile;
+
+// Kind of deposit slot a farmer is currently holding a reservation on.
+// NONE = 0 so memset defaults indicate "no reservation" without code help.
+typedef enum {
+    DEPOSIT_SLOT_NONE = 0,
+    DEPOSIT_SLOT_PRIMARY,
+    DEPOSIT_SLOT_QUEUE
+} DepositSlotKind;
+
+// A single reservable contact point around a base, computed once at base
+// creation. Farmers walk to this world position instead of base->position
+// so they do not all collapse onto a single unreachable cell.
+typedef struct {
+    Vector2 worldPos;
+    int     claimedByEntityId; // -1 when unclaimed
+} DepositSlot;
+
+// Ring of deposit slots owned by a single base entity. `initialized` gates
+// safe API reads in case a non-base entity's zeroed memory is queried.
+typedef struct {
+    DepositSlot primary[BASE_DEPOSIT_PRIMARY_SLOT_COUNT];
+    DepositSlot queue  [BASE_DEPOSIT_QUEUE_SLOT_COUNT];
+    bool initialized;
+} DepositSlotRing;
+
+typedef struct {
+    ProjectileEffectKind kind;
+    int amount;
+    int sourceEntityId;
+    int sourceOwnerId;
+    bool canHitAir;
+} CombatEffectPayload;
+
+typedef struct {
+    bool active;
+    bool reserved;
+    int sourceId;
+    int sourceOwnerId;
+    int lockedTargetId;
+    CombatEffectPayload payload;
+    Vector2 prevPos;
+    Vector2 currentPos;
+    Vector2 snapshotTargetPos;
+    float speed;
+    float hitRadius;
+    float splashRadius;
+    ProjectileVisualType visualType;
+    float renderScale;
+    float animElapsed;
+} Projectile;
+
+typedef struct {
+    Texture2D fishTexture;
+    Texture2D healerBlobTexture;
+    Texture2D birdBombTexture;
+} ProjectileAssets;
+
+typedef struct {
+    Projectile projectiles[PROJECTILE_CAPACITY];
+} ProjectileSystem;
+
 // Entity definition
 struct Entity {
     int id;
@@ -66,8 +179,20 @@ struct Entity {
     float attackRange;
     float attackCooldown;       // time remaining before next attack
     int attackTargetId;         // locked target for current swing, -1 if none
+    bool attackReleaseFired;    // once-per-clip latch for effect release/projectile spawn
+    bool attackWindupCommitted; // once the attack visibly starts, finish the wind-up policy for this attack type
+    int reservedProjectileSlotIndex; // offensive projectile slot reserved before release, -1 when none
     TargetingMode targeting;    // targeting preference
     const char *targetType;     // for TARGET_SPECIFIC_TYPE (owned, freed in entity_destroy)
+    CombatProfileId combatProfileId;
+    AttackEngagementMode engagementMode;
+    AttackDeliveryMode deliveryMode;
+    ProjectileVisualType projectileVisualType;
+    float projectileSpeed;
+    float projectileHitRadius;
+    float projectileSplashRadius;
+    float projectileRenderScale;
+    Vector2 projectileLaunchOffset;
 
     // Animation
     AnimState anim;
@@ -76,11 +201,13 @@ struct Entity {
     float spriteScale;
     float spriteRotationDegrees;
     BattleSide presentationSide;
+    EntityRenderLayer renderLayer;
 
     // Ownership
     int ownerID; // Player index (0 or 1)
     int lane; // Which lane (0-2)
-    int waypointIndex; // Current target waypoint index along lane path
+    int waypointIndex; // Derived: first authored waypoint still ahead along the lane path
+    float laneProgress; // Monotonic distance traveled along the authored lane polyline
 
     // Debug
     float hitFlashTimer;        // countdown for hit-marker visual flash (debug overlay)
@@ -95,6 +222,27 @@ struct Entity {
     // Flags
     bool alive;
     bool markedForRemoval;
+
+    // Support stats
+    int healAmount;             // > 0 marks this unit as a supporter; HP restored per hit on a friendly troop
+
+    // Local steering
+    float bodyRadius;           // collision/footprint radius in canonical world units
+    float navRadius;            // pathfinding footprint; 0 => fall back to bodyRadius
+    UnitNavProfile navProfile;  // steering algorithm selector (LANE / ASSAULT / FREE_GOAL / STATIC)
+    int movementTargetId;       // local aggro pursuit target, -1 when none
+    int ticksSinceProgress;     // ticks since the last forward step toward the current goal
+    int lastSteerSideSign;      // continuity bias for scored sidestep selection (-1/0/+1)
+
+    // Deposit slot reservation (farmers only)
+    int             reservedDepositSlotIndex;  // -1 when no reservation held
+    DepositSlotKind reservedDepositSlotKind;   // DEPOSIT_SLOT_NONE when unclaimed
+
+    // Base-only payloads. Non-base entities leave these zero-initialized.
+    DepositSlotRing depositSlots;
+    int  baseLevel;                    // 1..PROGRESSION_MAX_LEVEL; 0 for non-bases
+    bool basePendingKingBurst;         // true while a queued King swing awaits hit-marker
+    int  basePendingKingBurstDamage;   // damage to apply at the swing's hit frame
 };
 
 // Card slot - represents a physical NFC reader position
@@ -110,23 +258,41 @@ typedef struct {
 struct Player {
     int id;                    // 0 or 1
     BattleSide side;           // SIDE_BOTTOM or SIDE_TOP (per D-12)
-    Rectangle screenArea;      // Screen space viewport
+    Rectangle screenArea;      // Full half-screen owned by this player (kept for reference)
+    Rectangle battlefieldArea; // Inner sub-rect that hosts world-space rendering
+    Rectangle handArea;        // Outer-edge hand-bar strip (HAND_UI_DEPTH_PX deep)
     Camera2D camera;           // Camera for this player's view
     float cameraRotation;      // 90 or -90 for split screen orientation
 
     // Card slots (3 NFC readers per player)
     CardSlot slots[NUM_CARD_SLOTS];
 
+    // Visible hand contents, independent from the three NFC/lane slots.
+    Card *handCards[HAND_MAX_CARDS];
+    bool handCardAnimating[HAND_MAX_CARDS];
+    float handCardAnimElapsed[HAND_MAX_CARDS];
+
     // Energy system
     float energy;
     float maxEnergy;
     float energyRegenRate;
 
+    // Spendable sustenance resource used by sustenance-cost cards.
+    int sustenanceBank;
+
     // Non-owning: Battlefield entity registry owns the base entity.
     // NULL if destroyed or not yet spawned.
     Entity *base;
 
-    // Sustenance scoring (incremented on deposit or carrying-farmer death)
+    // Frozen base HUD values retained after the base entity is swept so the
+    // destroyed base can keep showing a 0/max status bar.
+    bool hasBaseHudSnapshot;
+    int baseHudHP;
+    int baseHudMaxHP;
+    int baseHudLevel;
+
+    // Lifetime sustenance gathered across the match. This drives progression
+    // and never decreases when sustenance is spent on cards.
     int sustenanceCollected;
 };
 
@@ -146,13 +312,28 @@ struct GameState {
     // Canonical battlefield -- authoritative world model (per D-11)
     Battlefield battlefield;
 
+    // Per-frame flow-field navigation cache. Reset each tick by
+    // nav_begin_frame() before the entity update loop.
+    NavFrame nav;
+    float lastFrameDeltaTime;
+
     // Character sprites (shared by all entities)
     SpriteAtlas spriteAtlas;
     SpawnFxSystem spawnFx;
+    ProjectileAssets projectileAssets;
+    ProjectileSystem projectileSystem;
 
     // Sustenance node texture (shared by sustenance_renderer)
     Texture2D sustenanceTexture;
     Texture2D statusBarsTexture;
+    Texture2D troopHealthBarTexture;
+
+    // Shared hand UI textures (shared by hand_ui)
+    Texture2D handBarBackgroundTexture;
+    Texture2D handCardSheetTexture;
+
+    // Bitmap font sheet for HUD and match-result overlays
+    Texture2D uvuliteLetteringTexture;
 
     // Screen layout
     int halfWidth; // Half screen width for split screen

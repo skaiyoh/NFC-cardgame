@@ -3,7 +3,18 @@
 //
 
 #include "ui.h"
+#include "uvulite_font.h"
 #include <stdio.h>
+#include <string.h>
+
+// Bitmap-font layout constants. Inter-glyph spacing is expressed in source
+// pixels; the bitmap renderer scales it with the glyph size.
+#define UI_SUSTENANCE_SCALE   2.0f
+#define UI_SUSTENANCE_SPACING 1.0f
+#define UI_SUSTENANCE_PADDING 40.0f
+#define UI_MATCH_RESULT_SCALE   8.0f
+#define UI_MATCH_RESULT_SPACING 1.0f
+#define UI_MATCH_RESULT_BACKDROP_ALPHA 0.35f
 
 static int ui_normalize_rotation(float rotation) {
     int normalized = ((int) rotation) % 360;
@@ -39,17 +50,55 @@ static Vector2 ui_text_position_from_bounds(Vector2 boundsTopLeft,
     }
 }
 
+// Fallback color for the default-font path. The bitmap font bakes its own
+// palette so the caller no longer passes a Color; when the texture is
+// missing we derive one here from player identity so P1 stays distinct
+// from P2.
+static Color ui_sustenance_fallback_color(const Player *p) {
+    return (p && p->id == 0) ? DARKGREEN : MAROON;
+}
+
+// Fallback color for match-result text. Matches the semantic mapping that
+// used to live in game.c: DRAW=LIGHTGRAY, VICTORY=GOLD, DEFEAT=RED.
+static Color ui_match_result_fallback_color(const char *text) {
+    if (!text) return GOLD;
+    if (strcmp(text, "DRAW") == 0) return LIGHTGRAY;
+    if (strcmp(text, "VICTORY") == 0) return GOLD;
+    if (strcmp(text, "DEFEAT") == 0) return RED;
+    return GOLD;
+}
+
+static UvuliteTextStyle ui_match_result_bitmap_style(const char *text) {
+    if (text && strcmp(text, "DEFEAT") == 0) {
+        return UVULITE_TEXT_GOLD_DIGITS_RED_LETTERS;
+    }
+    return UVULITE_TEXT_GOLD_DIGITS_GOLD_LETTERS;
+}
+
+static float ui_bitmap_spacing_screen(float scale, float sourceSpacing) {
+    return scale * sourceSpacing;
+}
+
 void ui_draw_sustenance_counter(const Player *p, Rectangle viewport,
-                         float rotation, Color color) {
-    Font font = GetFontDefault();
-    const int fontSize = 40;
-    const float spacing = 2.0f;
-    const float padding = 40.0f;
+                                float rotation, Texture2D letteringTexture) {
+    char bitmapLabel[32];
+    char fallbackLabel[32];
+    snprintf(bitmapLabel, sizeof(bitmapLabel), "SUSTENANCE:%d", p->sustenanceBank);
+    snprintf(fallbackLabel, sizeof(fallbackLabel), "SUSTENANCE: %d", p->sustenanceBank);
 
-    char label[32];
-    snprintf(label, sizeof(label), "SUSTENANCE: %d", p->sustenanceCollected);
+    const char *label = (letteringTexture.id != 0) ? bitmapLabel : fallbackLabel;
 
-    Vector2 textSize = MeasureTextEx(font, label, (float)fontSize, spacing);
+    Vector2 textSize;
+    if (letteringTexture.id != 0) {
+        textSize = uvulite_font_measure(label, UI_SUSTENANCE_SCALE,
+                                        UI_SUSTENANCE_SPACING);
+    } else {
+        // Match the bitmap glyph height so fallback layout stays close.
+        float fontSize = (float) UVULITE_FONT_GLYPH_PIXELS * UI_SUSTENANCE_SCALE;
+        textSize = MeasureTextEx(GetFontDefault(), label, fontSize,
+                                 ui_bitmap_spacing_screen(UI_SUSTENANCE_SCALE,
+                                                          UI_SUSTENANCE_SPACING));
+    }
     Vector2 boundsSize = ui_rotated_text_bounds(textSize, rotation);
 
     Vector2 boundsTopLeft;
@@ -57,33 +106,52 @@ void ui_draw_sustenance_counter(const Player *p, Rectangle viewport,
     if (rot == 90) {
         // P1: top-right corner
         boundsTopLeft = (Vector2){
-            viewport.x + viewport.width - padding - boundsSize.x,
-            viewport.y + padding
+            viewport.x + viewport.width - UI_SUSTENANCE_PADDING - boundsSize.x,
+            viewport.y + UI_SUSTENANCE_PADDING
         };
     } else {
         // P2: bottom-left corner
         boundsTopLeft = (Vector2){
-            viewport.x + padding,
-            viewport.y + viewport.height - padding - boundsSize.y
+            viewport.x + UI_SUSTENANCE_PADDING,
+            viewport.y + viewport.height - UI_SUSTENANCE_PADDING - boundsSize.y
         };
     }
 
-    DrawTextPro(font, label,
-                ui_text_position_from_bounds(boundsTopLeft, textSize, rotation),
-                (Vector2){ 0.0f, 0.0f },
-                rotation, (float)fontSize, spacing, color);
+    Vector2 pivot = ui_text_position_from_bounds(boundsTopLeft, textSize, rotation);
+
+    if (letteringTexture.id != 0) {
+        // Use white digits for the count while keeping the label letters on
+        // the gold rows.
+        uvulite_font_draw(letteringTexture, label, pivot, rotation,
+                          UI_SUSTENANCE_SCALE, UI_SUSTENANCE_SPACING,
+                          UVULITE_TEXT_WHITE_DIGITS_GOLD_LETTERS);
+    } else {
+        float fontSize = (float) UVULITE_FONT_GLYPH_PIXELS * UI_SUSTENANCE_SCALE;
+        DrawTextPro(GetFontDefault(), label, pivot, (Vector2){0.0f, 0.0f},
+                    rotation, fontSize,
+                    ui_bitmap_spacing_screen(UI_SUSTENANCE_SCALE,
+                                             UI_SUSTENANCE_SPACING),
+                    ui_sustenance_fallback_color(p));
+    }
 }
 
 void ui_draw_match_result(const Player *p, const char *text, float rotation,
-                          Color color) {
-    Font font = GetFontDefault();
-    const int fontSize = 80;
-    const float spacing = 4.0f;
+                          Texture2D letteringTexture) {
+    Vector2 textSize;
+    if (letteringTexture.id != 0) {
+        textSize = uvulite_font_measure(text, UI_MATCH_RESULT_SCALE,
+                                        UI_MATCH_RESULT_SPACING);
+    } else {
+        float fontSize = (float) UVULITE_FONT_GLYPH_PIXELS * UI_MATCH_RESULT_SCALE;
+        textSize = MeasureTextEx(GetFontDefault(), text, fontSize,
+                                 ui_bitmap_spacing_screen(UI_MATCH_RESULT_SCALE,
+                                                          UI_MATCH_RESULT_SPACING));
+    }
 
-    Vector2 textSize = MeasureTextEx(font, text, (float)fontSize, spacing);
-
-    float cx = p->screenArea.x + p->screenArea.width / 2.0f;
-    float cy = p->screenArea.y + p->screenArea.height / 2.0f;
+    // Center on the player's battlefield sub-rect, not the full half-screen,
+    // so the overlay stays off the hand bar on the player's outer edge.
+    float cx = p->battlefieldArea.x + p->battlefieldArea.width / 2.0f;
+    float cy = p->battlefieldArea.y + p->battlefieldArea.height / 2.0f;
 
     Vector2 position;
     if (rotation == 90.0f) {
@@ -97,9 +165,22 @@ void ui_draw_match_result(const Player *p, const char *text, float rotation,
         position = (Vector2){ cx - textSize.x / 2.0f, cy - textSize.y / 2.0f };
     }
 
-    DrawTextPro(font, text, position, (Vector2){ 0.0f, 0.0f },
-                rotation, (float)fontSize, spacing, color);
+    if (letteringTexture.id != 0) {
+        uvulite_font_draw(letteringTexture, text, position, rotation,
+                          UI_MATCH_RESULT_SCALE, UI_MATCH_RESULT_SPACING,
+                          ui_match_result_bitmap_style(text));
+    } else {
+        float fontSize = (float) UVULITE_FONT_GLYPH_PIXELS * UI_MATCH_RESULT_SCALE;
+        DrawTextPro(GetFontDefault(), text, position, (Vector2){0.0f, 0.0f},
+                    rotation, fontSize,
+                    ui_bitmap_spacing_screen(UI_MATCH_RESULT_SCALE,
+                                             UI_MATCH_RESULT_SPACING),
+                    ui_match_result_fallback_color(text));
+    }
+    (void) p;
 }
 
-//   TODO: ui_draw_card_hand()   — render the active card hand above each viewport
-//   TODO: ui_draw_health()      — show base HP for each player
+void ui_draw_match_result_backdrop(void) {
+    DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(),
+                  Fade(BLACK, UI_MATCH_RESULT_BACKDROP_ALPHA));
+}

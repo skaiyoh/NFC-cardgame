@@ -7,8 +7,11 @@
 #include "battlefield.h"
 #include "sustenance.h"
 #include "debug_events.h"
+#include "../data/card_catalog.h"
 #include "../logic/card_effects.h"
+#include "../logic/base_geometry.h"
 #include "../logic/farmer.h"
+#include "../logic/nav_frame.h"
 #include "../logic/win_condition.h"
 #include "../rendering/viewport.h"
 #include "../rendering/debug_overlay.h"
@@ -16,9 +19,13 @@
 #include "../rendering/spawn_fx.h"
 #include "../rendering/status_bars.h"
 #include "../rendering/ui.h"
+#include "../rendering/hand_ui.h"
+#include "../rendering/uvulite_font.h"
 #include "../systems/player.h"
+#include "../systems/progression.h"
 #include "../entities/entities.h"
 #include "../entities/building.h"
+#include "../entities/projectile.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -26,6 +33,32 @@
 
 static bool s_showLaneDebug = false;
 static DebugOverlayFlags s_debugFlags = {0};
+
+static void player_capture_base_hud_snapshot(Player *player, const Entity *base) {
+    if (!player || !base) return;
+
+    player->hasBaseHudSnapshot = true;
+    player->baseHudHP = base->hp;
+    player->baseHudMaxHP = base->maxHP;
+    player->baseHudLevel = base->baseLevel;
+}
+
+static void game_seed_demo_hands(GameState *g) {
+    for (int playerIndex = 0; playerIndex < 2; playerIndex++) {
+        int handIndex = 0;
+        for (int presentationIndex = 0; presentationIndex < HAND_MAX_CARDS; presentationIndex++) {
+            const char *cardId = card_catalog_card_id_for_presentation_index(presentationIndex);
+            Card *card = cards_find(&g->deck, cardId);
+            if (!card) {
+                printf("[HandUI] Demo hand missing card '%s'\n", cardId);
+                continue;
+            }
+
+            player_hand_set_card(&g->players[playerIndex], handIndex, card);
+            handIndex++;
+        }
+    }
+}
 
 bool game_init(GameState *g) {
     srand((unsigned int) time(NULL));
@@ -68,37 +101,61 @@ bool game_init(GameState *g) {
             BIOME_GRASS, BIOME_GRASS,  // bottom/top biome (matches current setup)
             tileSize, 42, 99);         // seeds match current hardcoded values
 
+    // Initialize per-frame flow-field navigation cache. nav_begin_frame()
+    // is called each tick before the entity update loop (wired in Phase 2).
+    nav_frame_init(&g->nav);
+    g->lastFrameDeltaTime = 1.0f / 60.0f;
+
     // Initialize sustenance resource nodes (dedicated RNG, after bf_init generates waypoints)
     sustenance_init(&g->battlefield, sustenanceSeed);
 
     // Load sustenance texture
     g->sustenanceTexture = sustenance_renderer_load();
     g->statusBarsTexture = status_bars_load();
+    g->troopHealthBarTexture = troop_health_bar_load();
+
+    // Load the shared hand UI textures.
+    g->handBarBackgroundTexture = hand_ui_load_bar_background();
+    g->handCardSheetTexture = hand_ui_load_card_sheet();
+    g->uvuliteLetteringTexture = uvulite_font_load();
 
     // Initialize character sprite atlas
     sprite_atlas_init(&g->spriteAtlas);
     spawn_fx_init(&g->spawnFx);
+    projectile_assets_init(&g->projectileAssets);
+    projectile_system_init(&g->projectileSystem);
 
     // Initialize split-screen viewports and players
     viewport_init_split_screen(g);
+    game_seed_demo_hands(g);
+    for (int i = 0; i < 2; i++) {
+        g->players[i].hasBaseHudSnapshot = false;
+        g->players[i].baseHudHP = 0;
+        g->players[i].baseHudMaxHP = 0;
+        g->players[i].baseHudLevel = 0;
+    }
 
-    // Spawn home bases behind center-lane spawn points
+    // Spawn home bases at the authored center-lane home anchors.
     for (int i = 0; i < 2; i++) {
         BattleSide side = bf_side_for_player(i);
         CanonicalPos anchor = bf_base_anchor(&g->battlefield, side);
         Entity *base = building_create_base(&g->players[i], anchor.v, &g->spriteAtlas);
         if (base) {
             g->players[i].base = base;
+            player_capture_base_hud_snapshot(&g->players[i], base);
             bf_add_entity(&g->battlefield, base);
         }
+        progression_sync_player(g, i);
     }
 
     // Match result state
     g->gameOver = false;
     g->winnerID = -1;
 
-    // P2 viewport render target (flipped vertically for across-the-table perspective)
-    g->p2RT = LoadRenderTexture(g->halfWidth, SCREEN_HEIGHT);
+    // P2 viewport render target: sized to the shortened battlefield sub-rect
+    // (not the full half-screen) so compositing lands cleanly on the inner
+    // battlefield area without overlapping the hand bar.
+    g->p2RT = LoadRenderTexture((int)g->players[1].battlefieldArea.width, SCREEN_HEIGHT);
 
     // Initialize NFC serial ports (optional -- game works with keyboard input only if unset)
     g->nfc.fds[0] = -1;
@@ -122,12 +179,12 @@ bool game_init(GameState *g) {
     return true;
 }
 
-// Simulate a knight card play through the full production code path:
-// cards_find -> card_action_play -> play_knight -> spawn_troop_from_card -> troop_spawn
-static void game_test_play_knight(GameState *g, int playerIndex, int slotIndex) {
-    Card *card = cards_find(&g->deck, "KNIGHT_01");
+// Simulate a card play through the full production code path:
+// cards_find -> card_action_play -> play_<type> -> handler.
+static void game_test_play_card(GameState *g, int playerIndex, int slotIndex, const char *cardId) {
+    Card *card = cards_find(&g->deck, cardId);
     if (!card) {
-        printf("[TEST] KNIGHT_01 not found in deck\n");
+        printf("[TEST] %s not found in deck\n", cardId);
         return;
     }
     card_action_play(card, g, playerIndex, slotIndex);
@@ -148,39 +205,46 @@ static void game_handle_nfc_events(GameState *g) {
 
 static void game_handle_debug_input(void) {
     if (IsKeyPressed(KEY_F1)) s_showLaneDebug = !s_showLaneDebug;
-    if (IsKeyPressed(KEY_F2)) s_debugFlags.attackBars   = !s_debugFlags.attackBars;
-    if (IsKeyPressed(KEY_F3)) s_debugFlags.targetLines  = !s_debugFlags.targetLines;
-    if (IsKeyPressed(KEY_F4)) s_debugFlags.eventFlashes = !s_debugFlags.eventFlashes;
-    if (IsKeyPressed(KEY_F5)) s_debugFlags.rangeCirlces = !s_debugFlags.rangeCirlces;
-    if (IsKeyPressed(KEY_F6)) s_debugFlags.sustenanceNodes     = !s_debugFlags.sustenanceNodes;
-    if (IsKeyPressed(KEY_F7)) s_debugFlags.sustenancePlacement  = !s_debugFlags.sustenancePlacement;
-}
-
-static void game_test_play_farmer(GameState *g, int playerIndex, int slotIndex) {
-    Card *card = cards_find(&g->deck, "FARMER_01");
-    if (!card) {
-        printf("[TEST] FARMER_01 not found in deck\n");
-        return;
-    }
-    card_action_play(card, g, playerIndex, slotIndex);
+    if (IsKeyPressed(KEY_F2))  debug_overlay_toggle_key(&s_debugFlags, KEY_F2);
+    if (IsKeyPressed(KEY_F3))  debug_overlay_toggle_key(&s_debugFlags, KEY_F3);
+    if (IsKeyPressed(KEY_F4))  debug_overlay_toggle_key(&s_debugFlags, KEY_F4);
+    if (IsKeyPressed(KEY_F5))  debug_overlay_toggle_key(&s_debugFlags, KEY_F5);
+    if (IsKeyPressed(KEY_F6))  debug_overlay_toggle_key(&s_debugFlags, KEY_F6);
+    if (IsKeyPressed(KEY_F7))  debug_overlay_toggle_key(&s_debugFlags, KEY_F7);
+    if (IsKeyPressed(KEY_F8))  debug_overlay_toggle_key(&s_debugFlags, KEY_F8);
+    if (IsKeyPressed(KEY_F9))  debug_overlay_toggle_key(&s_debugFlags, KEY_F9);
+    if (IsKeyPressed(KEY_F10)) debug_overlay_toggle_key(&s_debugFlags, KEY_F10);
 }
 
 static void game_handle_spawn_input(GameState *g) {
-    // Player 1: key 1/2/3 = knight, F = farmer
-    if (IsKeyPressed(KEY_ONE)) game_test_play_knight(g, 0, 0);
-    if (IsKeyPressed(KEY_TWO)) game_test_play_knight(g, 0, 1);
-    if (IsKeyPressed(KEY_THREE)) game_test_play_knight(g, 0, 2);
-    if (IsKeyPressed(KEY_F)) game_test_play_farmer(g, 0, 0);
+    // Demo-hand smoke path: keys 1..8 fire P1's visible hand cards, keys
+    // Q W E R T Y U I fire P2's, in hand-presentation order. Every card plays through
+    // slot 0 so they share one cooldown lane.
+    const int p1Keys[HAND_MAX_CARDS] = {
+        KEY_ONE, KEY_TWO, KEY_THREE, KEY_FOUR,
+        KEY_FIVE, KEY_SIX, KEY_SEVEN, KEY_EIGHT,
+    };
+    const int p2Keys[HAND_MAX_CARDS] = {
+        KEY_Q, KEY_W, KEY_E, KEY_R,
+        KEY_T, KEY_Y, KEY_U, KEY_I,
+    };
 
-    // Player 2: key Q/W/E = knight, R = farmer
-    if (IsKeyPressed(KEY_Q)) game_test_play_knight(g, 1, 0);
-    if (IsKeyPressed(KEY_W)) game_test_play_knight(g, 1, 1);
-    if (IsKeyPressed(KEY_E)) game_test_play_knight(g, 1, 2);
-    if (IsKeyPressed(KEY_R)) game_test_play_farmer(g, 1, 0);
+    for (int i = 0; i < HAND_MAX_CARDS; i++) {
+        const char *cardId = card_catalog_card_id_for_presentation_index(i);
+        if (!cardId) continue;
+
+        if (IsKeyPressed(p1Keys[i])) {
+            game_test_play_card(g, 0, 0, cardId);
+        }
+        if (IsKeyPressed(p2Keys[i])) {
+            game_test_play_card(g, 1, 0, cardId);
+        }
+    }
 }
 
 void game_update(GameState *g) {
     float deltaTime = fminf(GetFrameTime(), 1.0f / 20.0f);
+    g->lastFrameDeltaTime = deltaTime;
     spawn_fx_update(&g->spawnFx, deltaTime);
 
     // Debug toggles always active (even after gameOver)
@@ -200,15 +264,69 @@ void game_update(GameState *g) {
     player_update(&g->players[0], deltaTime);
     player_update(&g->players[1], deltaTime);
 
-    // Update all entities from Battlefield registry
     Battlefield *bf = &g->battlefield;
+
+    // Per-frame nav snapshot. nav_begin_frame resets the static obstacle
+    // mask to the board-edge moat; the entity pass below stamps static
+    // building footprints and mobile troop density on top. Every movement
+    // decision this tick reads the same frozen snapshot.
+    nav_begin_frame(&g->nav, bf);
     for (int i = 0; i < bf->entityCount; i++) {
-        entity_update(bf->entities[i], g, deltaTime);
-        if (g->gameOver) break;  // Win latched mid-loop — stop processing
+        Entity *e = bf->entities[i];
+        if (!e || !e->alive) continue;
+        int side = (e->ownerID == 0) ? 0 : 1;
+        Vector2 navAnchor = e->position;
+        Vector2 navBlockerCenter = e->position;
+        if (e->navProfile == NAV_PROFILE_STATIC &&
+            e->type == ENTITY_BUILDING) {
+            navAnchor = base_interaction_anchor(e);
+            navBlockerCenter = base_nav_blocker_center(e);
+        }
+        // Freeze every live entity's position in the nav snapshot before
+        // any movement runs, so target fields built mid-tick always see
+        // the same pivot regardless of update order.
+        nav_snapshot_entity_position(&g->nav, e->id, navAnchor.x, navAnchor.y);
+        if (e->navProfile == NAV_PROFILE_STATIC) {
+            if (e->type == ENTITY_BUILDING) {
+                for (int cellIdx = 0; cellIdx < BASE_NAV_HARD_CORE_CELL_COUNT; ++cellIdx) {
+                    Vector2 cellPoint = { 0 };
+                    if (!base_nav_hard_core_cell_point(e, cellIdx, &cellPoint)) continue;
+                    nav_stamp_static_entity_cell(&g->nav, e->id,
+                                                cellPoint.x, cellPoint.y);
+                }
+            } else {
+                float radius = (e->navRadius > 0.0f) ? e->navRadius : e->bodyRadius;
+                if (radius <= 0.0f) radius = BASE_NAV_RADIUS;
+                nav_stamp_static_entity(&g->nav, e->id,
+                                        navBlockerCenter.x, navBlockerCenter.y, radius);
+            }
+        } else {
+            nav_stamp_density(&g->nav, side, e->position.x, e->position.y);
+        }
+    }
+
+    // Update all entities from Battlefield registry in a stable id-sorted
+    // order so local steering jams deterministically (lower-id wins the
+    // jam) regardless of the registry's swap-with-last removal order.
+    int updateOrder[MAX_ENTITIES * 2];
+    int updateCount = bf_build_update_order(bf, updateOrder);
+    for (int i = 0; i < updateCount; i++) {
+        int idx = updateOrder[i];
+        if (idx < 0 || idx >= bf->entityCount) continue;
+        entity_update(bf->entities[idx], g, deltaTime);
+        if (g->gameOver) break;  // Win latched mid-loop -- stop processing
+    }
+
+    if (!g->gameOver) {
+        projectile_system_update(g, deltaTime);
     }
 
     // Defensive fallback: catch base deaths from non-combat paths
     win_check(g);
+
+    // Blood FX should follow damaged entities for the rest of the frame, then
+    // freeze once the entity is gone after the sweep below.
+    spawn_fx_sync_blood_attachments(&g->spawnFx, bf);
 
     // Sweep dead/removed entities (runs once on the trigger frame, then frozen)
     for (int i = bf->entityCount - 1; i >= 0; i--) {
@@ -222,8 +340,14 @@ void game_update(GameState *g) {
             }
 
             // Clear stale base pointers before freeing memory
-            if (dead == g->players[0].base) g->players[0].base = NULL;
-            if (dead == g->players[1].base) g->players[1].base = NULL;
+            if (dead == g->players[0].base) {
+                player_capture_base_hud_snapshot(&g->players[0], dead);
+                g->players[0].base = NULL;
+            }
+            if (dead == g->players[1].base) {
+                player_capture_base_hud_snapshot(&g->players[1], dead);
+                g->players[1].base = NULL;
+            }
 
             bf->entities[i] = bf->entities[bf->entityCount - 1];
             bf->entityCount--;
@@ -237,10 +361,11 @@ void game_update(GameState *g) {
 // Draw all Battlefield entities visible in the current viewport.
 // Entities are in canonical world space; the active Camera2D handles
 // projection. No ownership branching, no remap. (per D-19)
-static void game_draw_canonical_entities(const Battlefield *bf) {
+static void game_draw_canonical_entities(const Battlefield *bf, EntityRenderLayer layer) {
     for (int i = 0; i < bf->entityCount; i++) {
         const Entity *e = bf->entities[i];
         if (!e || e->markedForRemoval || !e->sprite) continue;
+        if (e->renderLayer != layer) continue;
         entity_draw(e);
     }
 }
@@ -251,6 +376,18 @@ void game_render(GameState *g) {
     BeginDrawing();
     ClearBackground(RAYWHITE);
     Battlefield *bf = &g->battlefield;
+    Vector2 mouseScreen = GetMousePosition();
+    DebugNavOverlayState p1NavState = {0};
+    DebugNavOverlayState p2NavState = {0};
+    Camera2D p2CamRT = g->players[1].camera;
+    p2CamRT.offset = (Vector2){ g->players[1].battlefieldArea.width / 2.0f,
+                                SCREEN_HEIGHT / 2.0f };
+    if (s_debugFlags.navOverlay) {
+        p1NavState = debug_overlay_resolve_nav_state(
+            bf, g->players[0].battlefieldArea, g->players[0].camera, mouseScreen, false);
+        p2NavState = debug_overlay_resolve_nav_state(
+            bf, g->players[1].battlefieldArea, p2CamRT, mouseScreen, true);
+    }
 
     // --- Player 1 viewport (SIDE_BOTTOM) — direct to screen ---
     viewport_begin(&g->players[0]);
@@ -259,72 +396,102 @@ void game_render(GameState *g) {
     sustenance_renderer_draw(&bf->sustenanceField, SIDE_BOTTOM, g->sustenanceTexture, 0.0f);
     sustenance_renderer_draw(&bf->sustenanceField, SIDE_TOP, g->sustenanceTexture, 0.0f);
     spawn_fx_draw(&g->spawnFx, 180.0f);
-    game_draw_canonical_entities(bf);
-    debug_overlay_draw(bf, g, s_debugFlags);
+    game_draw_canonical_entities(bf, ENTITY_RENDER_LAYER_GROUND);
+    spawn_fx_draw_overlay(&g->spawnFx, 180.0f);
+    projectile_system_draw(g);
+    game_draw_canonical_entities(bf, ENTITY_RENDER_LAYER_FLYING);
+    debug_overlay_draw(bf, g, s_debugFlags, &p1NavState);
     viewport_end();
+    if (s_showLaneDebug) {
+        BeginScissorMode(
+            (int)g->players[0].battlefieldArea.x,
+            (int)g->players[0].battlefieldArea.y,
+            (int)g->players[0].battlefieldArea.width,
+            (int)g->players[0].battlefieldArea.height
+        );
+        debug_draw_lane_paths_screen(bf, SIDE_BOTTOM, g->players[0].camera);
+        EndScissorMode();
+    }
     BeginScissorMode(
-        (int)g->players[0].screenArea.x,
-        (int)g->players[0].screenArea.y,
-        (int)g->players[0].screenArea.width,
-        (int)g->players[0].screenArea.height
+        (int)g->players[0].battlefieldArea.x,
+        (int)g->players[0].battlefieldArea.y,
+        (int)g->players[0].battlefieldArea.width,
+        (int)g->players[0].battlefieldArea.height
     );
-    status_bars_draw_screen(g, g->players[0].camera, 90.0f, 90.0f);
+    status_bars_draw_screen(g, &g->players[0], g->players[0].camera,
+                            g->players[0].battlefieldArea,
+                            90.0f, 90.0f, false);
     EndScissorMode();
 
-    // --- Player 2 viewport (SIDE_TOP) — render to texture, then flip ---
+    // --- Player 2 viewport (SIDE_TOP) — render to texture, then composite ---
     // P2 uses rot=+90 (same as P1) for correct seam placement.
-    // The RT is flipped vertically when composited to reverse the world-X
-    // orientation, giving P2 the opposite (across-the-table) perspective.
+    // The negative source height on composite corrects render-texture storage
+    // orientation, so input mapping should use RT-local coordinates without
+    // applying an extra mirror.
     BeginTextureMode(g->p2RT);
     ClearBackground(RAYWHITE);
     // Render with P2's camera but into the RT (no scissor needed — RT is viewport-sized).
-    // Override camera offset to center of RT (480,540) instead of screen position (1440,540).
-    Camera2D p2CamRT = g->players[1].camera;
-    p2CamRT.offset = (Vector2){ g->halfWidth / 2.0f, SCREEN_HEIGHT / 2.0f };
+    // Override camera offset to the center of the RT (which is sized to the
+    // P2 battlefield sub-rect, not the full half-screen).
     BeginMode2D(p2CamRT);
     viewport_draw_battlefield_tilemap(bf, SIDE_BOTTOM);
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
     sustenance_renderer_draw(&bf->sustenanceField, SIDE_BOTTOM, g->sustenanceTexture, 180.0f);
     sustenance_renderer_draw(&bf->sustenanceField, SIDE_TOP, g->sustenanceTexture, 180.0f);
     spawn_fx_draw(&g->spawnFx, 0.0f);
-    game_draw_canonical_entities(bf);
-    debug_overlay_draw(bf, g, s_debugFlags);
+    game_draw_canonical_entities(bf, ENTITY_RENDER_LAYER_GROUND);
+    spawn_fx_draw_overlay(&g->spawnFx, 0.0f);
+    projectile_system_draw(g);
+    game_draw_canonical_entities(bf, ENTITY_RENDER_LAYER_FLYING);
+    debug_overlay_draw(bf, g, s_debugFlags, &p2NavState);
     EndMode2D();
-    status_bars_draw_screen(g, p2CamRT, 90.0f, 270.0f);
+    if (s_showLaneDebug) {
+        debug_draw_lane_paths_screen(bf, SIDE_TOP, p2CamRT);
+    }
+    status_bars_draw_screen(g, &g->players[1], p2CamRT,
+                            (Rectangle){
+                                0.0f,
+                                0.0f,
+                                g->players[1].battlefieldArea.width,
+                                g->players[1].battlefieldArea.height
+                            },
+                            90.0f, 270.0f, true);
     EndTextureMode();
 
-    // Composite P2 RT to right half of screen, flipped vertically.
-    // Negative height flips Y (OpenGL convention), and we also flip the
-    // source rect height to flip the image vertically on screen, which
-    // reverses the world-X → screen-Y mapping for across-the-table.
+    // Composite P2 RT to the P2 battlefield sub-rect (not the full half-screen).
+    // Negative source height corrects the FBO's upside-down storage.
     DrawTexturePro(
         g->p2RT.texture,
-        (Rectangle){ 0, 0, (float)g->halfWidth, -(float)SCREEN_HEIGHT },   // src: flip Y (OpenGL)
-        (Rectangle){ (float)g->halfWidth, 0, (float)g->halfWidth, (float)SCREEN_HEIGHT },  // dst: right half
+        (Rectangle){ 0, 0, (float)g->p2RT.texture.width, -(float)g->p2RT.texture.height },
+        g->players[1].battlefieldArea,
         (Vector2){ 0, 0 },
         0.0f,
         WHITE
     );
 
-    // Debug lane overlay
-    if (s_showLaneDebug) {
-        debug_draw_lane_paths_screen(bf, SIDE_BOTTOM, g->players[0].camera);
-        debug_draw_lane_paths_screen(bf, SIDE_TOP, g->players[1].camera);
-    }
+    // HUD — screen space, drawn after all viewports. Use battlefieldArea so
+    // the counter stays on the battlefield sub-rect, not the hand bar.
+    ui_draw_sustenance_counter(&g->players[0], g->players[0].battlefieldArea, 90.0f,
+                               g->uvuliteLetteringTexture);
+    ui_draw_sustenance_counter(&g->players[1], g->players[1].battlefieldArea, 270.0f,
+                               g->uvuliteLetteringTexture);
 
-    // HUD — screen space, drawn after all viewports
-    ui_draw_sustenance_counter(&g->players[0], g->players[0].screenArea, 90.0f, DARKGREEN);
-    ui_draw_sustenance_counter(&g->players[1], g->players[1].screenArea, 270.0f, MAROON);
+    // Hand bars — drawn last so they always cover the outer strip, regardless
+    // of any earlier draws that may have bled past the battlefield scissor.
+    hand_ui_draw(&g->players[0], g->handBarBackgroundTexture, g->handCardSheetTexture);
+    hand_ui_draw(&g->players[1], g->handBarBackgroundTexture, g->handCardSheetTexture);
 
-    // Match result overlay
+    // Match result overlay — full-screen dim backdrop first, then rotated
+    // VICTORY/DEFEAT/DRAW labels on top for each player.
     if (g->gameOver) {
+        ui_draw_match_result_backdrop();
         for (int i = 0; i < 2; i++) {
             const bool drawnMatch = (g->winnerID < 0);
             const bool playerWon = (g->winnerID == g->players[i].id);
             const char *text = drawnMatch ? "DRAW" : (playerWon ? "VICTORY" : "DEFEAT");
-            Color color = drawnMatch ? LIGHTGRAY : (playerWon ? GOLD : RED);
             float rotation = (i == 0) ? 90.0f : 270.0f;
-            ui_draw_match_result(&g->players[i], text, rotation, color);
+            ui_draw_match_result(&g->players[i], text, rotation,
+                                 g->uvuliteLetteringTexture);
         }
     }
 
@@ -346,14 +513,28 @@ void game_cleanup(GameState *g) {
     }
     g->players[0].base = NULL;
     g->players[1].base = NULL;
+    g->players[0].hasBaseHudSnapshot = false;
+    g->players[1].hasBaseHudSnapshot = false;
+    g->players[0].baseHudHP = 0;
+    g->players[1].baseHudHP = 0;
+    g->players[0].baseHudMaxHP = 0;
+    g->players[1].baseHudMaxHP = 0;
+    g->players[0].baseHudLevel = 0;
+    g->players[1].baseHudLevel = 0;
 
     // Unload sustenance texture
     UnloadTexture(g->sustenanceTexture);
     status_bars_unload(g->statusBarsTexture);
+    troop_health_bar_unload(g->troopHealthBarTexture);
+    hand_ui_unload_texture(g->handBarBackgroundTexture);
+    hand_ui_unload_texture(g->handCardSheetTexture);
+    uvulite_font_unload(g->uvuliteLetteringTexture);
 
+    projectile_assets_cleanup(&g->projectileAssets);
     spawn_fx_cleanup(&g->spawnFx);
     // Cleanup Battlefield (must be before biome_free_all since tilemaps reference biome textures)
     bf_cleanup(&g->battlefield);
+    nav_frame_destroy(&g->nav);
 
     sprite_atlas_free(&g->spriteAtlas);
     card_atlas_free(&g->cardAtlas);

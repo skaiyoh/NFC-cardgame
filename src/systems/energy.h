@@ -14,7 +14,7 @@ void energy_init(Player *p, float maxEnergy, float regenRate);
 
 void energy_update(Player *p, float deltaTime);
 
-bool energy_can_afford(Player *p, int cost);
+bool energy_can_afford(const Player *p, int cost);
 
 bool energy_consume(Player *p, int cost);
 

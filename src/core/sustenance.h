@@ -41,15 +41,18 @@ typedef struct {
 // --- Debug cell classification ---
 // Priority order (first match wins): a cell that fails multiple rules
 // reports the highest-priority reason.
-//   1. edge blocked
-//   2. lane blocked
-//   3. base blocked
-//   4. spawn-anchor blocked
-//   5. node blocked
-//   6. valid
+//   1. edge blocked       (grid-margin rejection)
+//   2. out of play         (cell center falls outside bf_play_bounds, i.e.
+//                           inside the hand-bar zone at the player's outer edge)
+//   3. lane blocked
+//   4. base blocked
+//   5. spawn-anchor blocked
+//   6. node blocked
+//   7. valid
 typedef enum {
     SUSTENANCE_CELL_VALID,
     SUSTENANCE_CELL_EDGE_BLOCKED,
+    SUSTENANCE_CELL_OUT_OF_PLAY,
     SUSTENANCE_CELL_LANE_BLOCKED,
     SUSTENANCE_CELL_BASE_BLOCKED,
     SUSTENANCE_CELL_SPAWN_BLOCKED,
