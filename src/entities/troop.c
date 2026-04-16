@@ -78,6 +78,12 @@ static const CombatProfile *combat_profile_for_card_type(const char *cardType) {
     return &kDefaultMeleeCombatProfile;
 }
 
+static EntityRenderLayer troop_default_render_layer(SpriteType type) {
+    return (type == SPRITE_TYPE_BIRD)
+        ? ENTITY_RENDER_LAYER_FLYING
+        : ENTITY_RENDER_LAYER_GROUND;
+}
+
 float troop_default_body_radius(SpriteType type) {
     switch (type) {
         case SPRITE_TYPE_ASSASSIN: return 12.0f;
@@ -108,6 +114,7 @@ TroopData troop_create_data_from_card(const Card *card) {
     data.targeting = TARGET_NEAREST;
     data.targetType = NULL;
     data.bodyRadius = troop_default_body_radius(data.spriteType);
+    data.renderLayer = troop_default_render_layer(data.spriteType);
     const CombatProfile *profile = combat_profile_for_card_type(cardType);
     data.combatProfileId = profile->id;
     data.engagementMode = profile->engagementMode;
@@ -207,6 +214,7 @@ Entity *troop_spawn(Player *owner, const TroopData *data, Vector2 position,
     e->bodyRadius = (data->bodyRadius > 0.0f)
         ? data->bodyRadius
         : troop_default_body_radius(data->spriteType);
+    e->renderLayer = data->renderLayer;
     e->navProfile = NAV_PROFILE_LANE; // farmer block below overrides to FREE_GOAL
 
     // Targeting
@@ -242,6 +250,7 @@ Entity *troop_spawn(Player *owner, const TroopData *data, Vector2 position,
         e->projectileSplashRadius = 0.0f;
         e->projectileRenderScale = 1.0f;
         e->projectileLaunchOffset = (Vector2){ 0.0f, 0.0f };
+        e->renderLayer = ENTITY_RENDER_LAYER_GROUND;
         e->farmerState = FARMER_SEEKING;
         e->claimedSustenanceNodeId = -1;
         e->carriedSustenanceValue = 0;

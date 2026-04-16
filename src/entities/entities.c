@@ -263,6 +263,7 @@ Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
     e->spriteScale = 2.0f;
     e->spriteRotationDegrees = 0.0f;
     e->presentationSide = SIDE_BOTTOM;
+    e->renderLayer = ENTITY_RENDER_LAYER_GROUND;
 
     e->spriteType = SPRITE_TYPE_COUNT; // sentinel: no sprite type assigned yet
     e->combatProfileId = COMBAT_PROFILE_DEFAULT_MELEE;

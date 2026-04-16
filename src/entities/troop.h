@@ -20,6 +20,7 @@ typedef struct {
     const char *targetType;
     SpriteType spriteType;
     float bodyRadius;
+    EntityRenderLayer renderLayer;
     CombatProfileId combatProfileId;
     AttackEngagementMode engagementMode;
     AttackDeliveryMode deliveryMode;

@@ -50,6 +50,10 @@ typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
 typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
 typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_ATTACKING, ESTATE_DEAD } EntityState;
 typedef enum {
+    ENTITY_RENDER_LAYER_GROUND = 0,
+    ENTITY_RENDER_LAYER_FLYING
+} EntityRenderLayer;
+typedef enum {
     ATTACK_ENGAGEMENT_CONTACT = 0,
     ATTACK_ENGAGEMENT_DIRECT_RANGE
 } AttackEngagementMode;
@@ -225,6 +229,7 @@ struct Entity {
     float spriteScale;
     float spriteRotationDegrees;
     BattleSide presentationSide;
+    EntityRenderLayer renderLayer;
     int ownerID;
     int lane;
     int waypointIndex;
@@ -721,6 +726,7 @@ static Entity make_entity(int id, int ownerID, EntityType type, Vector2 pos) {
     e.projectileRenderScale = 1.0f;
     e.projectileLaunchOffset = (Vector2){0};
     e.presentationSide = SIDE_BOTTOM;
+    e.renderLayer = ENTITY_RENDER_LAYER_GROUND;
     e.ownerID = ownerID;
     e.lane = 1;
     e.waypointIndex = 1;
@@ -1367,9 +1373,17 @@ static void test_entity_sync_animation_applies_base_idle_burst_spec(void) {
     assert(base.anim.oneShot == false);
 }
 
+static void test_entity_create_defaults_to_ground_render_layer(void) {
+    Entity *e = entity_create(ENTITY_TROOP, FACTION_PLAYER1, (Vector2){42.0f, 24.0f});
+    assert(e != NULL);
+    assert(e->renderLayer == ENTITY_RENDER_LAYER_GROUND);
+    entity_destroy(e);
+}
+
 int main(void) {
     printf("Running entities tests...\n");
 
+    RUN_TEST(test_entity_create_defaults_to_ground_render_layer);
     RUN_TEST(test_healer_cancels_stale_heal_and_retargets_enemy);
     RUN_TEST(test_healer_cancels_stale_heal_and_walks_without_replacement);
     RUN_TEST(test_non_healer_enemy_hit_flow_unchanged);

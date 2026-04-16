@@ -33,6 +33,11 @@ typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
 typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_ATTACKING, ESTATE_DEAD } EntityState;
 
 typedef enum {
+    ENTITY_RENDER_LAYER_GROUND = 0,
+    ENTITY_RENDER_LAYER_FLYING
+} EntityRenderLayer;
+
+typedef enum {
     ATTACK_ENGAGEMENT_CONTACT = 0,
     ATTACK_ENGAGEMENT_DIRECT_RANGE
 } AttackEngagementMode;
@@ -192,6 +197,7 @@ struct Entity {
     float spriteScale;
     float spriteRotationDegrees;
     BattleSide presentationSide;
+    EntityRenderLayer renderLayer;
 
     // Ownership
     int ownerID; // Player index (0 or 1)

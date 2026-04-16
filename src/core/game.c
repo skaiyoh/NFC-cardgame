@@ -335,10 +335,11 @@ void game_update(GameState *g) {
 // Draw all Battlefield entities visible in the current viewport.
 // Entities are in canonical world space; the active Camera2D handles
 // projection. No ownership branching, no remap. (per D-19)
-static void game_draw_canonical_entities(const Battlefield *bf) {
+static void game_draw_canonical_entities(const Battlefield *bf, EntityRenderLayer layer) {
     for (int i = 0; i < bf->entityCount; i++) {
         const Entity *e = bf->entities[i];
         if (!e || e->markedForRemoval || !e->sprite) continue;
+        if (e->renderLayer != layer) continue;
         entity_draw(e);
     }
 }
@@ -369,9 +370,10 @@ void game_render(GameState *g) {
     sustenance_renderer_draw(&bf->sustenanceField, SIDE_BOTTOM, g->sustenanceTexture, 0.0f);
     sustenance_renderer_draw(&bf->sustenanceField, SIDE_TOP, g->sustenanceTexture, 0.0f);
     spawn_fx_draw(&g->spawnFx, 180.0f);
-    game_draw_canonical_entities(bf);
+    game_draw_canonical_entities(bf, ENTITY_RENDER_LAYER_GROUND);
     spawn_fx_draw_overlay(&g->spawnFx, 180.0f);
     projectile_system_draw(g);
+    game_draw_canonical_entities(bf, ENTITY_RENDER_LAYER_FLYING);
     debug_overlay_draw(bf, g, s_debugFlags, &p1NavState);
     viewport_end();
     if (s_showLaneDebug) {
@@ -409,9 +411,10 @@ void game_render(GameState *g) {
     sustenance_renderer_draw(&bf->sustenanceField, SIDE_BOTTOM, g->sustenanceTexture, 180.0f);
     sustenance_renderer_draw(&bf->sustenanceField, SIDE_TOP, g->sustenanceTexture, 180.0f);
     spawn_fx_draw(&g->spawnFx, 0.0f);
-    game_draw_canonical_entities(bf);
+    game_draw_canonical_entities(bf, ENTITY_RENDER_LAYER_GROUND);
     spawn_fx_draw_overlay(&g->spawnFx, 0.0f);
     projectile_system_draw(g);
+    game_draw_canonical_entities(bf, ENTITY_RENDER_LAYER_FLYING);
     debug_overlay_draw(bf, g, s_debugFlags, &p2NavState);
     EndMode2D();
     if (s_showLaneDebug) {
