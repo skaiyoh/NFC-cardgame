@@ -5,6 +5,7 @@
 #include "status_bars.h"
 #include "sprite_renderer.h"
 #include "../core/config.h"
+#include "../systems/progression.h"
 #include <math.h>
 #include <stdio.h>
 
@@ -703,6 +704,15 @@ static void format_regen_label(char *buf, size_t bufSize, float rate) {
     snprintf(buf, bufSize, "+%.1f/sec", rate);
 }
 
+static void format_base_level_label(char *buf, size_t bufSize, int baseLevel) {
+    int displayLevel = (baseLevel > 0) ? baseLevel : 1;
+    if (displayLevel >= PROGRESSION_MAX_LEVEL) {
+        snprintf(buf, bufSize, "LVL MAX");
+        return;
+    }
+    snprintf(buf, bufSize, "LVL %d", displayLevel);
+}
+
 static float stacked_label_axial_offset(const char *anchorText, float anchorFontSize,
                                         const char *stackedText, float stackedFontSize) {
     Font font = GetFontDefault();
@@ -774,11 +784,10 @@ static void draw_base_bars(const GameState *gs, int hp, int maxHP, int baseLevel
     // raw RT-space outside offset stays positive while the unflipped P1 path
     // needs the opposite sign to land on the same authored side on screen.
     float energyLabelDirection = reverseFillDirection ? 1.0f : -1.0f;
-    int displayLevel = (baseLevel > 0) ? baseLevel : 1;
     format_bar_label(hpLabel, sizeof(hpLabel), hp, maxHP);
     format_bar_label(energyLabel, sizeof(energyLabel),
                      filledPips, STATUS_BAR_ENERGY_PIP_COUNT);
-    snprintf(levelLabel, sizeof(levelLabel), "LVL %d", displayLevel);
+    format_base_level_label(levelLabel, sizeof(levelLabel), baseLevel);
     format_regen_label(regenLabel, sizeof(regenLabel), owner->energyRegenRate);
     float regenNormalOffset = regen_label_normal_offset(labelRotationDegrees);
     float regenAxialOffset = stacked_label_axial_offset(
@@ -935,11 +944,10 @@ static void draw_base_bars_fallback(int hp, int maxHP, int baseLevel,
     int filledPips = base_energy_filled_pips(owner->energy);
     // Keep fallback label placement aligned with the textured path.
     float energyLabelDirection = reverseFillDirection ? 1.0f : -1.0f;
-    int displayLevel = (baseLevel > 0) ? baseLevel : 1;
     format_bar_label(hpLabel, sizeof(hpLabel), hp, maxHP);
     format_bar_label(energyLabel, sizeof(energyLabel),
                      filledPips, STATUS_BAR_ENERGY_PIP_COUNT);
-    snprintf(levelLabel, sizeof(levelLabel), "LVL %d", displayLevel);
+    format_base_level_label(levelLabel, sizeof(levelLabel), baseLevel);
     format_regen_label(regenLabel, sizeof(regenLabel), owner->energyRegenRate);
     float regenNormalOffset = regen_label_normal_offset(labelRotationDegrees);
     float regenAxialOffset = stacked_label_axial_offset(

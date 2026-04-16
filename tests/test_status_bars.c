@@ -41,6 +41,7 @@ typedef struct { int _unused; } Font;
 #define WHITE (Color){255, 255, 255, 255}
 #define BLACK (Color){  0,   0,   0, 255}
 #define TEXTURE_FILTER_POINT 0
+#define PROGRESSION_MAX_LEVEL 10
 
 #define MAX_CAPTURED_DRAWS 64
 
@@ -691,6 +692,22 @@ static void test_destroyed_base_snapshot_keeps_bar_visible(void) {
     assert(strcmp(g_textStrings[2], "LVL 4") == 0);
 }
 
+static void test_max_level_label_uses_lvl_max(void) {
+    GameState gs = make_game_state();
+    Entity base = make_base(5000, 5000);
+    Camera2D camera = {0};
+
+    base.baseLevel = PROGRESSION_MAX_LEVEL;
+    gs.players[0].base = &base;
+    gs.players[0].energy = 7.0f;
+    gs.players[0].energyRegenRate = 1.0f;
+
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+
+    assert(strcmp(g_textStrings[2], "LVL MAX") == 0);
+    assert(strcmp(g_textStrings[3], "LVL MAX") == 0);
+}
+
 /* Core motivating requirement: small HP damage must visibly move the bar.
  * 28 HP out of 5000 is 0.56% — the scaled destination fill width still moves
  * by just over one screen pixel. */
@@ -1292,6 +1309,23 @@ static void test_fallback_renders_bars_and_labels(void) {
     assert(strcmp(g_textStrings[6], "+1.0/sec") == 0);
 }
 
+static void test_fallback_max_level_label_uses_lvl_max(void) {
+    GameState gs = make_game_state();
+    Entity base = make_base(3420, 5000);
+    Camera2D camera = {0};
+
+    gs.statusBarsTexture.id = 0;
+    base.baseLevel = PROGRESSION_MAX_LEVEL;
+    gs.players[0].base = &base;
+    gs.players[0].energy = 7.0f;
+    gs.players[0].energyRegenRate = 1.0f;
+
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+
+    assert(strcmp(g_textStrings[2], "LVL MAX") == 0);
+    assert(strcmp(g_textStrings[3], "LVL MAX") == 0);
+}
+
 static void test_fallback_fractional_energy_draws_regen_cue(void) {
     GameState gs = make_game_state();
     gs.statusBarsTexture.id = 0;
@@ -1371,6 +1405,7 @@ int main(void) {
     RUN_TEST(test_base_bar_full_health_and_energy);
     RUN_TEST(test_base_bar_near_empty_health_draws_tiny_fill);
     RUN_TEST(test_destroyed_base_snapshot_keeps_bar_visible);
+    RUN_TEST(test_max_level_label_uses_lvl_max);
     RUN_TEST(test_base_bar_granularity_moves_on_small_hit);
     RUN_TEST(test_base_bar_centers_anchor_to_viewport_edge_by_side);
     RUN_TEST(test_base_bar_centers_ignore_base_world_position);
@@ -1387,6 +1422,7 @@ int main(void) {
     RUN_TEST(test_live_primary_label_spacing_is_mirrored_between_p1_and_p2);
     RUN_TEST(test_regen_label_values);
     RUN_TEST(test_fallback_renders_bars_and_labels);
+    RUN_TEST(test_fallback_max_level_label_uses_lvl_max);
     RUN_TEST(test_fallback_base_bars_match_textured_anchor_centers);
     RUN_TEST(test_fallback_fractional_energy_draws_regen_cue);
     RUN_TEST(test_fallback_zero_energy_draws_shell_only);
