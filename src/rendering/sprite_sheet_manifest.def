@@ -27,8 +27,8 @@ SPRITE_SHEET(assassin_attack,   false, SPRITE_TYPE_ASSASSIN, ANIM_ATTACK,"src/as
 
 SPRITE_SHEET(brute_walk,        false, SPRITE_TYPE_BRUTE,   ANIM_WALK,   "src/assets/characters/Brute/nostril_walk.png", 8, 1, true)
 SPRITE_SHEET(brute_hurt,        false, SPRITE_TYPE_BRUTE,   ANIM_HURT,   "src/assets/characters/Brute/hurt.png",        4, 3, true)
-// Brute currently reuses block art for its authored attack clip.
-SPRITE_SHEET(brute_attack,      false, SPRITE_TYPE_BRUTE,   ANIM_ATTACK, "src/assets/characters/Brute/block.png",       4, 3, true)
+// Brute attack art is authored as a single side-facing row and reused for all directions.
+SPRITE_SHEET(brute_attack,      false, SPRITE_TYPE_BRUTE,   ANIM_ATTACK, "src/assets/characters/Brute/nostril_attack.png", 8, 1, true)
 
 // Cheffy (farmer) uses two sprite variants: empty while seeking/gathering,
 // full while returning/depositing. Idle and attack share a single authored

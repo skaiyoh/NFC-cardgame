@@ -369,7 +369,9 @@ static void test_spec_lookup_knight_attack(void) {
 static void test_spec_lookup_brute_attack(void) {
     const EntityAnimSpec *spec = anim_spec_get(SPRITE_TYPE_BRUTE, ANIM_ATTACK);
     assert(spec != NULL);
-    assert(approx_eq(spec->hitNormalized, 0.6f, 0.01f)); // brute hits later
+    assert(approx_eq(spec->cycleSeconds, 0.40f, 0.01f));
+    assert(approx_eq(spec->hitNormalized, 0.625f, 0.01f)); // brute hits on first spit frame
+    assert(spec->lockFacing == true);
 }
 
 static void test_spec_lookup_assassin_attack_timing(void) {
@@ -520,6 +522,38 @@ static void test_brute_walk_manifest_and_atlas_match_nostril_sheet(void) {
     for (int i = 0; i < kSpriteSheetAtlasCount; i++) {
         const SpriteSheetAtlasEntry *entry = &kSpriteSheetAtlas[i];
         if (strcmp(entry->path, "src/assets/characters/Brute/nostril_walk.png") == 0) {
+            atlasEntry = entry;
+            break;
+        }
+    }
+
+    assert(atlasEntry != NULL);
+    assert(atlasEntry->frameCount == 8);
+    assert(atlasEntry->sourceRowCount == 1);
+}
+
+static void test_brute_attack_manifest_and_atlas_match_nostril_attack_sheet(void) {
+    const SpriteSheetManifestEntry *manifestEntry = NULL;
+    const SpriteSheetAtlasEntry *atlasEntry = NULL;
+
+    for (int i = 0; i < kSpriteSheetManifestCount; i++) {
+        const SpriteSheetManifestEntry *entry = &kSpriteSheetManifest[i];
+        if (!entry->isBaseFallback &&
+            entry->spriteType == SPRITE_TYPE_BRUTE &&
+            entry->anim == ANIM_ATTACK) {
+            manifestEntry = entry;
+            break;
+        }
+    }
+
+    assert(manifestEntry != NULL);
+    assert(strcmp(manifestEntry->path, "src/assets/characters/Brute/nostril_attack.png") == 0);
+    assert(manifestEntry->frameCount == 8);
+    assert(manifestEntry->sourceRowCount == 1);
+
+    for (int i = 0; i < kSpriteSheetAtlasCount; i++) {
+        const SpriteSheetAtlasEntry *entry = &kSpriteSheetAtlas[i];
+        if (strcmp(entry->path, "src/assets/characters/Brute/nostril_attack.png") == 0) {
             atlasEntry = entry;
             break;
         }
@@ -1107,6 +1141,7 @@ int main(void) {
     RUN_TEST(test_single_row_sheet_reuses_row_zero_for_all_directions);
     RUN_TEST(test_knight_attack_manifest_and_atlas_match_uvulite_sheet);
     RUN_TEST(test_brute_walk_manifest_and_atlas_match_nostril_sheet);
+    RUN_TEST(test_brute_attack_manifest_and_atlas_match_nostril_attack_sheet);
     RUN_TEST(test_assassin_walk_manifest_and_atlas_match_baxter_sheet);
     RUN_TEST(test_assassin_attack_manifest_and_atlas_match_baxter_attack_sheet);
     RUN_TEST(test_bird_walk_manifest_and_atlas_match_birdman_sheet);

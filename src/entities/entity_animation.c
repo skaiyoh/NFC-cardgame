@@ -47,7 +47,7 @@ static const EntityAnimSpec s_specs[SPRITE_TYPE_COUNT][ANIM_COUNT] = {
         [ANIM_WALK]   = { ANIM_WALK,   ANIM_PLAY_LOOP, 0.80f, -1.0f, false, false },
         [ANIM_HURT]   = { ANIM_HURT,   ANIM_PLAY_ONCE, 0.50f, -1.0f, false, false },
         [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.50f, -1.0f, false, true  },
-        [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.40f,  0.6f, true,  false }, // 4 frames, hit later
+        [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.40f,  0.625f, true,  false }, // 8 frames, hit on first spit
     },
     // SPRITE_TYPE_FARMER (empty Cheffy: seek/walk-to/gather)
     // ATTACK reuses the authored idle sheet as a one-shot gather animation.
