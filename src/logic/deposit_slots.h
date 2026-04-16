@@ -14,7 +14,8 @@
 
 // Populate both slot rings on a freshly-created base entity. Requires
 // base->position, base->navRadius, and base->presentationSide to already
-// be set. Called once from building_create_base.
+// be set. Slot geometry is centered on the base interaction anchor, not the
+// raw render pivot at base->position. Called once from building_create_base.
 void deposit_slots_build_for_base(Entity *base);
 
 // Reserve the closest free primary slot to `fromPos`. If no primary is free,

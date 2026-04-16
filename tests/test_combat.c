@@ -41,6 +41,7 @@
 #define NUM_CARD_SLOTS 3
 #define MAX_ENTITIES 64
 #define SUSTENANCE_MATCH_COUNT_PER_SIDE 8
+#define BASE_INTERACTION_BACK_OFFSET 48.0f
 #define BASE_NAV_RADIUS 56.0f
 #define DEFAULT_MELEE_BODY_RADIUS 14.0f
 #define BASE_ASSAULT_PRIMARY_SLOT_COUNT 8
@@ -446,6 +447,16 @@ static Entity make_entity(int ownerID, EntityType type, Vector2 pos) {
     return e;
 }
 
+static Vector2 test_base_anchor(const Entity *base) {
+    Vector2 anchor = base->position;
+    if (base->presentationSide == SIDE_TOP) {
+        anchor.y -= BASE_INTERACTION_BACK_OFFSET;
+    } else {
+        anchor.y += BASE_INTERACTION_BACK_OFFSET;
+    }
+    return anchor;
+}
+
 static GameState make_game_state(void) {
     GameState gs = {0};
     /* All entities now use canonical coordinates (0..1080 x, 0..1920 y).
@@ -541,13 +552,14 @@ static void test_in_range_static_target_uses_attack_radius(void) {
     base.bodyRadius = 16.0f;
     base.navRadius = 56.0f;
     base.navProfile = NAV_PROFILE_STATIC;
+    Vector2 anchor = test_base_anchor(&base);
 
     float attackRadius = combat_static_target_attack_radius(&knight, &base);
 
-    knight.position = (Vector2){540.0f, base.position.y - attackRadius + 0.5f};
+    knight.position = (Vector2){540.0f, anchor.y - attackRadius + 0.5f};
     assert(combat_in_range(&knight, &base, &gs) == true);
 
-    knight.position = (Vector2){540.0f, base.position.y - attackRadius - 0.5f};
+    knight.position = (Vector2){540.0f, anchor.y - attackRadius - 0.5f};
     assert(combat_in_range(&knight, &base, &gs) == false);
 }
 
@@ -569,11 +581,12 @@ static void test_in_range_multiple_attackers_share_static_target_cloud(void) {
     base.bodyRadius = 16.0f;
     base.navRadius = 56.0f;
     base.navProfile = NAV_PROFILE_STATIC;
+    Vector2 anchor = test_base_anchor(&base);
 
     float attackRadiusA = combat_static_target_attack_radius(&knightA, &base);
     float attackRadiusB = combat_static_target_attack_radius(&knightB, &base);
-    knightA.position = (Vector2){540.0f, base.position.y - attackRadiusA + 0.5f};
-    knightB.position = (Vector2){base.position.x + attackRadiusB - 0.5f, 1616.0f};
+    knightA.position = (Vector2){540.0f, anchor.y - attackRadiusA + 0.5f};
+    knightB.position = (Vector2){anchor.x + attackRadiusB - 0.5f, anchor.y};
 
     assert(combat_in_range(&knightA, &base, &gs) == true);
     assert(combat_in_range(&knightB, &base, &gs) == true);

@@ -663,13 +663,13 @@ static void test_king_idle_manifest_and_atlas_match_new_sheet(void) {
     }
 
     assert(manifestEntry != NULL);
-    assert(strcmp(manifestEntry->path, "src/assets/characters/King/king_idle_sheet.png") == 0);
+    assert(strcmp(manifestEntry->path, "src/assets/characters/King/king_idle.png") == 0);
     assert(manifestEntry->frameCount == 8);
     assert(manifestEntry->sourceRowCount == 1);
 
     for (int i = 0; i < kSpriteSheetAtlasCount; i++) {
         const SpriteSheetAtlasEntry *entry = &kSpriteSheetAtlas[i];
-        if (strcmp(entry->path, "src/assets/characters/King/king_idle_sheet.png") == 0) {
+        if (strcmp(entry->path, "src/assets/characters/King/king_idle.png") == 0) {
             atlasEntry = entry;
             break;
         }

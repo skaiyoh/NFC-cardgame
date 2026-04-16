@@ -9,6 +9,7 @@
 #include "../core/config.h"
 #include "../entities/entity_animation.h"
 #include "../logic/combat.h"
+#include "../logic/base_geometry.h"
 #include "../logic/deposit_slots.h"
 #include "../logic/pathfinding.h"
 #include <math.h>
@@ -289,7 +290,8 @@ static void draw_deposit_slot_ring(const Entity *base) {
 
     // Draw the base nav radius shell so farmers' stop distance is visible.
     float navR = (base->navRadius > 0.0f) ? base->navRadius : base->bodyRadius;
-    DrawCircleLinesV(base->position, navR, Fade(ORANGE, 0.5f));
+    Vector2 anchor = base_interaction_anchor(base);
+    DrawCircleLinesV(anchor, navR, Fade(ORANGE, 0.5f));
 
     int primaryCount = deposit_slots_primary_count(base);
     for (int i = 0; i < primaryCount; i++) {
@@ -329,6 +331,15 @@ static void draw_deposit_slots(const Battlefield *bf) {
 static float debug_nav_radius(const Entity *e) {
     if (!e) return 0.0f;
     return (e->navRadius > 0.0f) ? e->navRadius : e->bodyRadius;
+}
+
+static Vector2 debug_nav_center(const Entity *e) {
+    if (!e) return (Vector2){ 0.0f, 0.0f };
+    if (e->navProfile == NAV_PROFILE_STATIC &&
+        e->type == ENTITY_BUILDING) {
+        return base_interaction_anchor(e);
+    }
+    return e->position;
 }
 
 static float debug_soft_shell_radius(const Entity *e) {
@@ -516,7 +527,7 @@ static void draw_nav_focus_entity(const Battlefield *bf, const GameState *gs,
     const Entity *focus = bf_find_entity((Battlefield *)bf, navState->focusEntityId);
     if (!focus || !focus->alive || focus->markedForRemoval) return;
 
-    DrawCircleLinesV(focus->position, debug_nav_radius(focus) + 6.0f,
+    DrawCircleLinesV(debug_nav_center(focus), debug_nav_radius(focus) + 6.0f,
                      Fade(YELLOW, 0.95f));
 
     PathfindDebugPreview preview = { 0 };

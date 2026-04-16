@@ -4,6 +4,7 @@
 //
 
 #include "deposit_slots.h"
+#include "base_geometry.h"
 #include "../core/config.h"
 #include <assert.h>
 #include <math.h>
@@ -50,6 +51,7 @@ void deposit_slots_build_for_base(Entity *base) {
     if (!base) return;
 
     DepositSlotRing *ring = &base->depositSlots;
+    Vector2 anchor = base_interaction_anchor(base);
 
     float navR = (base->navRadius > 0.0f) ? base->navRadius : base->bodyRadius;
     float primaryRadius = navR + FARMER_DEFAULT_BODY_RADIUS + BASE_DEPOSIT_SLOT_GAP;
@@ -62,10 +64,10 @@ void deposit_slots_build_for_base(Entity *base) {
         : (Vector2){ 0.0f, -1.0f };
 
     deposit_slots_build_arc(ring->primary, BASE_DEPOSIT_PRIMARY_SLOT_COUNT,
-                            base->position, forward, primaryRadius,
+                            anchor, forward, primaryRadius,
                             BASE_DEPOSIT_PRIMARY_ARC_DEGREES);
     deposit_slots_build_arc(ring->queue, BASE_DEPOSIT_QUEUE_SLOT_COUNT,
-                            base->position, forward, queueRadius,
+                            anchor, forward, queueRadius,
                             BASE_DEPOSIT_QUEUE_ARC_DEGREES);
 
     ring->initialized = true;

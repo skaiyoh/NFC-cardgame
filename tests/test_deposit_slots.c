@@ -20,6 +20,7 @@
 /* ---- Config defines (mirror src/core/config.h) ---- */
 #define BOARD_WIDTH                        1080
 #define BOARD_HEIGHT                       1920
+#define BASE_INTERACTION_BACK_OFFSET       48.0f
 #define BASE_NAV_RADIUS                    56.0f
 #define BASE_DEPOSIT_PRIMARY_SLOT_COUNT    4
 #define BASE_DEPOSIT_QUEUE_SLOT_COUNT      6
@@ -81,6 +82,16 @@ static Entity make_base(Vector2 position, BattleSide side) {
     return base;
 }
 
+static Vector2 test_base_anchor(const Entity *base) {
+    Vector2 anchor = base->position;
+    if (base->presentationSide == SIDE_TOP) {
+        anchor.y -= BASE_INTERACTION_BACK_OFFSET;
+    } else {
+        anchor.y += BASE_INTERACTION_BACK_OFFSET;
+    }
+    return anchor;
+}
+
 /* ---- Tests ---- */
 
 /* Derived ring radii -- keep in sync with deposit_slots.c geometry:
@@ -92,47 +103,49 @@ static Entity make_base(Vector2 position, BattleSide side) {
 
 static void test_build_for_side_bottom_front_arc(void) {
     Entity base = make_base((Vector2){ 540.0f, 1616.0f }, SIDE_BOTTOM);
+    Vector2 anchor = test_base_anchor(&base);
 
     assert(base.depositSlots.initialized);
 
     for (int i = 0; i < BASE_DEPOSIT_PRIMARY_SLOT_COUNT; i++) {
         DepositSlot slot = base.depositSlots.primary[i];
-        float dx = slot.worldPos.x - 540.0f;
-        float dy = slot.worldPos.y - 1616.0f;
+        float dx = slot.worldPos.x - anchor.x;
+        float dy = slot.worldPos.y - anchor.y;
         float dist = sqrtf(dx * dx + dy * dy);
         assert(fabsf(dist - EXPECTED_PRIMARY_RADIUS) < 0.1f);
-        /* Front-facing arc for SIDE_BOTTOM: every slot sits ahead (y < base.y) */
-        assert(slot.worldPos.y < 1616.0f);
+        /* Front-facing arc for SIDE_BOTTOM: every slot sits ahead (y < anchor.y) */
+        assert(slot.worldPos.y < anchor.y);
         assert(slot.claimedByEntityId == -1);
     }
 
     for (int i = 0; i < BASE_DEPOSIT_QUEUE_SLOT_COUNT; i++) {
         DepositSlot slot = base.depositSlots.queue[i];
-        float dx = slot.worldPos.x - 540.0f;
-        float dy = slot.worldPos.y - 1616.0f;
+        float dx = slot.worldPos.x - anchor.x;
+        float dy = slot.worldPos.y - anchor.y;
         float dist = sqrtf(dx * dx + dy * dy);
         assert(fabsf(dist - EXPECTED_QUEUE_RADIUS) < 0.1f);
-        assert(slot.worldPos.y < 1616.0f);
+        assert(slot.worldPos.y < anchor.y);
         assert(slot.claimedByEntityId == -1);
     }
 }
 
 static void test_build_for_side_top_front_arc(void) {
     Entity base = make_base((Vector2){ 540.0f, 304.0f }, SIDE_TOP);
+    Vector2 anchor = test_base_anchor(&base);
 
     assert(base.depositSlots.initialized);
     for (int i = 0; i < BASE_DEPOSIT_PRIMARY_SLOT_COUNT; i++) {
         DepositSlot slot = base.depositSlots.primary[i];
-        float dx = slot.worldPos.x - 540.0f;
-        float dy = slot.worldPos.y - 304.0f;
+        float dx = slot.worldPos.x - anchor.x;
+        float dy = slot.worldPos.y - anchor.y;
         float dist = sqrtf(dx * dx + dy * dy);
         assert(fabsf(dist - EXPECTED_PRIMARY_RADIUS) < 0.1f);
         /* Front arc for SIDE_TOP faces +Y */
-        assert(slot.worldPos.y > 304.0f);
+        assert(slot.worldPos.y > anchor.y);
     }
     for (int i = 0; i < BASE_DEPOSIT_QUEUE_SLOT_COUNT; i++) {
         DepositSlot slot = base.depositSlots.queue[i];
-        assert(slot.worldPos.y > 304.0f);
+        assert(slot.worldPos.y > anchor.y);
     }
 }
 

@@ -3,6 +3,7 @@
 //
 
 #include "combat.h"
+#include "base_geometry.h"
 #include "farmer.h"
 #include "win_condition.h"
 #include "../core/battlefield.h"
@@ -17,6 +18,19 @@ static float combat_center_distance(Vector2 a, Vector2 b) {
     CanonicalPos posA = { a };
     CanonicalPos posB = { b };
     return bf_distance(posA, posB);
+}
+
+static bool combat_uses_base_anchor(const Entity *target) {
+    if (!target) return false;
+    return target->type == ENTITY_BUILDING;
+}
+
+static Vector2 combat_target_anchor(const Entity *target) {
+    if (!target) return (Vector2){ 0.0f, 0.0f };
+    if (combat_uses_base_anchor(target)) {
+        return base_interaction_anchor(target);
+    }
+    return target->position;
 }
 
 static bool combat_uses_direct_range(const Entity *attacker, const Entity *target) {
@@ -83,9 +97,10 @@ static Vector2 combat_apply_tangent_bias(Vector2 baseDir, int attackerId,
 }
 
 static Vector2 combat_spread_direction(const Entity *attacker, const Entity *target) {
+    Vector2 targetAnchor = combat_target_anchor(target);
     Vector2 radial = {
-        attacker->position.x - target->position.x,
-        attacker->position.y - target->position.y
+        attacker->position.x - targetAnchor.x,
+        attacker->position.y - targetAnchor.y
     };
     Vector2 ownerFallback = (attacker->ownerID == 1)
         ? (Vector2){ 0.0f, 1.0f }
@@ -99,9 +114,10 @@ static Vector2 combat_spread_direction(const Entity *attacker, const Entity *tar
 Vector2 combat_static_target_flow_direction(const Entity *attacker, const Entity *target) {
     if (!attacker || !target) return (Vector2){ 0.0f, 0.0f };
 
+    Vector2 targetAnchor = combat_target_anchor(target);
     Vector2 inward = {
-        target->position.x - attacker->position.x,
-        target->position.y - attacker->position.y
+        targetAnchor.x - attacker->position.x,
+        targetAnchor.y - attacker->position.y
     };
     Vector2 ownerFallback = (attacker->ownerID == 1)
         ? (Vector2){ 0.0f, -1.0f }
@@ -157,25 +173,26 @@ bool combat_engagement_goal(const Entity *attacker, const Entity *target,
     if (!attacker || !target || !outGoal || !outStopRadius) return false;
 
     if (combat_uses_direct_range(attacker, target)) {
-        *outGoal = target->position;
+        *outGoal = combat_target_anchor(target);
         *outStopRadius = attacker->attackRange;
         return true;
     }
 
     if (target->type == ENTITY_BUILDING || target->navProfile == NAV_PROFILE_STATIC) {
-        *outGoal = target->position;
+        *outGoal = combat_target_anchor(target);
         *outStopRadius = combat_static_target_attack_radius(attacker, target);
         return true;
     }
 
     Vector2 spreadDir = combat_spread_direction(attacker, target);
+    Vector2 targetAnchor = combat_target_anchor(target);
 
     float radius = combat_target_contact_radius(target) +
                    attacker->bodyRadius +
                    PATHFIND_CONTACT_GAP;
     *outGoal = (Vector2){
-        target->position.x + spreadDir.x * radius,
-        target->position.y + spreadDir.y * radius
+        targetAnchor.x + spreadDir.x * radius,
+        targetAnchor.y + spreadDir.y * radius
     };
     *outStopRadius = combat_melee_reach_distance(attacker, target);
     return true;
@@ -186,7 +203,7 @@ bool combat_in_range(const Entity *a, const Entity *b, const GameState *gs) {
     if (!a || !b) return false;
 
     if (combat_uses_direct_range(a, b)) {
-        float dist = combat_center_distance(a->position, b->position);
+        float dist = combat_center_distance(a->position, combat_target_anchor(b));
         return dist <= a->attackRange;
     }
 
@@ -195,11 +212,11 @@ bool combat_in_range(const Entity *a, const Entity *b, const GameState *gs) {
                                 a->bodyRadius +
                                 PATHFIND_CONTACT_GAP +
                                 combat_melee_reach_distance(a, b);
-        float centerDist = combat_center_distance(a->position, b->position);
+        float centerDist = combat_center_distance(a->position, combat_target_anchor(b));
         return centerDist <= contactDistance + 0.001f;
     }
 
-    float centerDist = combat_center_distance(a->position, b->position);
+    float centerDist = combat_center_distance(a->position, combat_target_anchor(b));
     return centerDist <= combat_static_target_attack_radius(a, b) + 0.001f;
 }
 
