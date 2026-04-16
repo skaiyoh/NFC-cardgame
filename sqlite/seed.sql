@@ -340,6 +340,78 @@ INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) V
       "show_energy_bot":    false
     }
   }'
+),
+
+(
+  'MEGA_BARF_01',
+  'MEGA BARF',
+  100,
+  'sustenance',
+  'mega_barf',
+  'Spend 100 sustenance to double your energy regeneration for 15 seconds. Ignored while already active.',
+  '{
+    "visual": {
+      "border_color":       "magenta",
+      "show_border":        true,
+      "bg_style":           "paper",
+      "show_bg":            true,
+      "banner_color":       "green",
+      "show_banner":        true,
+      "corner_color":       "magenta",
+      "show_corner":        true,
+      "container_color":    "green",
+      "container_variant":  1,
+      "show_container":     false,
+      "description_style":  "paper",
+      "show_description":   true,
+      "innercorner_style":  "white",
+      "show_innercorner":   true,
+      "gem_color":          "green",
+      "show_gem":           true,
+      "socket_color":       "magenta",
+      "show_socket":        true,
+      "energy_top_color":   "green",
+      "show_energy_top":    false,
+      "energy_bot_color":   "green",
+      "show_energy_bot":    false
+    }
+  }'
+),
+
+(
+  'ROTTEN_ROAST_01',
+  'ROTTEN ROAST',
+  60,
+  'sustenance',
+  'rotten_roast',
+  'Spend 60 sustenance to fortify your base with +350 current HP and +350 max HP.',
+  '{
+    "visual": {
+      "border_color":       "brown",
+      "show_border":        true,
+      "bg_style":           "paper",
+      "show_bg":            true,
+      "banner_color":       "red",
+      "show_banner":        true,
+      "corner_color":       "brown",
+      "show_corner":        true,
+      "container_color":    "red",
+      "container_variant":  1,
+      "show_container":     false,
+      "description_style":  "paper",
+      "show_description":   true,
+      "innercorner_style":  "yellow",
+      "show_innercorner":   true,
+      "gem_color":          "red",
+      "show_gem":           true,
+      "socket_color":       "brown",
+      "show_socket":        true,
+      "energy_top_color":   "red",
+      "show_energy_top":    false,
+      "energy_bot_color":   "red",
+      "show_energy_bot":    false
+    }
+  }'
 )
 
 ON CONFLICT (card_id) DO UPDATE SET

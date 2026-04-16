@@ -3,6 +3,7 @@
 //
 
 #include "progression.h"
+#include "player.h"
 
 static const int s_levelThresholds[PROGRESSION_MAX_LEVEL] = {
     0,   // level 1
@@ -55,7 +56,7 @@ void progression_sync_player(GameState *gs, int playerIndex) {
     Player *player = &gs->players[playerIndex];
 
     int level = progression_level_from_sustenance(player->sustenanceCollected);
-    player->energyRegenRate = progression_regen_rate_for_level(level);
+    player_set_base_energy_regen_rate(player, progression_regen_rate_for_level(level));
 
     Entity *base = player->base;
     if (base && base->alive && !base->markedForRemoval) {

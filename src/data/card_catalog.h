@@ -11,8 +11,8 @@ typedef struct {
     int hand_sheet_row; // -1 when the card remains playable but has no hand-sheet art.
 } CardCatalogEntry;
 
-// Source row order inside card_sheet.png. King remains playable but no longer
-// has a row in the shared hand sheet.
+// Source row order inside card_sheet.png. Hidden sustenance cards remain
+// playable but have no row in the shared hand sheet.
 static const CardCatalogEntry CARD_CATALOG_ENTRIES[] = {
     {"BIRD_01", "bird", 0},
     {"HEALER_01", "healer", 1},
@@ -20,13 +20,15 @@ static const CardCatalogEntry CARD_CATALOG_ENTRIES[] = {
     {"FARMER_01", "farmer", 3},
     {"FISHFING_01", "fishfing", 4},
     {"KING_01", "king", -1},
+    {"MEGA_BARF_01", "mega_barf", -1},
+    {"ROTTEN_ROAST_01", "rotten_roast", -1},
     {"BRUTE_01", "brute", 5},
     {"ASSASSIN_01", "assassin", 6},
 };
 
 // Presentation order for debug/demo bindings and playable hand contents. Cards
-// without hand-sheet art (currently King) stay in this order but are hidden
-// from the rendered hand strip.
+// without hand-sheet art can still stay in this order for hidden bindings, but
+// only the visible 8-card hand loop lives here.
 static const char *const CARD_HAND_PRESENTATION_ORDER[] = {
     "FARMER_01",
     "HEALER_01",

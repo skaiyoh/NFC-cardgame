@@ -276,7 +276,10 @@ struct Player {
     // Energy system
     float energy;
     float maxEnergy;
-    float energyRegenRate;
+    float energyRegenRate;           // effective live regen after progression + temporary boosts
+    float baseEnergyRegenRate;       // progression-derived baseline before temporary boosts
+    float energyRegenBoostMultiplier;
+    float energyRegenBoostRemaining;
 
     // Spendable sustenance resource used by sustenance-cost cards.
     int sustenanceBank;

@@ -218,8 +218,8 @@ static void game_handle_debug_input(void) {
 
 static void game_handle_spawn_input(GameState *g) {
     // Demo-hand smoke path: keys 1..8 fire P1's playable hand cards, keys
-    // Q W E R T Y U I fire P2's, in hand-presentation order. Cards hidden from
-    // the rendered hand strip (currently King) still keep their keyboard binding.
+    // Q W E R T Y U I fire P2's, in hand-presentation order. Hidden cards can
+    // still keep separate keyboard bindings without consuming visible hand slots.
     // Every card plays through slot 0 so they share one cooldown lane.
     const int p1Keys[HAND_MAX_CARDS] = {
         KEY_ONE, KEY_TWO, KEY_THREE, KEY_FOUR,
@@ -240,6 +240,21 @@ static void game_handle_spawn_input(GameState *g) {
         if (IsKeyPressed(p2Keys[i])) {
             game_test_play_card(g, 1, 0, cardId);
         }
+    }
+
+    // Hidden sustenance cards stay outside the visible 8-card hand loop so
+    // they do not consume hand UI slots.
+    if (IsKeyPressed(KEY_NINE)) {
+        game_test_play_card(g, 0, 0, "MEGA_BARF_01");
+    }
+    if (IsKeyPressed(KEY_ZERO)) {
+        game_test_play_card(g, 0, 0, "ROTTEN_ROAST_01");
+    }
+    if (IsKeyPressed(KEY_O)) {
+        game_test_play_card(g, 1, 0, "MEGA_BARF_01");
+    }
+    if (IsKeyPressed(KEY_P)) {
+        game_test_play_card(g, 1, 0, "ROTTEN_ROAST_01");
     }
 }
 

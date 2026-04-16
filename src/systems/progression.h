@@ -26,7 +26,8 @@ float progression_regen_rate_for_level(int level);
 int   progression_king_burst_damage_for_level(int level);
 
 // Recompute level/regen for a player from lifetime sustenance gathered,
-// assign to the owning base (if live) and to Player.energyRegenRate.
+// assign to the owning base (if live), update Player.baseEnergyRegenRate,
+// and refresh Player.energyRegenRate through any active temporary boost.
 // Safe to call repeatedly.
 void  progression_sync_player(GameState *gs, int playerIndex);
 

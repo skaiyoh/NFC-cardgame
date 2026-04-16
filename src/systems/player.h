@@ -44,6 +44,12 @@ int player_hand_occupied_count(const Player *p);
 
 void player_hand_restart_animation_for_card(Player *p, const Card *card);
 
+void player_set_base_energy_regen_rate(Player *p, float baseRate);
+
+bool player_energy_regen_boost_is_active(const Player *p);
+
+bool player_try_activate_energy_regen_boost(Player *p, float multiplier, float durationSeconds);
+
 bool player_can_afford_cost(const Player *p, int amount, CardCostResource resource);
 
 bool player_consume_cost(Player *p, int amount, CardCostResource resource);
