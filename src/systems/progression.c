@@ -45,7 +45,7 @@ float progression_regen_rate_for_level(int level) {
 int progression_king_burst_damage_for_level(int level) {
     level = clamp_level(level);
     int span = PROGRESSION_KING_DMG_LEVEL_MAX - PROGRESSION_KING_DMG_LEVEL1;
-    // span/(max-1) is exact for 10→9 levels (27/9=3), so integer math suffices.
+    // span/(max-1) is exact here (36/9=4), so integer math suffices.
     return PROGRESSION_KING_DMG_LEVEL1 +
            (span * (level - 1)) / (PROGRESSION_MAX_LEVEL - 1);
 }
